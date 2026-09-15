@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2019 Austin McCartney
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -6,6 +6,8 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #pragma once
+
+#include <hpx/config.hpp>
 
 #include <type_traits>
 #include <utility>
@@ -15,7 +17,8 @@ namespace hpx::traits {
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename T, typename U, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename T, typename U,
+            typename Enable = void>
         struct equality_result
         {
         };
@@ -32,11 +35,12 @@ namespace hpx::traits {
         };
         // clang-format on
 
-        template <typename T, typename U>
+        HPX_CXX_CORE_EXPORT template <typename T, typename U>
         using equality_result_t = typename equality_result<T, U>::type;
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename T, typename U, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename T, typename U,
+            typename Enable = void>
         struct inequality_result
         {
         };
@@ -53,11 +57,12 @@ namespace hpx::traits {
         };
         // clang-format on
 
-        template <typename T, typename U>
+        HPX_CXX_CORE_EXPORT template <typename T, typename U>
         using inequality_result_t = typename inequality_result<T, U>::type;
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename T, typename U, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename T, typename U,
+            typename Enable = void>
         struct is_weakly_equality_comparable_with : std::false_type
         {
         };
@@ -72,37 +77,37 @@ namespace hpx::traits {
         };
     }    // namespace detail
 
-    template <typename T, typename U>
+    HPX_CXX_CORE_EXPORT template <typename T, typename U>
     struct is_weakly_equality_comparable_with
       : detail::is_weakly_equality_comparable_with<std::decay_t<T>,
             std::decay_t<U>>
     {
     };
 
-    template <typename T, typename U>
+    HPX_CXX_CORE_EXPORT template <typename T, typename U>
     inline constexpr bool is_weakly_equality_comparable_with_v =
         is_weakly_equality_comparable_with<T, U>::value;
 
     // for now is_equality_comparable is equivalent to its weak version
-    template <typename T, typename U>
+    HPX_CXX_CORE_EXPORT template <typename T, typename U>
     struct is_equality_comparable_with
       : detail::is_weakly_equality_comparable_with<std::decay_t<T>,
             std::decay_t<U>>
     {
     };
 
-    template <typename T, typename U>
+    HPX_CXX_CORE_EXPORT template <typename T, typename U>
     inline constexpr bool is_equality_comparable_with_v =
         is_equality_comparable_with<T, U>::value;
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct is_equality_comparable
       : detail::is_weakly_equality_comparable_with<std::decay_t<T>,
             std::decay_t<T>>
     {
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr bool is_equality_comparable_v =
         is_equality_comparable<T>::value;
 }    // namespace hpx::traits

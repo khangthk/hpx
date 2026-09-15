@@ -1,4 +1,4 @@
-//  Copyright (c) 2023 Hartmut Kaiser
+//  Copyright (c) 2023-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -17,8 +17,9 @@
 
 namespace hpx {
 
-    template <typename Ref, typename V = void, typename Allocator = void>
-    using generator = std::generator<Ref, V, Allocator>
+    HPX_CXX_CORE_EXPORT template <typename Ref, typename V = void,
+        typename Allocator = void>
+    using generator = std::generator<Ref, V, Allocator>;
 }
 
 #else
@@ -49,27 +50,29 @@ namespace hpx {
 
 namespace hpx {
 
-    template <typename Ref, typename V = void, typename Allocator = void>
+    HPX_CXX_CORE_EXPORT template <typename Ref, typename V = void,
+        typename Allocator = void>
     struct generator;
 
     namespace detail {
 
-        struct alignas(HPX_STDCPP_DEFAULT_NEW_ALIGNMENT) aligned_block
+        HPX_CXX_CORE_EXPORT struct alignas(HPX_STDCPP_DEFAULT_NEW_ALIGNMENT)
+            aligned_block
         {
             unsigned char pad[HPX_STDCPP_DEFAULT_NEW_ALIGNMENT];
         };
 
-        template <typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename Allocator>
         using rebind = typename std::allocator_traits<
             Allocator>::template rebind_alloc<aligned_block>;
 
-        template <typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename Allocator>
         concept has_real_pointers = std::is_void_v<Allocator> ||
             std::is_pointer_v<
                 typename std::allocator_traits<Allocator>::pointer>;
 
         // clang-format off
-        template <typename T, typename U>
+        HPX_CXX_CORE_EXPORT template <typename T, typename U>
         concept common_reference_with =
             std::same_as<std::common_reference_t<T, U>,
                 std::common_reference_t<U, T>> &&
@@ -78,7 +81,7 @@ namespace hpx {
         // clang-format on
 
         // statically specified allocator type
-        template <typename Alloc = void>
+        HPX_CXX_CORE_EXPORT template <typename Alloc = void>
         class promise_allocator
         {
             using Allocator = rebind<Alloc>;
@@ -104,7 +107,7 @@ namespace hpx {
                 {
                     // store stateful allocator and size of block
                     static constexpr std::size_t align =
-                        (std::max)(alignof(Allocator), sizeof(aligned_block));
+                        (std::max) (alignof(Allocator), sizeof(aligned_block));
 
                     std::size_t const count =
                         (size + sizeof(Allocator) + sizeof(std::size_t) +
@@ -156,7 +159,7 @@ namespace hpx {
                     stored_allocator.~Allocator();
 
                     static constexpr std::size_t align =
-                        (std::max)(alignof(Allocator), sizeof(aligned_block));
+                        (std::max) (alignof(Allocator), sizeof(aligned_block));
                     std::size_t const count =
                         (size + sizeof(std::size_t) + sizeof(Allocator) +
                             align - 1) /
@@ -170,13 +173,13 @@ namespace hpx {
             // Allocator support
             // clang-format off
             void* operator new(std::size_t const size)
-                requires std::is_default_constructible_v<Allocator>
+                requires(std::is_default_constructible_v<Allocator>)
             {
                 return allocate(Allocator{}, size) + sizeof(std::size_t);
             }
 
             template <typename Allocator2, typename... Args>
-                requires std::is_convertible_v<Allocator2 const&, Allocator>
+                requires(std::is_convertible_v<Allocator2 const&, Allocator>)
             void* operator new(std::size_t const size, std::allocator_arg_t,
                 Allocator2 const& alloc, Args const&...)
             {
@@ -187,7 +190,7 @@ namespace hpx {
             }
 
             template <typename This, typename Alloc2, typename... Args>
-                requires std::is_convertible_v<Alloc2 const&, Allocator>
+                requires(std::is_convertible_v<Alloc2 const&, Allocator>)
             void* operator new(std::size_t const size, This const&,
                 std::allocator_arg_t, Alloc2 const& alloc, Args const&...)
             {
@@ -255,6 +258,7 @@ namespace hpx {
                     char* address = static_cast<char*>(ptr);
                     *reinterpret_cast<std::size_t*>(address) = size;
 
+                    // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                     std::memcpy(address + size + sizeof(std::size_t), &dealloc,
                         sizeof(dealloc));
 
@@ -264,7 +268,7 @@ namespace hpx {
                 {
                     // store stateful allocator and size of allocated block
                     static constexpr std::size_t align =
-                        (std::max)(alignof(Allocator), sizeof(aligned_block));
+                        (std::max) (alignof(Allocator), sizeof(aligned_block));
 
                     dealloc_fn const dealloc = [](void* const ptr,
                                                    std::size_t s) {
@@ -299,6 +303,8 @@ namespace hpx {
                     *reinterpret_cast<std::size_t*>(address) = size;
 
                     // store deleter
+
+                    // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                     std::memcpy(address + sizeof(std::size_t) + size, &dealloc,
                         sizeof(dealloc));
 
@@ -324,7 +330,7 @@ namespace hpx {
 
                 dealloc_fn const dealloc =
                     [](void* const p, [[maybe_unused]] std::size_t const s) {
-#if defined(HPX_WITH_CXX14_DELETE_OPERATOR_WITH_SIZE)
+#if defined(HPX_HAVE_CXX14_DELETE_OPERATOR_WITH_SIZE)
                         ::operator delete[](
                             p, s + sizeof(std::size_t) + sizeof(dealloc_fn));
 #else
@@ -335,6 +341,7 @@ namespace hpx {
                 char* address = static_cast<char*>(ptr);
                 *reinterpret_cast<std::size_t*>(address) = size;
 
+                // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                 std::memcpy(address + sizeof(std::size_t) + size, &dealloc,
                     sizeof(dealloc_fn));
 
@@ -367,6 +374,8 @@ namespace hpx {
                     *reinterpret_cast<std::size_t*>(address);
 
                 dealloc_fn dealloc;
+
+                // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                 std::memcpy(&dealloc, static_cast<char*>(ptr) + size,
                     sizeof(dealloc_fn));
                 dealloc(address, size);
@@ -380,28 +389,30 @@ namespace hpx {
                 HPX_ASSERT(size == *reinterpret_cast<std::size_t*>(address));
 
                 dealloc_fn dealloc;
+
+                // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                 std::memcpy(&dealloc, static_cast<char*>(ptr) + size,
                     sizeof(dealloc_fn));
                 dealloc(address, size);
             }
         };
 
-        template <typename Ref, typename V>
+        HPX_CXX_CORE_EXPORT template <typename Ref, typename V>
         using gen_value_t =
             std::conditional_t<std::is_void_v<V>, std::remove_cvref_t<Ref>, V>;
 
-        template <typename Ref, typename V>
+        HPX_CXX_CORE_EXPORT template <typename Ref, typename V>
         using gen_reference_t =
             std::conditional_t<std::is_void_v<V>, Ref&&, Ref>;
 
-        template <typename Ref>
+        HPX_CXX_CORE_EXPORT template <typename Ref>
         using gen_yield_t =
             std::conditional_t<std::is_reference_v<Ref>, Ref, Ref const&>;
 
-        template <typename Value, typename Ref>
+        HPX_CXX_CORE_EXPORT template <typename Value, typename Ref>
         class gen_iter;
 
-        template <typename Yielded>
+        HPX_CXX_CORE_EXPORT template <typename Yielded>
         class gen_promise_base
         {
         public:
@@ -412,19 +423,19 @@ namespace hpx {
                 return {};
             }
 
-            [[nodiscard]] static constexpr auto final_suspend() noexcept
+            static constexpr auto final_suspend() noexcept
             {
                 return final_awaiter{};
             }
 
-            [[nodiscard]] hpx::suspend_always yield_value(Yielded val) noexcept
+            hpx::suspend_always yield_value(Yielded val) noexcept
             {
                 ptr = ::std::addressof(val);
                 return {};
             }
 
             // clang-format off
-            [[nodiscard]] auto
+            auto
             yield_value(std::remove_reference_t<Yielded> const& val) noexcept(
                 std::is_nothrow_constructible_v<std::remove_cvref_t<Yielded>,
                     std::remove_reference_t<Yielded> const&>)
@@ -457,7 +468,7 @@ namespace hpx {
             {
                 std::remove_cvref_t<Yielded> val;
 
-                [[nodiscard]] static constexpr bool await_ready() noexcept
+                static constexpr bool await_ready() noexcept
                 {
                     return false;
                 }
@@ -487,13 +498,13 @@ namespace hpx {
 
             struct final_awaiter
             {
-                [[nodiscard]] static constexpr bool await_ready() noexcept
+                static constexpr bool await_ready() noexcept
                 {
                     return false;
                 }
 
                 template <typename Promise>
-                [[nodiscard]] hpx::coroutine_handle<> await_suspend(
+                hpx::coroutine_handle<> await_suspend(
                     hpx::coroutine_handle<Promise> handle) noexcept
                 {
 #ifdef __cpp_lib_is_pointer_interconvertible
@@ -532,14 +543,14 @@ namespace hpx {
                 {
                 }
 
-                [[nodiscard]] constexpr bool await_ready() noexcept
+                constexpr bool await_ready() noexcept
                 {
                     return !gen.coro;
                 }
 
                 template <typename Promise>
-                [[nodiscard]] hpx::coroutine_handle<gen_promise_base>
-                await_suspend(hpx::coroutine_handle<Promise> current) noexcept
+                hpx::coroutine_handle<gen_promise_base> await_suspend(
+                    hpx::coroutine_handle<Promise> current) noexcept
                 {
 #ifdef __cpp_lib_is_pointer_interconvertible
                     static_assert(std::is_pointer_interconvertible_base_of_v<
@@ -586,11 +597,11 @@ namespace hpx {
             nest_info* info = nullptr;
         };
 
-        struct gen_secret_tag
+        HPX_CXX_CORE_EXPORT struct gen_secret_tag
         {
         };
 
-        template <typename Value, typename Ref>
+        HPX_CXX_CORE_EXPORT template <typename Value, typename Ref>
         class gen_iter
         {
         public:
@@ -616,7 +627,7 @@ namespace hpx {
                 return *this;
             }
 
-            [[nodiscard]] Ref operator*() const noexcept
+            Ref operator*() const noexcept
             {
                 HPX_ASSERT_MSG(
                     !coro.done(), "Can't dereference generator end iterator");
@@ -673,7 +684,7 @@ namespace hpx {
         };
     }    // namespace detail
 
-    template <typename Ref, typename V, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename Ref, typename V, typename Allocator>
     struct generator
     {
     private:
@@ -751,9 +762,13 @@ namespace hpx {
             HPX_ASSERT_MSG(coro, "Can't call begin on moved-from generator");
 
             coro.resume();
+
+            // clang-format off
             return detail::gen_iter<value, reference>{detail::gen_secret_tag{},
-                coroutine_handle<detail::gen_promise_base<detail::gen_yield_t<
-                    reference>>>::from_address(coro.address())};
+                coroutine_handle<detail::gen_promise_base<
+                    detail::gen_yield_t<reference>>>::from_address(coro
+                        .address())};
+            // clang-format on
         }
 
         [[nodiscard]] static constexpr hpx::default_sentinel_t end() noexcept

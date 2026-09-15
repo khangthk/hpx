@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //  Copyright (c) 2011 Bryce Lelbach
-//  Copyright (c) 2011-2024 Hartmut Kaiser
+//  Copyright (c) 2011-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -12,12 +12,17 @@
 #include <hpx/config/version.hpp>
 #include <hpx/modules/config_registry.hpp>
 #include <hpx/modules/format.hpp>
-#include <hpx/prefix/find_prefix.hpp>
-#include <hpx/preprocessor/stringize.hpp>
+#include <hpx/modules/prefix.hpp>
+#include <hpx/modules/preprocessor.hpp>
 #include <hpx/version.hpp>
 
 #include <boost/config.hpp>
 #include <boost/version.hpp>
+
+#if BOOST_VERSION < 107100
+// Please update your Boost installation (see www.boost.org for details).
+#error HPX cannot be compiled with a Boost version earlier than 1.71.0
+#endif
 
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_MPI)) ||      \
     defined(HPX_HAVE_MODULE_MPI_BASE)
@@ -43,7 +48,12 @@
 
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCI)) ||      \
     defined(HPX_HAVE_MODULE_LCI_BASE)
-#include <lci.h>
+#include <lci.hpp>
+#endif
+
+#if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCW)) ||      \
+    defined(HPX_HAVE_MODULE_LCW_BASE)
+#include <lcw.hpp>
 #endif
 
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_GASNET)) ||   \
@@ -136,6 +146,17 @@ namespace hpx {
     }
 #endif
 
+#if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCW)) ||      \
+    defined(HPX_HAVE_MODULE_LCW_BASE)
+    std::string lcw_version()
+    {
+        std::ostringstream strm;
+        strm << LCW_VERSION_MAJOR << "." << LCW_VERSION_MINOR << "."
+             << LCW_VERSION_PATCH;
+        return strm.str();
+    }
+#endif
+
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_GASNET)) ||   \
     defined(HPX_HAVE_MODULE_GASNET_BASE)
     std::string gasnet_version()
@@ -154,10 +175,9 @@ namespace hpx {
         constexpr char const* const copyright =
             "HPX - The C++ Standard Library for Parallelism and Concurrency\n"
             "(A general purpose parallel C++ runtime system for distributed "
-            "applications\n"
-            "of any scale).\n\n"
-            "Copyright (c) 2007-2024, The STE||AR Group,\n"
-            "http://stellar-group.org, email:hpx-users@stellar-group.org\n\n"
+            "applications\nof any scale).\n\n"
+            "Copyright (c) 2007-2026, HPX Project a Series of LF Projects, "
+            "LLC, (https://hpx.dev)\n\n"
             "Distributed under the Boost Software License, "
             "Version 1.0. (See accompanying\n"
             "file LICENSE_1_0.txt or copy at "
@@ -215,7 +235,7 @@ namespace hpx {
             HPX_PARCEL_MAX_CONNECTIONS_PER_LOCALITY);
 #endif
 
-        const char* prefix = util::hpx_prefix();
+        char const* prefix = util::hpx_prefix();
         if (prefix == nullptr)
         {
             strm << "  HPX_PREFIX (configured)=unknown\n";
@@ -312,6 +332,10 @@ namespace hpx {
     defined(HPX_HAVE_MODULE_LCI_BASE)
                                                 "  LCI: {}\n"
 #endif
+#if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCW)) ||      \
+    defined(HPX_HAVE_MODULE_LCW_BASE)
+                                                "  LCW: {}\n"
+#endif
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_GASNET)) ||   \
     defined(HPX_HAVE_MODULE_GASNET_BASE)
                                                 "  GASNET: {}\n"
@@ -331,6 +355,10 @@ namespace hpx {
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCI)) ||      \
     defined(HPX_HAVE_MODULE_LCI_BASE)
             lci_version(),
+#endif
+#if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCW)) ||      \
+    defined(HPX_HAVE_MODULE_LCW_BASE)
+            lcw_version(),
 #endif
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_GASNET)) ||   \
     defined(HPX_HAVE_MODULE_GASNET_BASE)

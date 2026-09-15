@@ -1,21 +1,26 @@
-# Copyright (c) 2014-2023 Hartmut Kaiser
+# Copyright (c) 2014-2025 Hartmut Kaiser
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
 # file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 set(tests
+    chunk_size_variable_regression
     count_3646
     fill_executor_5016
     findfirstof_more_searched_for
+    find_proxy_support
     for_each_annotated_function
+    for_each_on_main_thread
     for_loop_2281
     for_loop_5735
     for_loop_with_auto_chunk_size
     includes_empty_ranges
+    is_sorted_until_chunk_boundary
     minimal_findend
     mismatch_differently_sized_ranges
     num_cores
+    prefetching_iterator
     reduce_3641
     scan_different_inits
     scan_non_commutative
@@ -31,7 +36,7 @@ set(tests
 )
 
 if(HPX_WITH_DATAPAR)
-  list(APPEND tests for_each_datapar)
+  list(APPEND tests counting_iterator_datapar for_each_datapar)
 endif()
 
 foreach(test ${tests})

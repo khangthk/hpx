@@ -6,6 +6,9 @@
 # file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 set(example_programs
+    background_work_smoke
+    causal_chain_smoke
+    causal_exception_smoke
     barrier_docs
     composable_guard
     condition_variable_docs
@@ -36,10 +39,17 @@ set(example_programs
     vector_counting_dotproduct
     vector_zip_dotproduct
     wait_composition
+    work_stealing_smoke
 )
 
 if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD" AND NOT HPX_WITH_STATIC_LINKING)
   set(example_programs ${example_programs} init_globally)
+endif()
+
+if(NOT ((MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang") AND HPX_WITH_CXX_MODULES
+       )
+)
+  list(APPEND example_programs sender_diamond)
 endif()
 
 if(HPX_WITH_DISTRIBUTED_RUNTIME)
@@ -77,11 +87,28 @@ if(HPX_WITH_DISTRIBUTED_RUNTIME)
       zerocopy_rdma
   )
 endif()
+if(HPX_WITH_DISTRIBUTED_RUNTIME AND HPX_WITH_CXX26_REFLECTION)
+  set(example_programs ${example_programs} factorial_reflection
+                       fibonacci_reflection
+  )
+endif()
 
 # TODO: These examples currently fail. Disabled until they are fixed.
 set(disabled_tests error_handling fibonacci_await non_atomic_rma zerocopy_rdma)
 if(HPX_WITH_STATIC_LINKING)
   set(disabled_tests ${disabled_tests} hello_world_1)
+endif()
+# sender_diamond uses stdexec continues_on which fails on Clang <= 21 /
+# AppleClang <= 16 due to tag_invoke dispatch differences.
+if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_VERSION
+                                               VERSION_LESS_EQUAL "21")
+   OR (CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang"
+       AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS_EQUAL "16")
+)
+  set(disabled_tests ${disabled_tests} sender_diamond)
+endif()
+if(HPX_WITH_DISTRIBUTED_RUNTIME)
+  set(disabled_tests ${disabled_tests} 1d_wave_equation)
 endif()
 
 set(1d_wave_equation_FLAGS COMPONENT_DEPENDENCIES iostreams)
@@ -131,6 +158,7 @@ set(hello_world_2_PARAMETERS THREADS_PER_LOCALITY 4)
 set(hello_world_distributed_PARAMETERS THREADS_PER_LOCALITY 4)
 set(interval_timer_PARAMETERS THREADS_PER_LOCALITY 4)
 set(local_channel_PARAMETERS THREADS_PER_LOCALITY 4)
+set(sender_diamond_PARAMETERS THREADS_PER_LOCALITY 4)
 set(sierpinski_PARAMETERS THREADS_PER_LOCALITY 4)
 set(partitioned_vector_spmd_foreach_PARAMETERS THREADS_PER_LOCALITY 4)
 set(pingpong_PARAMETERS THREADS_PER_LOCALITY 4)
@@ -138,6 +166,7 @@ set(simple_future_continuation_PARAMETERS THREADS_PER_LOCALITY 4)
 set(timed_futures_PARAMETERS THREADS_PER_LOCALITY 4)
 set(vector_counting_dotproduct_PARAMETERS THREADS_PER_LOCALITY 4)
 set(vector_zip_dotproduct_PARAMETERS THREADS_PER_LOCALITY 4)
+set(work_stealing_smoke_PARAMETERS THREADS_PER_LOCALITY 4)
 set(custom_serialization_PARAMETERS LOCALITIES 2)
 
 # the following example fails compiling on someversions of MSVC
@@ -154,7 +183,7 @@ foreach(example_program ${example_programs})
   add_hpx_executable(
     ${example_program} INTERNAL_FLAGS
     SOURCES ${sources} ${${example_program}_FLAGS}
-    FOLDER "Examples/Quickstart"
+    FOLDER "Examples/Quickstart" ${HPX_WITH_CXX_MODULES_OPTION}
   )
 
   target_link_libraries(
@@ -171,3 +200,26 @@ foreach(example_program ${example_programs})
     )
   endif()
 endforeach()
+
+if(HPX_WITH_CXX_MODULES
+   AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+   AND (MSVC_VERSION LESS_EQUAL 1952)
+)
+  foreach(
+    example
+    background_work_smoke
+    barrier_docs
+    customize_async
+    component_ctors
+    component_in_executable
+    component_with_executor
+    custom_serialization
+    enumerate_threads
+    hello_world_distributed
+    latch_remote
+    latch_local
+    mutex_docs
+  )
+    target_compile_definitions(${example} PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES)
+  endforeach()
+endif()

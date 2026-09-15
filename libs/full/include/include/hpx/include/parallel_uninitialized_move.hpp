@@ -6,4 +6,5 @@
 
 #pragma once
 
-#include <hpx/parallel/algorithms/uninitialized_move.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/algorithms.hpp>

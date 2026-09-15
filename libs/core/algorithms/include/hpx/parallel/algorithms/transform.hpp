@@ -278,27 +278,30 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/assert.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/foreach_partitioner.hpp>
 #include <hpx/parallel/util/result_types.hpp>
 #include <hpx/parallel/util/transform_loop.hpp>
 #include <hpx/parallel/util/zip_iterator.hpp>
-#include <hpx/type_support/identity.hpp>
 
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-#include <hpx/functional/traits/get_function_address.hpp>
-#include <hpx/functional/traits/get_function_annotation.hpp>
+#include <hpx/modules/functional.hpp>
 #endif
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -309,7 +312,7 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        template <typename F, typename Proj>
+        HPX_CXX_CORE_EXPORT template <typename F, typename Proj>
         struct transform_projected
         {
             std::decay_t<F> f_;
@@ -351,7 +354,8 @@ namespace hpx::parallel {
             }
         };
 
-        template <typename ExPolicy, typename F, typename Proj>
+        HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename F,
+            typename Proj>
         struct transform_iteration
         {
             using execution_policy_type = std::decay_t<ExPolicy>;
@@ -454,7 +458,7 @@ namespace hpx::parallel {
         };
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename IterPair>
+        HPX_CXX_CORE_EXPORT template <typename IterPair>
         struct transform : public algorithm<transform<IterPair>, IterPair>
         {
             constexpr transform() noexcept
@@ -528,7 +532,8 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        template <typename F, typename Proj1, typename Proj2>
+        HPX_CXX_CORE_EXPORT template <typename F, typename Proj1,
+            typename Proj2>
         struct transform_binary_projected
         {
             std::decay_t<F> f_;
@@ -553,7 +558,8 @@ namespace hpx::parallel {
             }
         };
 
-        template <typename ExPolicy, typename F, typename Proj1, typename Proj2>
+        HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename F,
+            typename Proj1, typename Proj2>
         struct transform_binary_iteration
         {
             using execution_policy_type = std::decay_t<ExPolicy>;
@@ -619,6 +625,12 @@ namespace hpx::parallel {
                     transform_binary_projected<F_, Proj1, Proj2>{
                         f_, proj1_, proj2_});
             }
+
+            HPX_HOST_DEVICE HPX_FORCEINLINE constexpr void operator()(
+                std::size_t) const noexcept
+            {
+                HPX_ASSERT(false);
+            }
         };
 
         template <typename ExPolicy, typename F>
@@ -676,10 +688,16 @@ namespace hpx::parallel {
                     hpx::get<0>(iters), part_size, hpx::get<1>(iters),
                     hpx::get<2>(iters), f_);
             }
+
+            HPX_HOST_DEVICE HPX_FORCEINLINE constexpr void operator()(
+                std::size_t) const noexcept
+            {
+                HPX_ASSERT(false);
+            }
         };
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename IterTuple>
+        HPX_CXX_CORE_EXPORT template <typename IterTuple>
         struct transform_binary
           : public algorithm<transform_binary<IterTuple>, IterTuple>
         {
@@ -759,7 +777,7 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        template <typename IterTuple>
+        HPX_CXX_CORE_EXPORT template <typename IterTuple>
         struct transform_binary2
           : public algorithm<transform_binary2<IterTuple>, IterTuple>
         {
@@ -825,13 +843,13 @@ namespace hpx::parallel {
 
                 // different versions of clang-format do different things
                 // clang-format off
-                    return util::detail::get_in_in_out_result(
-                        util::foreach_partitioner<ExPolicy>::call(
-                            HPX_FORWARD(ExPolicy, policy),
-                            hpx::util::zip_iterator(first1, first2, dest),
-                            (std::min) (detail::distance(first1, last1),
-                                detail::distance(first2, last2)),
-                            HPX_MOVE(f1), hpx::identity_v));
+                return util::detail::get_in_in_out_result(
+                    util::foreach_partitioner<ExPolicy>::call(
+                        HPX_FORWARD(ExPolicy, policy),
+                        hpx::util::zip_iterator(first1, first2, dest),
+                        (std::min) (detail::distance(first1, last1),
+                            detail::distance(first2, last2)),
+                        HPX_MOVE(f1), hpx::identity_v));
                 // clang-format on
             }
         };
@@ -866,6 +884,18 @@ namespace hpx::traits {
         }
     };
 
+    template <typename ExPolicy, typename F, typename Proj>
+    struct get_function_annotation_tracing<
+        parallel::detail::transform_iteration<ExPolicy, F, Proj>>
+    {
+        [[nodiscard]] static hpx::tracing::annotation_handle call(
+            parallel::detail::transform_iteration<ExPolicy, F, Proj> const&
+                f) noexcept
+        {
+            return get_function_annotation_tracing<std::decay_t<F>>::call(f.f_);
+        }
+    };
+
     template <typename ExPolicy, typename F, typename Proj1, typename Proj2>
     struct get_function_address<
         parallel::detail::transform_binary_iteration<ExPolicy, F, Proj1, Proj2>>
@@ -890,31 +920,17 @@ namespace hpx::traits {
         }
     };
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-    template <typename ExPolicy, typename F, typename Proj>
-    struct get_function_annotation_itt<
-        parallel::detail::transform_iteration<ExPolicy, F, Proj>>
-    {
-        [[nodiscard]] static util::itt::string_handle call(
-            parallel::detail::transform_iteration<ExPolicy, F, Proj> const&
-                f) noexcept
-        {
-            return get_function_annotation_itt<std::decay_t<F>>::call(f.f_);
-        }
-    };
-
     template <typename ExPolicy, typename F, typename Proj1, typename Proj2>
-    struct get_function_annotation_itt<
+    struct get_function_annotation_tracing<
         parallel::detail::transform_binary_iteration<ExPolicy, F, Proj1, Proj2>>
     {
-        [[nodiscard]] static util::itt::string_handle call(
+        [[nodiscard]] static hpx::tracing::annotation_handle call(
             parallel::detail::transform_binary_iteration<ExPolicy, F, Proj1,
                 Proj2> const& f) noexcept
         {
-            return get_function_annotation_itt<std::decay_t<F>>::call(f.f_);
+            return get_function_annotation_tracing<std::decay_t<F>>::call(f.f_);
         }
     };
-#endif
 }    // namespace hpx::traits
 
 #endif
@@ -923,22 +939,21 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::transform
-    inline constexpr struct transform_t final
-      : hpx::detail::tag_parallel_algorithm<transform_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct transform_t final
+      : hpx::detail::tag_dispatch<transform_t,
+            hpx::detail::tag_parallel_algorithm<transform_t>>
     {
-    private:
+        template <typename FwdIter1, typename FwdIter2, typename F>
         // clang-format off
-        template <typename FwdIter1, typename FwdIter2,
-            typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2>
-            )>
+            )
         // clang-format on
-        friend FwdIter2 tag_fallback_invoke(
-            hpx::transform_t, FwdIter1 first, FwdIter1 last, FwdIter2 dest, F f)
+        static FwdIter2 invoke_default(
+            FwdIter1 first, FwdIter1 last, FwdIter2 dest, F f)
         {
-            static_assert(hpx::traits::is_input_iterator_v<FwdIter1>,
+            static_assert(std::input_iterator<FwdIter1>,
                 "Requires at least input iterator.");
 
             return parallel::util::get_second_element(
@@ -948,20 +963,19 @@ namespace hpx {
                         hpx::identity_v));
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter1, typename FwdIter2,
-            typename F,
-            HPX_CONCEPT_REQUIRES_(
+            typename F>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::transform_t,
-            ExPolicy&& policy, FwdIter1 first, FwdIter1 last, FwdIter2 dest,
-            F f)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first,
+            FwdIter1 last, FwdIter2 dest, F f)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter1>,
+            static_assert(std::forward_iterator<FwdIter1>,
                 "Requires at least forward iterator.");
 
             return parallel::util::get_second_element(
@@ -971,20 +985,17 @@ namespace hpx {
                         HPX_MOVE(f), hpx::identity_v));
         }
 
-        // clang-format off
         template <typename FwdIter1, typename FwdIter2, typename FwdIter3,
-            typename F,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_iterator_v<FwdIter1> &&
+            typename F>
+            requires(hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2> &&
-                hpx::traits::is_iterator_v<FwdIter3>
-            )>
+                hpx::traits::is_iterator_v<FwdIter3>)
         // clang-format on
-        friend FwdIter3 tag_fallback_invoke(hpx::transform_t, FwdIter1 first1,
-            FwdIter1 last1, FwdIter2 first2, FwdIter3 dest, F f)
+        static FwdIter3 invoke_default(FwdIter1 first1, FwdIter1 last1,
+            FwdIter2 first2, FwdIter3 dest, F f)
         {
-            static_assert(hpx::traits::is_input_iterator_v<FwdIter1> &&
-                    hpx::traits::is_input_iterator_v<FwdIter2>,
+            static_assert(
+                std::input_iterator<FwdIter1> && std::input_iterator<FwdIter2>,
                 "Requires at least input iterator.");
 
             using proj_id = hpx::identity;
@@ -997,23 +1008,21 @@ namespace hpx {
                     HPX_MOVE(f), proj_id(), proj_id()));
         }
 
+        template <typename ExPolicy, typename FwdIter1, typename FwdIter2,
+            typename FwdIter3, typename F>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter1,
-            typename FwdIter2, typename FwdIter3,
-            typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2> &&
                 hpx::traits::is_iterator_v<FwdIter3>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::transform_t,
-            ExPolicy&& policy, FwdIter1 first1, FwdIter1 last1, FwdIter2 first2,
-            FwdIter3 dest, F f)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first1,
+            FwdIter1 last1, FwdIter2 first2, FwdIter3 dest, F f)
         {
-            static_assert(hpx::traits::is_input_iterator_v<FwdIter1> &&
-                    hpx::traits::is_input_iterator_v<FwdIter2>,
+            static_assert(
+                std::input_iterator<FwdIter1> && std::input_iterator<FwdIter2>,
                 "Requires at least input iterator.");
 
             using proj_id = hpx::identity;

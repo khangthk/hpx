@@ -1,5 +1,5 @@
 //  Copyright (c) 2014 Grant Mercer
-//  Copyright (c) 2021-2023 Hartmut Kaiser
+//  Copyright (c) 2021-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -12,7 +12,7 @@
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
 #include <hpx/algorithm.hpp>
 #include <hpx/execution.hpp>
-#include <hpx/type_support/unused.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include "worker_timed.hpp"
 
@@ -37,9 +37,7 @@ inline std::mt19937 gen(seed);
 struct disable_stealing_parameter
 {
     template <typename Executor>
-    friend void tag_override_invoke(
-        hpx::parallel::execution::mark_begin_execution_t,
-        disable_stealing_parameter, Executor&&)
+    void mark_begin_execution(Executor&&)
     {
         hpx::threads::add_remove_scheduler_mode(
             hpx::threads::policies::scheduler_mode::enable_stealing,
@@ -47,18 +45,14 @@ struct disable_stealing_parameter
     }
 
     template <typename Executor>
-    friend void tag_override_invoke(
-        hpx::parallel::execution::mark_end_of_scheduling_t,
-        disable_stealing_parameter, Executor&&)
+    void mark_end_of_scheduling(Executor&&)
     {
         hpx::threads::remove_scheduler_mode(
             hpx::threads::policies::scheduler_mode::enable_stealing);
     }
 
     template <typename Executor>
-    friend void tag_override_invoke(
-        hpx::parallel::execution::mark_end_execution_t,
-        disable_stealing_parameter, Executor&&)
+    void mark_end_execution(Executor&&)
     {
         hpx::threads::add_remove_scheduler_mode(
             hpx::threads::policies::scheduler_mode::enable_idle_backoff,
@@ -67,7 +61,7 @@ struct disable_stealing_parameter
 };
 
 template <>
-struct hpx::parallel::execution::is_executor_parameters<
+struct hpx::execution::experimental::is_executor_parameters<
     disable_stealing_parameter> : std::true_type
 {
 };

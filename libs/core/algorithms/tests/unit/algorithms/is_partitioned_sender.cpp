@@ -20,7 +20,7 @@
 #include "test_utils.hpp"
 
 ////////////////////////////////////////////////////////////////////////////////
-int seed = std::random_device{}();
+unsigned int seed = std::random_device{}();
 std::mt19937 gen(seed);
 std::uniform_int_distribution<> dis(0, 99);
 
@@ -41,8 +41,11 @@ void test_is_partitioned_sender(
     std::vector<std::size_t> c(10007);
     //fill first half of array with even numbers and second half
     //with odd numbers
-    std::fill(std::begin(c), std::begin(c) + c.size() / 2, 2 * (dis(gen)));
-    std::fill(std::begin(c) + c.size() / 2, std::end(c), 2 * (dis(gen)) + 1);
+    std::fill(std::begin(c),
+        std::begin(c) + static_cast<std::ptrdiff_t>(c.size() / 2),
+        2 * (dis(gen)));
+    std::fill(std::begin(c) + static_cast<std::ptrdiff_t>(c.size() / 2),
+        std::end(c), 2 * (dis(gen)) + 1);
 
     auto exec = ex::explicit_scheduler_executor(scheduler_t(ln_policy));
 
@@ -52,7 +55,7 @@ void test_is_partitioned_sender(
                 [](std::size_t n) { return n % 2 == 0; }) |
             hpx::is_partitioned(ex_policy.on(exec)));
 
-        bool parted = hpx::get<0>(*snd_result);
+        bool parted = hpx::get<0>(snd_result.value());
 
         HPX_TEST(parted);
     }
@@ -64,7 +67,7 @@ void test_is_partitioned_sender(
                 [](std::size_t) { return true; }) |
             hpx::is_partitioned(ex_policy.on(exec)));
 
-        auto parted = hpx::get<0>(*snd_result);
+        auto parted = hpx::get<0>(snd_result.value());
 
         HPX_TEST(parted);
     }
@@ -76,7 +79,7 @@ void test_is_partitioned_sender(
                 [](std::size_t) { return true; }) |
             hpx::is_partitioned(ex_policy.on(exec)));
 
-        auto parted = hpx::get<0>(*snd_result);
+        auto parted = hpx::get<0>(snd_result.value());
 
         HPX_TEST(parted);
     }
@@ -101,7 +104,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
         seed = vm["seed"].as<unsigned int>();
 
     std::cout << "using seed: " << seed << std::endl;
-    std::srand(seed);
+    gen.seed(seed);
 
     is_partitioned_sender_test<std::forward_iterator_tag>();
     is_partitioned_sender_test<std::random_access_iterator_tag>();

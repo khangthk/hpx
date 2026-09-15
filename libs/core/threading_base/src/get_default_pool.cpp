@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //  Copyright (c)      2020 Nikunj Gupta
 //
@@ -7,6 +7,7 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/assert.hpp>
+#include <hpx/modules/errors.hpp>
 #include <hpx/threading_base/detail/get_default_pool.hpp>
 #include <hpx/threading_base/scheduler_base.hpp>
 #include <hpx/threading_base/thread_description.hpp>
@@ -64,12 +65,13 @@ namespace hpx::threads::detail {
                     "hpx::threads::detail::get_self_or_default_pool",
                     "Attempting to use hpx_main.hpp functionality "
                     "without linking to libhpx_wrap. If you're using "
-                    "CMakeLists, make sure to add HPX::wrap_main to "
-                    "target_link_libraries. "
-                    "If you're using Makefile, make sure to link to "
-                    "libhpx_wrap when generating the executable. If "
-                    "you're linking explicitly, consult the HPX docs "
-                    "for library link order and other subtle nuances.");
+                    "CMake, make sure to add HPX::wrap_main to "
+                    "target_link_libraries. If you're linking "
+                    "manually (e.g., via Makefiles or Godbolt), "
+                    "ensure you pass '-Wl,-wrap=main' to the linker "
+                    "on Linux or '-Wl,-e,_initialize_main' on macOS. "
+                    "Consult the HPX documentation for the full "
+                    "library link order and other subtle nuances.");
             }
 #endif
             HPX_THROW_EXCEPTION(hpx::error::invalid_status,

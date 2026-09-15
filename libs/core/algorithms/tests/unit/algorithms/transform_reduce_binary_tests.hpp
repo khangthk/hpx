@@ -12,7 +12,6 @@
 #include <hpx/execution.hpp>
 #include <hpx/modules/testing.hpp>
 #include <hpx/numeric.hpp>
-#include <hpx/parallel/algorithms/transform_reduce.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -86,7 +85,6 @@ void test_transform_reduce_binary_async(ExPolicy&& p, IteratorTag)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined(HPX_HAVE_STDEXEC)
 template <typename LnPolicy, typename ExPolicy, typename IteratorTag>
 void test_transform_reduce_binary_sender(
     LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
@@ -112,7 +110,7 @@ void test_transform_reduce_binary_sender(
             tt::sync_wait(ex::just(iterator(std::begin(c)),
                               iterator(std::end(c)), std::begin(d), init) |
                 hpx::transform_reduce(ex_policy.on(exec)));
-        int result = hpx::get<0>(*snd_result);
+        int result = hpx::get<0>(snd_result.value());
 
         HPX_TEST_EQ(result,
             std::inner_product(
@@ -126,7 +124,7 @@ void test_transform_reduce_binary_sender(
             tt::sync_wait(ex::just(iterator(std::begin(c)),
                               iterator(std::begin(c)), std::begin(d), init) |
                 hpx::transform_reduce(ex_policy.on(exec)));
-        int result = hpx::get<0>(*snd_result);
+        int result = hpx::get<0>(snd_result.value());
 
         HPX_TEST_EQ(init, result);
         HPX_TEST_EQ(result,
@@ -134,4 +132,3 @@ void test_transform_reduce_binary_sender(
                 std::begin(c), std::begin(c), std::begin(d), init));
     }
 }
-#endif

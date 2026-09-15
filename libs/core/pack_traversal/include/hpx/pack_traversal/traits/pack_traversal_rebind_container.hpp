@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <hpx/config.hpp>
+
 #include <array>
 #include <cstddef>
 #include <list>
@@ -18,6 +20,7 @@ namespace hpx::traits {
 
     ////////////////////////////////////////////////////////////////////////////
     namespace detail {
+
         ////////////////////////////////////////////////////////////////////////
         template <typename NewType, typename OldType, typename Enable = void>
         struct pack_traversal_rebind_container
@@ -39,15 +42,12 @@ namespace hpx::traits {
         // Specialization for a container with a single type T and a particular
         // allocator, which is preserved across the remap. -> We remap the
         // allocator through std::allocator_traits.
-        //
-        // clang-format off
         template <typename NewType, template <class, class> class Base,
             typename OldType, typename OldAllocator>
         struct pack_traversal_rebind_container<NewType,
             Base<OldType, OldAllocator>,
             std::enable_if_t<std::uses_allocator_v<Base<OldType, OldAllocator>,
                 OldAllocator>>>
-        // clang-format off
         {
             using NewAllocator = typename std::allocator_traits<
                 OldAllocator>::template rebind_alloc<NewType>;
@@ -67,8 +67,8 @@ namespace hpx::traits {
     // Implement a two-level specialization to avoid ambiguities between the
     // specializations for standard containers below and the generic fallback
     // solutions provided above
-
-    template <typename NewType, typename OldType, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename NewType, typename OldType,
+        typename Enable = void>
     struct pack_traversal_rebind_container
       : detail::pack_traversal_rebind_container<NewType, OldType>
     {

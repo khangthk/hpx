@@ -1,4 +1,4 @@
-//  Copyright (c) 2023 Hartmut Kaiser
+//  Copyright (c) 2023-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,11 +6,13 @@
 
 #pragma once
 
+#include <hpx/config.hpp>
+
 #include <utility>
 
 namespace hpx::traits {
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr bool is_pair_v = false;
 
     template <typename T1, typename T2>

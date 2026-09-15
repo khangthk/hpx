@@ -11,10 +11,10 @@
 #include <hpx/config.hpp>
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
 
-#include <hpx/actions_base/plain_action.hpp>
 #include <hpx/assert.hpp>
 #include <hpx/hpx_init.hpp>
 #include <hpx/include/runtime.hpp>
+#include <hpx/modules/actions_base.hpp>
 #include <hpx/modules/futures.hpp>
 #include <hpx/modules/resiliency.hpp>
 #include <hpx/modules/resiliency_distributed.hpp>
@@ -59,7 +59,7 @@ int universal_ans(
     bool is_faulty = false;
 
     // Check if the node is faulty
-    for (const auto& locale : f_locales)
+    for (auto const& locale : f_locales)
     {
         // Throw a runtime error in case the node is faulty
         if (locale == hpx::find_here())

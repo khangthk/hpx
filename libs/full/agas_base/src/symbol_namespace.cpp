@@ -1,7 +1,7 @@
 ////////////////////////////////////////////////////////////////////////////////
 //  Copyright (c) 2011 Bryce Adelstein-Lelbach
 //  Copyright (c) 2016 Thomas Heller
-//  Copyright (c) 2012-2024 Hartmut Kaiser
+//  Copyright (c) 2012-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,15 +9,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/component_action.hpp>
+#include <hpx/assert.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/format.hpp>
+#include <hpx/modules/hashing.hpp>
+
 #include <hpx/agas_base/server/symbol_namespace.hpp>
 #include <hpx/agas_base/symbol_namespace.hpp>
-#include <hpx/assert.hpp>
-#include <hpx/async_distributed/base_lco_with_value.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/hashing/jenkins_hash.hpp>
-#include <hpx/modules/async_distributed.hpp>
-#include <hpx/util/from_string.hpp>
 
 #include <cctype>
 #include <cstdint>
@@ -54,7 +55,7 @@ HPX_REGISTER_ACTION_ID(symbol_namespace::on_event_action,
 namespace hpx::agas {
 
     naming::gid_type symbol_namespace::get_service_instance(
-        std::uint32_t service_locality_id)
+        std::uint32_t const service_locality_id)
     {
         constexpr naming::gid_type service(
             agas::symbol_ns_msb, agas::symbol_ns_lsb);
@@ -93,14 +94,13 @@ namespace hpx::agas {
         {
             std::string::size_type const p =
                 key.find_first_not_of("0123456789", 1);
-            if (p != std::string::npos)
+            if (p != std::string::npos && key[p] == '/')
             {
                 std::int32_t const locality_id =
                     util::from_string<std::int32_t>(key.substr(1, p - 1), -1);
 
-                if (locality_id >= 0 &&
-                    static_cast<std::uint32_t>(locality_id) <
-                        get_initial_num_localities())
+                if (static_cast<std::uint32_t>(locality_id) !=
+                    naming::invalid_locality_id)
                 {
                     return {get_service_instance(locality_id),
                         hpx::id_type::management_type::unmanaged};
@@ -318,7 +318,7 @@ namespace hpx::agas {
 
     ///////////////////////////////////////////////////////////////////////////
     void symbol_namespace::register_server_instance(
-        std::uint32_t locality_id) const
+        std::uint32_t const locality_id) const
     {
         std::string const str("locality#" + std::to_string(locality_id) + "/");
         server_->register_server_instance(str.c_str(), locality_id);

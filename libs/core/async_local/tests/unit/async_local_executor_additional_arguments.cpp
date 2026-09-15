@@ -1,5 +1,5 @@
 //  Copyright (c)      2020 ETH Zurich
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -24,8 +24,7 @@ struct additional_argument_executor
     template <typename F, typename... Ts,
         typename Enable =
             std::enable_if_t<!std::is_member_function_pointer_v<F>>>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::async_execute_t,
-        additional_argument_executor const&, F&& f, Ts&&... ts)
+    decltype(auto) async_execute(F&& f, Ts&&... ts) const
     {
         return hpx::async(
             std::forward<F>(f), additional_argument{}, std::forward<Ts>(ts)...);
@@ -34,20 +33,20 @@ struct additional_argument_executor
     template <typename F, typename T, typename... Ts,
         typename Enable =
             std::enable_if_t<std::is_member_function_pointer_v<F>>>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::async_execute_t,
-        additional_argument_executor const&, F&& f, T&& t, Ts&&... ts)
+    decltype(auto) async_execute(F&& f, T&& t, Ts&&... ts) const
     {
         return hpx::async(std::forward<F>(f), std::forward<T>(t),
             additional_argument{}, std::forward<Ts>(ts)...);
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct is_two_way_executor<additional_argument_executor> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 ///////////////////////////////////////////////////////////////////////////////
 std::int32_t increment(additional_argument, std::int32_t i)

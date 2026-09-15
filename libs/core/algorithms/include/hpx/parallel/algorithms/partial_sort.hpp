@@ -108,23 +108,22 @@ namespace hpx {
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_local/dataflow.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/execution/algorithms/detail/predicates.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/executors/exception_list.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/contracts.hpp>
+#include <hpx/modules/async_local.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/detail/is_sorted.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/sort.hpp>
 #include <hpx/parallel/util/compare_projected.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
-#include <hpx/type_support/identity.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -151,7 +150,8 @@ namespace hpx::parallel {
         ///
         /// \return Position of the first bit set
         ///
-        constexpr unsigned nbits64(std::uint64_t num) noexcept
+        HPX_CXX_CORE_EXPORT constexpr unsigned nbits64(
+            std::uint64_t num) noexcept
         {
             unsigned nb = 0;
             if (num >= 1ull << 32)
@@ -196,17 +196,13 @@ namespace hpx::parallel {
         /// \param last     iterator to the last element
         /// \param comp     object to Comp two elements
         ///
-        template <typename Iter, typename Comp>
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Comp>
         constexpr void pivot3(Iter first, Iter last, Comp&& comp) noexcept
         {
             auto n2 = (last - first) / 2;
             Iter it_val =
                 mid3(first + 1, first + n2, last - 1, HPX_FORWARD(Comp, comp));
-#if defined(HPX_HAVE_CXX20_STD_RANGES_ITER_SWAP)
             std::ranges::iter_swap(first, it_val);
-#else
-            std::iter_swap(first, it_val);
-#endif
         }
 
         ///////////////////////////////////////////////////////////////////////
@@ -220,7 +216,7 @@ namespace hpx::parallel {
         ///
         /// \return iterator where is the pivot used in the filtering
         ///
-        template <typename Iter, typename Comp>
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Comp>
         constexpr inline Iter filter(Iter first, Iter end, Comp&& comp)
         {
             std::int64_t const nelem = end - first;
@@ -233,41 +229,33 @@ namespace hpx::parallel {
                 pivot3(first, end, comp);
             }
 
-            typename std::iterator_traits<Iter>::value_type const& pivot =
+            typename std::iterator_traits<Iter>::value_type const pivot =
                 *first;
 
             Iter c_first = first + 1, c_last = end - 1;
-            while (HPX_INVOKE(comp, *c_first, pivot))
+            while (c_first < end && HPX_INVOKE(comp, *c_first, pivot))
             {
                 ++c_first;
             }
-            while (HPX_INVOKE(comp, pivot, *c_last))
+            while (c_last > first && HPX_INVOKE(comp, pivot, *c_last))
             {
                 --c_last;
             }
 
             while (c_first < c_last)
             {
-#if defined(HPX_HAVE_CXX20_STD_RANGES_ITER_SWAP)
                 std::ranges::iter_swap(c_first++, c_last--);
-#else
-                std::iter_swap(c_first++, c_last--);
-#endif
-                while (HPX_INVOKE(comp, *c_first, pivot))
+                while (c_first < end && HPX_INVOKE(comp, *c_first, pivot))
                 {
                     ++c_first;
                 }
-                while (HPX_INVOKE(comp, pivot, *c_last))
+                while (c_last > first && HPX_INVOKE(comp, pivot, *c_last))
                 {
                     --c_last;
                 }
             }
 
-#if defined(HPX_HAVE_CXX20_STD_RANGES_ITER_SWAP)
             std::ranges::iter_swap(first, c_last);
-#else
-            std::iter_swap(first, c_last);
-#endif
             return c_last;
         }
 
@@ -278,7 +266,7 @@ namespace hpx::parallel {
         // end : iterator to the element after the end in the range
         // level : level of depth from the top level call
         // comp : object for to Comp elements
-        template <typename Iter, typename Comp>
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Comp>
         constexpr void recursive_partial_sort(
             Iter first, Iter middle, Iter end, std::uint32_t level, Comp&& comp)
         {
@@ -302,11 +290,7 @@ namespace hpx::parallel {
                 {
                     if (HPX_INVOKE(comp, *it, *first))
                     {
-#if defined(HPX_HAVE_CXX20_STD_RANGES_ITER_SWAP)
                         std::ranges::iter_swap(it, first);
-#else
-                        std::iter_swap(it, first);
-#endif
                     }
                 }
                 return;
@@ -344,11 +328,12 @@ namespace hpx::parallel {
         // level : level of depth from the top level call
         // comp : object for to Comp elements
         //
-        template <typename ExPolicy, typename Iter, typename Comp>
+        HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter,
+            typename Comp>
         hpx::future<Iter> parallel_partial_sort(ExPolicy&& policy, Iter first,
             Iter middle, Iter last, std::uint32_t level, Comp&& comp = Comp());
 
-        struct sort_thread_helper
+        HPX_CXX_CORE_EXPORT struct sort_thread_helper
         {
             template <typename... Ts>
             decltype(auto) operator()(Ts&&... ts) const
@@ -357,7 +342,7 @@ namespace hpx::parallel {
             }
         };
 
-        struct parallel_partial_sort_helper
+        HPX_CXX_CORE_EXPORT struct parallel_partial_sort_helper
         {
             template <typename... Ts>
             decltype(auto) operator()(Ts&&... ts) const
@@ -366,7 +351,8 @@ namespace hpx::parallel {
             }
         };
 
-        template <typename ExPolicy, typename Iter, typename Comp>
+        HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter,
+            typename Comp>
         hpx::future<Iter> parallel_partial_sort(ExPolicy&& policy, Iter first,
             Iter middle, Iter last, std::uint32_t level, Comp&& comp)
         {
@@ -390,13 +376,15 @@ namespace hpx::parallel {
             {
                 // figure out the chunk size to use
                 std::size_t const cores =
-                    execution::processing_units_count(policy.parameters(),
-                        policy.executor(), hpx::chrono::null_duration, nelem);
+                    hpx::execution::experimental::processing_units_count(
+                        policy.parameters(), policy.executor(),
+                        hpx::chrono::null_duration, nelem);
 
                 // number of elements to sort
-                std::size_t chunk_size = execution::get_chunk_size(
-                    policy.parameters(), policy.executor(),
-                    hpx::chrono::null_duration, cores, nelem);
+                std::size_t chunk_size =
+                    hpx::execution::experimental::get_chunk_size(
+                        policy.parameters(), policy.executor(),
+                        hpx::chrono::null_duration, cores, nelem);
 
                 hpx::future<Iter> left = execution::async_execute(
                     policy.executor(), sort_thread_helper(), policy, first,
@@ -415,6 +403,7 @@ namespace hpx::parallel {
                 }
 
                 return hpx::dataflow(
+                    policy.executor(),
                     [last](hpx::future<Iter>&& leftf,
                         hpx::future<Iter>&& rightf) -> Iter {
                         if (leftf.has_exception() || rightf.has_exception())
@@ -449,7 +438,7 @@ namespace hpx::parallel {
     /// \param end : iterator to the element after the end in the range
     /// \param comp : object for to Comp elements
     ///
-    template <typename Iter, typename Sent, typename Comp>
+    HPX_CXX_CORE_EXPORT template <typename Iter, typename Sent, typename Comp>
     Iter sequential_partial_sort(Iter first, Iter middle, Sent end, Comp&& comp)
     {
         std::int64_t const nelem = parallel::detail::distance(first, end);
@@ -484,7 +473,8 @@ namespace hpx::parallel {
     /// \param end : iterator to the element after the end in the range
     /// \param comp : object for to Comp elements
     ///
-    template <typename ExPolicy, typename Iter, typename Sent, typename Comp>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter,
+        typename Sent, typename Comp>
     hpx::future<Iter> parallel_partial_sort(
         ExPolicy&& policy, Iter first, Iter middle, Sent end, Comp&& comp)
     {
@@ -509,7 +499,7 @@ namespace hpx::parallel {
 
     ///////////////////////////////////////////////////////////////////////
     // partial_sort
-    template <typename RandIter>
+    HPX_CXX_CORE_EXPORT template <typename RandIter>
     struct partial_sort
       : public detail::algorithm<partial_sort<RandIter>, RandIter>
     {
@@ -529,26 +519,43 @@ namespace hpx::parallel {
 
         template <typename ExPolicy, typename Iter, typename Sent,
             typename Comp, typename Proj>
-        static util::detail::algorithm_result_t<ExPolicy, Iter> parallel(
-            ExPolicy&& policy, Iter first, Iter middle, Sent last, Comp&& comp,
-            Proj&& proj)
+        static decltype(auto) parallel(ExPolicy&& policy, Iter first,
+            Iter middle, Sent last, Comp&& comp, Proj&& proj)
         {
-            using algorithm_result =
-                util::detail::algorithm_result<ExPolicy, Iter>;
+            constexpr bool has_scheduler_executor =
+                hpx::execution_policy_has_scheduler_executor_v<ExPolicy>;
 
-            try
+            if constexpr (has_scheduler_executor)
             {
-                // call the sort routine and return the right type,
-                // depending on execution policy
-                return algorithm_result::get(parallel_partial_sort(
-                    HPX_FORWARD(ExPolicy, policy), first, middle, last,
-                    util::compare_projected<Comp&, Proj&>(comp, proj)));
+                namespace ex = hpx::execution::experimental;
+                return ex::just(first, middle, last) |
+                    ex::then([comp = HPX_FORWARD(Comp, comp),
+                                 proj = HPX_FORWARD(Proj, proj)](
+                                 Iter first, Iter middle, Iter last) -> Iter {
+                        return sequential_partial_sort(first, middle, last,
+                            util::compare_projected<std::decay_t<Comp>,
+                                std::decay_t<Proj>>(comp, proj));
+                    });
             }
-            catch (...)
+            else
             {
-                return algorithm_result::get(
-                    detail::handle_exception<ExPolicy, Iter>::call(
-                        std::current_exception()));
+                using algorithm_result =
+                    util::detail::algorithm_result<ExPolicy, Iter>;
+
+                try
+                {
+                    // call the sort routine and return the right type,
+                    // depending on execution policy
+                    return algorithm_result::get(parallel_partial_sort(
+                        HPX_FORWARD(ExPolicy, policy), first, middle, last,
+                        util::compare_projected<Comp&, Proj&>(comp, proj)));
+                }
+                catch (...)
+                {
+                    return algorithm_result::get(
+                        detail::handle_exception<ExPolicy, Iter>::call(
+                            std::current_exception()));
+                }
             }
         }
     };
@@ -556,48 +563,49 @@ namespace hpx::parallel {
 
 namespace hpx {
 
-    inline constexpr struct partial_sort_t final
-      : hpx::detail::tag_parallel_algorithm<partial_sort_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct partial_sort_t final
+      : hpx::detail::tag_dispatch<partial_sort_t,
+            hpx::detail::tag_parallel_algorithm<partial_sort_t>>
     {
-    private:
-        // clang-format off
         template <typename RandIter,
-            typename Comp = hpx::parallel::detail::less,
-            HPX_CONCEPT_REQUIRES_(
+            typename Comp = hpx::parallel::detail::less>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<RandIter> &&
                 hpx::is_invocable_v<Comp,
                     typename std::iterator_traits<RandIter>::value_type,
                     typename std::iterator_traits<RandIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend RandIter tag_fallback_invoke(hpx::partial_sort_t, RandIter first,
-            RandIter middle, RandIter last, Comp comp = Comp())
+        static RandIter invoke_default(
+            RandIter first, RandIter middle, RandIter last, Comp comp = Comp())
+            HPX_PRE(first <= middle && middle <= last)
         {
-            static_assert(hpx::traits::is_random_access_iterator_v<RandIter>,
+            static_assert(std::random_access_iterator<RandIter>,
                 "Requires at least random access iterator.");
 
             return parallel::partial_sort<RandIter>().call(hpx::execution::seq,
                 first, middle, last, HPX_MOVE(comp), hpx::identity_v);
         }
 
-        // clang-format off
         template <typename ExPolicy, typename RandIter,
-            typename Comp = hpx::parallel::detail::less,
-            HPX_CONCEPT_REQUIRES_(
+            typename Comp = hpx::parallel::detail::less>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<RandIter> &&
                 hpx::is_invocable_v<Comp,
                     typename std::iterator_traits<RandIter>::value_type,
                     typename std::iterator_traits<RandIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend parallel::util::detail::algorithm_result_t<ExPolicy, RandIter>
-        tag_fallback_invoke(hpx::partial_sort_t, ExPolicy&& policy,
-            RandIter first, RandIter middle, RandIter last, Comp comp = Comp())
+        static decltype(auto) invoke_default(ExPolicy&& policy, RandIter first,
+            RandIter middle, RandIter last, Comp comp = Comp())
+            HPX_PRE(first <= middle && middle <= last)
         {
-            static_assert(hpx::traits::is_random_access_iterator_v<RandIter>,
+            static_assert(std::random_access_iterator<RandIter>,
                 "Requires at least random access iterator.");
 
             using algorithm_result =

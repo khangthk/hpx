@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2020 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2016 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,22 +8,17 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/action_priority.hpp>
-#include <hpx/actions_base/basic_action_fwd.hpp>
-#include <hpx/actions_base/traits/action_continuation.hpp>
-#include <hpx/actions_base/traits/action_remote_result.hpp>
-#include <hpx/actions_base/traits/is_continuation.hpp>
 #include <hpx/async_distributed/continuation_fwd.hpp>
 #include <hpx/async_distributed/trigger_lco_fwd.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/functional/serialization/serializable_move_only_function.hpp>
-#include <hpx/futures/traits/future_traits.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/components_base.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
 #include <hpx/modules/logging.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/preprocessor/stringize.hpp>
-#include <hpx/serialization/base_object.hpp>
-#include <hpx/serialization/serialize.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/preprocessor.hpp>
+#include <hpx/modules/serialization.hpp>
 
 #include <exception>
 #include <type_traits>
@@ -32,15 +27,15 @@
 #include <hpx/config/warnings_prefix.hpp>
 
 ///////////////////////////////////////////////////////////////////////////////
-namespace hpx { namespace actions {
+namespace hpx::actions {
 
     ///////////////////////////////////////////////////////////////////////////
     // Continuations are polymorphic objects encapsulating the
     // id_type of the destination where the result has to be sent.
-    class HPX_EXPORT continuation
+    HPX_CXX_EXPORT class HPX_EXPORT continuation
     {
     public:
-        typedef void continuation_tag;
+        using continuation_tag = void;
 
         continuation();
 
@@ -53,9 +48,17 @@ namespace hpx { namespace actions {
         continuation(continuation&& o) noexcept;
         continuation& operator=(continuation&& o) noexcept;
 
-        //
-        void trigger_error(std::exception_ptr const& e);
-        void trigger_error(std::exception_ptr&& e);
+        /// \brief Deliver an exception to this continuation's destination
+        ///        instead of a value.
+        ///
+        /// \param e The exception to forward to the destination.
+        void trigger_error(std::exception_ptr const& e) const;
+
+        /// \brief Deliver an exception to this continuation's destination
+        ///        instead of a value.
+        ///
+        /// \param e The exception to forward to the destination.
+        void trigger_error(std::exception_ptr&& e) const;
 
         // serialization support
         void serialize(hpx::serialization::input_archive& ar, unsigned);
@@ -138,9 +141,8 @@ namespace hpx { namespace actions {
         {
         }
 
-        template <typename F,
-            typename Enable = typename std::enable_if<!std::is_same<
-                typename std::decay<F>::type, typed_continuation>::value>::type>
+        template <typename F>
+            requires(!std::is_same_v<std::decay_t<F>, typed_continuation>)
         explicit typed_continuation(F&& f)
           : f_(HPX_FORWARD(F, f))
         {
@@ -161,7 +163,6 @@ namespace hpx { namespace actions {
                     HPX_THROW_EXCEPTION(hpx::error::invalid_status,
                         "typed_continuation<Result>::trigger_value",
                         "attempt to trigger invalid LCO (the id is invalid)");
-                    return;
                 }
                 hpx::set_lco_value(
                     this->get_id(), this->get_addr(), HPX_MOVE(result));
@@ -191,11 +192,10 @@ namespace hpx { namespace actions {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    // This specialization is needed to call the right
-    // base_lco_with_value action if the local Result is computed
-    // via get_remote_result and differs from the actions original
-    // local result type
-    template <typename Result, typename RemoteResult>
+    // This specialization is needed to call the right base_lco_with_value
+    // action if the local Result is computed via get_remote_result and differs
+    // from the actions original local result type
+    HPX_CXX_EXPORT template <typename Result, typename RemoteResult>
     struct typed_continuation : typed_continuation<RemoteResult>
     {
     private:
@@ -251,9 +251,8 @@ namespace hpx { namespace actions {
         {
         }
 
-        template <typename F,
-            typename Enable = typename std::enable_if<!std::is_same<
-                typename std::decay<F>::type, typed_continuation>::value>::type>
+        template <typename F>
+            requires(!std::is_same_v<std::decay_t<F>, typed_continuation>)
         explicit typed_continuation(F&& f)
           : base_type(HPX_FORWARD(F, f))
         {
@@ -275,7 +274,6 @@ namespace hpx { namespace actions {
                     HPX_THROW_EXCEPTION(hpx::error::invalid_status,
                         "typed_continuation<Result>::trigger_value",
                         "attempt to trigger invalid LCO (the id is invalid)");
-                    return;
                 }
                 hpx::set_lco_value(
                     this->get_id(), this->get_addr(), HPX_MOVE(result));
@@ -303,7 +301,7 @@ namespace hpx { namespace actions {
 
     ///////////////////////////////////////////////////////////////////////////
     template <>
-    struct typed_continuation<void, util::unused_type> : continuation
+    struct HPX_EXPORT typed_continuation<void, util::unused_type> : continuation
     {
     private:
         using function_type =
@@ -314,15 +312,8 @@ namespace hpx { namespace actions {
 
         typed_continuation() = default;
 
-        explicit typed_continuation(hpx::id_type const& id)
-          : continuation(id)
-        {
-        }
-
-        explicit typed_continuation(hpx::id_type&& id) noexcept
-          : continuation(HPX_MOVE(id))
-        {
-        }
+        explicit typed_continuation(hpx::id_type const& id);
+        explicit typed_continuation(hpx::id_type&& id) noexcept;
 
         template <typename F>
         typed_continuation(hpx::id_type const& id, F&& f)
@@ -338,15 +329,8 @@ namespace hpx { namespace actions {
         {
         }
 
-        typed_continuation(hpx::id_type const& id, naming::address&& addr)
-          : continuation(id, HPX_MOVE(addr))
-        {
-        }
-
-        typed_continuation(hpx::id_type&& id, naming::address&& addr) noexcept
-          : continuation(HPX_MOVE(id), HPX_MOVE(addr))
-        {
-        }
+        typed_continuation(hpx::id_type const& id, naming::address&& addr);
+        typed_continuation(hpx::id_type&& id, naming::address&& addr) noexcept;
 
         template <typename F>
         typed_continuation(
@@ -363,41 +347,31 @@ namespace hpx { namespace actions {
         {
         }
 
-        template <typename F,
-            typename Enable = typename std::enable_if<!std::is_same<
-                typename std::decay<F>::type, typed_continuation>::value>::type>
+        template <typename F>
+            requires(!std::is_same_v<std::decay_t<F>, typed_continuation>)
         explicit typed_continuation(F&& f)
           : f_(HPX_FORWARD(F, f))
         {
         }
 
-        typed_continuation(typed_continuation&&) noexcept = default;
-        typed_continuation& operator=(typed_continuation&&) noexcept = default;
+        typed_continuation(typed_continuation&&) noexcept;
+        typed_continuation& operator=(typed_continuation&&) noexcept;
 
-        HPX_EXPORT void trigger();
+        void trigger() const;
 
-        void trigger_value(util::unused_type&&)
-        {
-            this->trigger();
-        }
-
-        void trigger_value(util::unused_type const&)
-        {
-            this->trigger();
-        }
+        void trigger_value(util::unused_type&&) const;
+        void trigger_value(util::unused_type const&) const;
 
     private:
         /// serialization support
         friend class hpx::serialization::access;
 
-        HPX_EXPORT void serialize(
-            hpx::serialization::input_archive& ar, unsigned);
-        HPX_EXPORT void serialize(
-            hpx::serialization::output_archive& ar, unsigned);
+        void serialize(hpx::serialization::input_archive& ar, unsigned);
+        void serialize(hpx::serialization::output_archive& ar, unsigned);
 
         function_type f_;
     };
-}}    // namespace hpx::actions
+}    // namespace hpx::actions
 
 #include <hpx/config/warnings_suffix.hpp>
 

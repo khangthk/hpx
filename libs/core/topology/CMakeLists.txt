@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2022 The STE||AR-Group
+# Copyright (c) 2019-2025 The STE||AR-Group
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -30,8 +30,8 @@ endif()
 
 # Default location is $HPX_ROOT/libs/topology/include
 set(topology_headers
-    hpx/topology/cpu_mask.hpp hpx/topology/scheduling_properties.hpp
-    hpx/topology/topology.hpp
+    hpx/topology/cpu_mask.hpp hpx/topology/detail/mask_fallback.hpp
+    hpx/topology/scheduling_properties.hpp hpx/topology/topology.hpp
 )
 
 # Default location is $HPX_ROOT/libs/topology/include_compatibility
@@ -51,6 +51,7 @@ include(HPX_AddModule)
 add_hpx_module(
   core topology
   GLOBAL_HEADER_GEN ON
+  GLOBAL_HEADER_MODULE_GEN ON
   SOURCES ${topology_sources}
   HEADERS ${topology_headers}
   COMPAT_HEADERS ${topology_compat_headers}
@@ -59,6 +60,7 @@ add_hpx_module(
     hpx_async_base
     hpx_config
     hpx_concurrency
+    hpx_datastructures
     hpx_errors
     hpx_format
     hpx_logging

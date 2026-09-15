@@ -11,7 +11,7 @@
 
 #if defined(HPX_HAVE_DATAPAR)
 
-#include <hpx/executors/datapar/execution_policy.hpp>
+#include <hpx/modules/executors.hpp>
 #include <hpx/parallel/datapar/adjacent_difference.hpp>
 #include <hpx/parallel/datapar/adjacent_find.hpp>
 #include <hpx/parallel/datapar/equal.hpp>
@@ -24,6 +24,7 @@
 #include <hpx/parallel/datapar/mismatch.hpp>
 #include <hpx/parallel/datapar/reduce.hpp>
 #include <hpx/parallel/datapar/replace.hpp>
+#include <hpx/parallel/datapar/search.hpp>
 #include <hpx/parallel/datapar/transfer.hpp>
 #include <hpx/parallel/datapar/transform_loop.hpp>
 #include <hpx/parallel/datapar/zip_iterator.hpp>

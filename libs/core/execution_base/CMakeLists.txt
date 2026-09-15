@@ -14,6 +14,7 @@ set(execution_base_headers
     hpx/execution_base/completion_signatures.hpp
     hpx/execution_base/context_base.hpp
     hpx/execution_base/coroutine_utils.hpp
+    hpx/execution_base/detail/execution_member_detect.hpp
     hpx/execution_base/detail/spinlock_deadlock_detection.hpp
     hpx/execution_base/execution.hpp
     hpx/execution_base/get_env.hpp
@@ -58,19 +59,25 @@ include(HPX_AddModule)
 add_hpx_module(
   core execution_base
   GLOBAL_HEADER_GEN ON
+  GLOBAL_HEADER_MODULE_GEN ON
   SOURCES ${execution_base_sources}
   HEADERS ${execution_base_headers}
   COMPAT_HEADERS ${execution_base_compat_headers}
   DEPENDENCIES ${execution_base_optional_dependencies}
   MODULE_DEPENDENCIES
     hpx_assertion
+    hpx_concepts
     hpx_config
     hpx_coroutines
+    hpx_datastructures
     hpx_errors
     hpx_format
     hpx_functional
     hpx_iterator_support
     hpx_lock_registration
+    hpx_preprocessor
+    hpx_tag_invoke
+    hpx_thread_support
     hpx_timing
     hpx_type_support
   CMAKE_SUBDIRS examples tests

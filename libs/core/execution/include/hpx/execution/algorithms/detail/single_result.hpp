@@ -8,9 +8,8 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/datastructures/variant.hpp>
-#include <hpx/type_support/meta.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <type_traits>
@@ -18,7 +17,7 @@
 namespace hpx::execution::experimental::detail {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     struct single_result
     {
         static_assert(sizeof(Variants) == 0,
@@ -59,11 +58,11 @@ namespace hpx::execution::experimental::detail {
             "(two or more variants)");
     };
 
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     using single_result_t = meta::type<single_result<Variants>>;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     struct single_result_non_void
     {
         using type = single_result_t<Variants>;
@@ -71,12 +70,12 @@ namespace hpx::execution::experimental::detail {
             !std::is_void_v<type>, "expected a non-void type in single_result");
     };
 
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     using single_result_non_void_t =
         meta::type<single_result_non_void<Variants>>;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     struct single_variant
     {
         static_assert(sizeof(Variants) == 0,
@@ -101,11 +100,11 @@ namespace hpx::execution::experimental::detail {
         using type = T;
     };
 
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     using single_variant_t = meta::type<single_variant<Variants>>;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     struct single_variant_tuple_size
     {
         static_assert(sizeof(Variants) == 0,
@@ -125,7 +124,7 @@ namespace hpx::execution::experimental::detail {
         static constexpr std::size_t size = sizeof...(Ts);
     };
 
-    template <typename Variants>
+    HPX_CXX_CORE_EXPORT template <typename Variants>
     inline constexpr std::size_t single_variant_tuple_size_v =
         single_variant_tuple_size<Variants>::size;
 }    // namespace hpx::execution::experimental::detail

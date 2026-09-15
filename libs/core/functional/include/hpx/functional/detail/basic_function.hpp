@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Thomas Heller
-//  Copyright (c) 2013-2023 Hartmut Kaiser
+//  Copyright (c) 2013-2025 Hartmut Kaiser
 //  Copyright (c) 2014-2019 Agustin Berge
 //  Copyright (c) 2017 Google
 //
@@ -17,9 +17,11 @@
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
 #include <hpx/functional/traits/is_invocable.hpp>
+#include <hpx/modules/tracing.hpp>
 
 #include <cstddef>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <new>
 #include <string>
@@ -69,8 +71,8 @@ namespace hpx::util::detail {
 
         [[nodiscard]] std::size_t get_function_address() const;
         [[nodiscard]] char const* get_function_annotation() const;
-        [[nodiscard]] util::itt::string_handle get_function_annotation_itt()
-            const;
+        [[nodiscard]] hpx::tracing::annotation_handle
+        get_function_annotation_tracing() const;
 
     protected:
         vtable const* vptr;
@@ -90,7 +92,7 @@ namespace hpx::util::detail {
     }
 
     template <typename T, typename C>
-    [[nodiscard]] constexpr bool is_empty_function(T C::*mp) noexcept
+    [[nodiscard]] constexpr bool is_empty_function(T C::* mp) noexcept
     {
         return mp == nullptr;
     }
@@ -110,6 +112,13 @@ namespace hpx::util::detail {
     [[nodiscard]] constexpr bool is_empty_function(F const& f) noexcept
     {
         return detail::is_empty_function_impl(&f);
+    }
+
+    template <typename Sig>
+    [[nodiscard]] constexpr bool is_empty_function(
+        std::function<Sig> const& f) noexcept
+    {
+        return !f;
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -185,6 +194,7 @@ namespace hpx::util::detail {
                     buffer = vtable::template allocate<T>(
                         storage, function_storage_size);
                 }
+                // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                 object = ::new (buffer) T(HPX_FORWARD(F, f));
             }
             else
@@ -238,7 +248,7 @@ namespace hpx::util::detail {
 
         using base_type::get_function_address;
         using base_type::get_function_annotation;
-        using base_type::get_function_annotation_itt;
+        using base_type::get_function_annotation_tracing;
 
     private:
         [[nodiscard]] static constexpr vtable const* get_empty_vtable() noexcept

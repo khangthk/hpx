@@ -1,4 +1,4 @@
-//  Copyright (c) 2019-2024 Hartmut Kaiser
+//  Copyright (c) 2019-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -18,6 +18,7 @@
 #include <atomic>
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <random>
 #include <string>
 #include <utility>
@@ -116,6 +117,14 @@ private:
     bool was_initialized = false;
     struct generation_data
     {
+        template <typename Archive>
+        void serialize(Archive& ar, unsigned)
+        {
+            // Only serialize the generated sequence; current is a local
+            // cursor and is reset after deserialization.
+            ar & generations;
+        }
+
         std::size_t current = 0;
         std::vector<std::size_t> generations;
     };
@@ -212,8 +221,10 @@ double test_broadcast(communicator const& comm, std::uint32_t here)
     hpx::chrono::high_resolution_timer const t;
 
     std::size_t gen = 0;
+    // clang-format off
     for (std::uint32_t i = 0; distributed.get_next_generation("broadcast", gen);
          ++i)
+    // clang-format on
     {
         if (here == 0)
         {
@@ -243,7 +254,8 @@ double test_exclusive_scan(communicator const& comm, std::uint32_t here)
     for (int i = 0; distributed.get_next_generation("exclusive_scan", gen); ++i)
     {
         hpx::future<std::uint32_t> overall_result =
-            exclusive_scan(comm, here + i, std::plus<>{}, generation_arg(gen));
+            exclusive_scan(comm, here + i, static_cast<std::uint32_t>(i),
+                std::plus<>{}, generation_arg(gen));
 
         std::uint32_t sum = i;
         for (std::uint32_t j = 0; j < here; ++j)
@@ -261,8 +273,10 @@ double test_gather(communicator const& comm, std::uint32_t here)
     hpx::chrono::high_resolution_timer const t;
 
     std::size_t gen = 0;
+    // clang-format off
     for (std::uint32_t i = 0; distributed.get_next_generation("gather", gen);
          ++i)
+    // clang-format on
     {
         if (here == 0)
         {
@@ -291,8 +305,10 @@ double test_inclusive_scan(communicator const& comm, std::uint32_t here)
     hpx::chrono::high_resolution_timer const t;
 
     std::size_t gen = 0;
+    // clang-format off
     for (std::uint32_t i = 0;
          distributed.get_next_generation("inclusive_scan", gen); ++i)
+    // clang-format on
     {
         hpx::future<std::uint32_t> overall_result = inclusive_scan(
             comm, here + i, std::plus<std::uint32_t>{}, generation_arg(gen));
@@ -419,8 +435,10 @@ double test_local_all_reduce(std::vector<communicator> const& comms)
     double elapsed = 0.;
 
     std::size_t gen = 0;
+    // clang-format off
     for ([[maybe_unused]] std::uint32_t i = 0;
          local.get_next_generation("all_reduce", gen); ++i)
+    // clang-format on
     {
         std::vector<hpx::future<void>> sites;
         sites.reserve(num_sites);
@@ -464,8 +482,10 @@ double test_local_all_to_all(std::vector<communicator> const& comms)
     double elapsed = 0.;
 
     std::size_t gen = 0;
+    // clang-format off
     for ([[maybe_unused]] std::uint32_t i = 0;
          local.get_next_generation("all_to_all", gen); ++i)
+    // clang-format on
     {
         std::vector<hpx::future<void>> sites;
         sites.reserve(num_sites);
@@ -476,19 +496,19 @@ double test_local_all_to_all(std::vector<communicator> const& comms)
             sites.push_back(hpx::async([&, site]() {
                 hpx::chrono::high_resolution_timer const t;
 
-                // test functionality based on immediate local result value
-                auto value = site;
+                std::vector<std::uint32_t> values(num_sites);
+                std::fill(values.begin(), values.end(), site + i);
 
                 hpx::future<std::vector<std::uint32_t>> overall_result =
-                    all_gather(comms[site], value, this_site_arg(value),
-                        generation_arg(gen));
+                    all_to_all(comms[site], std::move(values),
+                        this_site_arg(site), generation_arg(gen));
 
                 std::vector<std::uint32_t> const r = overall_result.get();
                 HPX_TEST_EQ(r.size(), num_sites);
 
                 for (std::size_t j = 0; j != r.size(); ++j)
                 {
-                    HPX_TEST_EQ(r[j], j);
+                    HPX_TEST_EQ(r[j], j + i);
                 }
 
                 if (site == 0)
@@ -557,8 +577,10 @@ double test_local_exclusive_scan(std::vector<communicator> const& comms)
     double elapsed = 0.;
 
     std::size_t gen = 0;
+    // clang-format off
     for (std::uint32_t i = 0; local.get_next_generation("exclusive_scan", gen);
          ++i)
+    // clang-format on
     {
         std::vector<hpx::future<void>> sites;
         sites.reserve(num_sites);
@@ -570,7 +592,7 @@ double test_local_exclusive_scan(std::vector<communicator> const& comms)
                 hpx::chrono::high_resolution_timer const t;
 
                 hpx::future<std::uint32_t> overall_result =
-                    exclusive_scan(comms[site], site + i, std::plus<>{},
+                    exclusive_scan(comms[site], site + i, i, std::plus<>{},
                         this_site_arg(site), generation_arg(gen));
 
                 auto const result = overall_result.get();
@@ -649,8 +671,10 @@ double test_local_inclusive_scan(std::vector<communicator> const& comms)
     double elapsed = 0.;
 
     std::size_t gen = 0;
+    // clang-format off
     for (std::uint32_t i = 0; local.get_next_generation("inclusive_scan", gen);
          ++i)
+    // clang-format on
     {
         std::vector<hpx::future<void>> sites;
         sites.reserve(num_sites);
@@ -803,7 +827,9 @@ int hpx_main(hpx::program_options::variables_map& vm)
     if (here == 0)
     {
         distributed.init(gen, ITERATIONS);
-        local.init(gen, 10 * ITERATIONS);
+        local.init(gen,
+            static_cast<std::size_t>(10) *
+                static_cast<std::size_t>(ITERATIONS));
     }
     else
     {
@@ -842,6 +868,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
         if (here == 0)
         {
+            // NOLINTBEGIN(bugprone-narrowing-conversions)
             std::cout << "remote all_gather timing:     "
                       << f1.get() / distributed.get_iterations("all_gather")
                       << " [s]\n";
@@ -869,6 +896,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
             std::cout << "remote scatter timing:        "
                       << f9.get() / distributed.get_iterations("scatter")
                       << " [s]\n";
+            // NOLINTEND(bugprone-narrowing-conversions)
         }
     }
 #endif
@@ -897,6 +925,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
         hpx::wait_all(f1, f2, f3, f4, f5, f6, f7, f8, f9);
 
+        // NOLINTBEGIN(bugprone-narrowing-conversions)
         std::cout << "local all_gather timing:     "
                   << f1.get() / local.get_iterations("all_gather") << " [s]\n";
         std::cout << "local all_reduce timing:     "
@@ -917,6 +946,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
                   << f8.get() / local.get_iterations("reduce") << " [s]\n";
         std::cout << "local scatter timing:        "
                   << f9.get() / local.get_iterations("scatter") << " [s]\n";
+        // NOLINTEND(bugprone-narrowing-conversions)
     }
 
     return hpx::finalize();

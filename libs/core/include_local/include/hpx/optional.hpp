@@ -6,4 +6,5 @@
 
 #pragma once
 
-#include <hpx/datastructures/optional.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/datastructures.hpp>

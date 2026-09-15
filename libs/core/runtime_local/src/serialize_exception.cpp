@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2020 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,9 +6,9 @@
 
 #include <hpx/assert.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/serialization.hpp>
 #include <hpx/runtime_local/custom_exception_info.hpp>
 #include <hpx/runtime_local/detail/serialize_exception.hpp>
-#include <hpx/serialization/serialize.hpp>
 
 #if ASIO_HAS_BOOST_THROW_EXCEPTION != 0
 #include <boost/exception/diagnostic_information.hpp>
@@ -22,6 +22,8 @@
 #include <string>
 #include <system_error>
 #include <typeinfo>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx::runtime_local::detail {
@@ -45,7 +47,7 @@ namespace hpx::runtime_local::detail {
         std::string throw_function_;
         std::string throw_file_;
         std::string throw_back_trace_;
-        long throw_line_ = 0;
+        std::int64_t throw_line_ = 0;
         std::string throw_env_;
         std::string throw_config_;
         std::string throw_state_;
@@ -137,6 +139,7 @@ namespace hpx::runtime_local::detail {
                 throw_auxinfo_ = *auxinfo_;
             }
         }
+        // NOLINTNEXTLINE(bugprone-empty-catch)
         catch (...)
         {    //-V565
             // do nothing
@@ -224,24 +227,18 @@ namespace hpx::runtime_local::detail {
             what = "unknown exception";
         }
 
-        // clang-format off
         ar & type & what & throw_function_ & throw_file_ & throw_line_ &
             throw_locality_ & throw_hostname_ & throw_pid_ & throw_shepherd_ &
             throw_thread_id_ & throw_thread_name_ & throw_back_trace_ &
             throw_env_ & throw_config_ & throw_state_ & throw_auxinfo_;
-        // clang-format on
 
         if (hpx::util::exception_type::hpx_exception == type)
         {
-            // clang-format off
-            ar << static_cast<int>(err_value);
-            // clang-format on
+            ar << static_cast<std::int16_t>(err_value);
         }
         else if (hpx::util::exception_type::std_system_error == type)
         {
-            // clang-format off
-            ar << static_cast<int>(err_value) << err_message;
-            // clang-format on
+            ar << static_cast<std::int16_t>(err_value) << err_message;
         }
     }
 
@@ -264,34 +261,28 @@ namespace hpx::runtime_local::detail {
         std::string throw_function_;
         std::string throw_file_;
         std::string throw_back_trace_;
-        int throw_line_ = 0;
+        std::int64_t throw_line_ = 0;
         std::string throw_env_;
         std::string throw_config_;
         std::string throw_state_;
         std::string throw_auxinfo_;
 
-        // clang-format off
         ar & type & what & throw_function_ & throw_file_ & throw_line_ &
             throw_locality_ & throw_hostname_ & throw_pid_ & throw_shepherd_ &
             throw_thread_id_ & throw_thread_name_ & throw_back_trace_ &
             throw_env_ & throw_config_ & throw_state_ & throw_auxinfo_;
-        // clang-format on
 
         if (hpx::util::exception_type::hpx_exception == type)
         {
-            // clang-format off
-            int error_code = 0;
+            std::int16_t error_code = 0;
             ar >> error_code;
             err_value = static_cast<hpx::error>(error_code);
-            // clang-format on
         }
         else if (hpx::util::exception_type::std_system_error == type)
         {
-            // clang-format off
-            int error_code = 0;
+            std::int16_t error_code = 0;
             ar >> error_code >> err_message;
             err_value = static_cast<hpx::error>(error_code);
-            // clang-format on
         }
 
         switch (type)
@@ -425,3 +416,5 @@ namespace hpx::runtime_local::detail {
         }
     }
 }    // namespace hpx::runtime_local::detail
+
+#include <hpx/config/warnings_suffix.hpp>

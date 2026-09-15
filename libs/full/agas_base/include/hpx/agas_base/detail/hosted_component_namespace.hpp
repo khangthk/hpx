@@ -1,4 +1,5 @@
 //  Copyright (c) 2016 Thomas Heller
+//  Copyright (c) 2012-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,21 +11,19 @@
 
 #if defined(HPX_HAVE_NETWORKING)
 #include <hpx/agas_base/component_namespace.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/functional/function.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/naming_base/id_type.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace hpx { namespace agas { namespace detail {
-
+namespace hpx::agas::detail {
     struct hosted_component_namespace : component_namespace
     {
-        explicit hosted_component_namespace(naming::address addr);
-        hosted_component_namespace();
+        explicit hosted_component_namespace(naming::address const& addr);
 
         naming::address::address_type ptr() const
         {
@@ -59,7 +58,6 @@ namespace hpx { namespace agas { namespace detail {
         hpx::id_type gid_;
         naming::address addr_;
     };
-
-}}}    // namespace hpx::agas::detail
+}    // namespace hpx::agas::detail
 
 #endif

@@ -1,18 +1,20 @@
-//  Copyright (c) 2017-2023 Hartmut Kaiser
+//  Copyright (c) 2017-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/affinity/affinity_data.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/concurrency/barrier.hpp>
+#include <hpx/modules/affinity.hpp>
+#include <hpx/modules/concurrency.hpp>
+
 #include <hpx/io_service/io_service_pool.hpp>
 #include <hpx/io_service/io_service_thread_pool.hpp>
 
 #include <cstddef>
 #include <exception>
+#include <memory>
 
 namespace hpx::threads::detail {
 
@@ -79,11 +81,17 @@ namespace hpx::threads::detail {
     ///////////////////////////////////////////////////////////////////////////
     bool io_service_thread_pool::run(
         [[maybe_unused]] std::unique_lock<std::mutex>& l,
-        std::size_t num_threads)
+        std::size_t const num_threads)
     {
         HPX_ASSERT(l.owns_lock());
-        util::barrier startup(1);
-        return threads_->run(num_threads, false, &startup);
+
+        auto const startup = std::make_shared<util::barrier>(num_threads + 1);
+        bool const result = threads_->run(num_threads, false, startup);
+        if (result)
+        {
+            startup->wait();
+        }
+        return result;
     }
 
     void io_service_thread_pool::stop(
@@ -120,7 +128,7 @@ namespace hpx::threads::detail {
     }
 
     std::thread& io_service_thread_pool::get_os_thread_handle(
-        std::size_t global_thread_num)
+        std::size_t const global_thread_num)
     {
         return threads_->get_os_thread_handle(
             global_thread_num - this->thread_offset_);

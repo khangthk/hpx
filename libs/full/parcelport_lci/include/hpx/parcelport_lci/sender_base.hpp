@@ -1,5 +1,5 @@
 //  Copyright (c) 2023-2024 Jiakun Yan
-//  Copyright (c) 2007-2013 Hartmut Kaiser
+//  Copyright (c) 2007-26 Hartmut Kaiser
 //  Copyright (c) 2014-2015 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -12,29 +12,21 @@
 
 #if defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCI)
 
+#include <hpx/assert.hpp>
+#include <hpx/modules/command_line_handling.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/functional.hpp>
+#include <hpx/modules/parcelset.hpp>
+#include <hpx/modules/parcelset_base.hpp>
+#include <hpx/modules/plugin.hpp>
+#include <hpx/modules/plugin_factories.hpp>
 #include <hpx/modules/resource_partitioner.hpp>
 #include <hpx/modules/runtime_configuration.hpp>
 #include <hpx/modules/runtime_local.hpp>
 #include <hpx/modules/synchronization.hpp>
 #include <hpx/modules/timing.hpp>
 #include <hpx/modules/util.hpp>
-
-#include <hpx/assert.hpp>
-#include <hpx/command_line_handling/command_line_handling.hpp>
-#include <hpx/parcelset/parcelport_connection.hpp>
-#include <hpx/parcelset/parcelport_impl.hpp>
-#include <hpx/parcelset/parcelset_fwd.hpp>
-#include <hpx/parcelset_base/locality.hpp>
-#include <hpx/plugin/traits/plugin_config_data.hpp>
-#include <hpx/plugin_factories/parcelport_factory.hpp>
-#include <hpx/synchronization/spinlock.hpp>
-
-#include <hpx/parcelset/parcelport_connection.hpp>
-#include <hpx/parcelset_base/detail/gatherer.hpp>
-#include <hpx/parcelset_base/parcelport.hpp>
 
 #include <hpx/modules/lci_base.hpp>
 #include <hpx/parcelport_lci/header.hpp>
@@ -71,9 +63,7 @@ namespace hpx::parcelset::policies::lci {
         bool background_work(size_t num_thread) noexcept;
 
         // connectionless interface
-        using buffer_type = std::vector<char>;
-        using chunk_type = serialization::serialization_chunk;
-        using parcel_buffer_type = parcel_buffer<buffer_type, chunk_type>;
+        using parcel_buffer_type = parcel_buffer<>;
         using callback_fn_type =
             hpx::move_only_function<void(error_code const&)>;
 

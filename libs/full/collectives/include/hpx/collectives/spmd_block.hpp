@@ -4,32 +4,37 @@
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
+/// \file spmd_block.hpp
+/// \page hpx::lcos::spmd_block, hpx::lcos::define_spmd_block
+/// \headerfile hpx/collectives.hpp
+
 #pragma once
 
 #include <hpx/config.hpp>
-#if !defined(HPX_COMPUTE_DEVICE_CODE)
-#include <hpx/actions_base/plain_action.hpp>
-#include <hpx/async_base/launch_policy.hpp>
+
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/hashing.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/collectives/barrier.hpp>
 #include <hpx/collectives/broadcast_direct.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/execution/execution.hpp>
-#include <hpx/functional/first_argument.hpp>
-#include <hpx/functional/traits/is_action.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/hashing/jenkins_hash.hpp>
-#include <hpx/iterator_support/counting_shape.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/serialization/serialize.hpp>
-#include <hpx/type_support/pack.hpp>
 
 #include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <set>
@@ -38,7 +43,7 @@
 #include <utility>
 #include <vector>
 
-namespace hpx { namespace lcos {
+namespace hpx::lcos {
 
     /// The class spmd_block defines an interface for launching
     /// multiple images while giving handles to each image to interact with
@@ -47,7 +52,7 @@ namespace hpx { namespace lcos {
     /// separate thread. A temporary spmd block object is created and diffused
     /// to each image. The constraint for the action given to the
     /// define_spmd_block function is to accept a spmd_block as first parameter.
-    struct spmd_block
+    HPX_CXX_EXPORT struct spmd_block
     {
     private:
         using barrier_type = hpx::distributed::barrier;
@@ -173,8 +178,7 @@ namespace hpx { namespace lcos {
         }
 
         template <typename Iterator>
-        typename std::enable_if<
-            traits::is_input_iterator<Iterator>::value>::type
+        typename std::enable_if<std::input_iterator<Iterator>>::type
         sync_images(Iterator begin, Iterator end) const
         {
             std::set<std::size_t> images(begin, end);
@@ -236,7 +240,7 @@ namespace hpx { namespace lcos {
         }
 
         template <typename Iterator>
-        typename std::enable_if<traits::is_input_iterator<Iterator>::value,
+        typename std::enable_if<std::input_iterator<Iterator>,
             hpx::future<void>>::type
         sync_images(hpx::launch::async_policy const& policy, Iterator begin,
             Iterator end) const
@@ -301,8 +305,7 @@ namespace hpx { namespace lcos {
                 hpx::lcos::spmd_block block(
                     name_, images_per_locality_, num_images_, image_id);
 
-                F()
-                (hpx::launch::sync,
+                F()(hpx::launch::sync,
                     naming::get_id_from_locality_id(agas::get_locality_id()),
                     HPX_MOVE(block), HPX_FORWARD(Ts, ts)...);
             }
@@ -322,7 +325,14 @@ namespace hpx { namespace lcos {
                     static_cast<std::size_t>(agas::get_locality_id());
                 offset *= images_per_locality;
 
-                hpx::parallel::execution::bulk_sync_execute(exec,
+                auto hint = hpx::execution::experimental::get_hint(exec);
+                hint.sharing_mode(
+                    hpx::threads::thread_sharing_hint::do_not_share_function |
+                    hpx::threads::thread_sharing_hint::do_not_combine_tasks);
+
+                hpx::parallel::execution::bulk_sync_execute(
+                    hpx::execution::to_hierarchical_spawning(
+                        hpx::execution::experimental::with_hint(exec, hint)),
                     detail::spmd_block_helper<F>{
                         name, images_per_locality, num_images},
                     hpx::util::counting_shape(
@@ -332,8 +342,8 @@ namespace hpx { namespace lcos {
         };
     }    // namespace detail
 
-    template <typename F, typename... Args,
-        HPX_CONCEPT_REQUIRES_(hpx::traits::is_action<F>::value)>
+    HPX_CXX_EXPORT template <typename F, typename... Args>
+        requires(hpx::traits::is_action_v<F>)
     hpx::future<void> define_spmd_block(std::string&& name,
         std::size_t images_per_locality, F&& /* f */, Args&&... args)
     {
@@ -365,5 +375,4 @@ namespace hpx { namespace lcos {
             HPX_FORWARD(std::string, name), images_per_locality, num_images,
             HPX_FORWARD(Args, args)...);
     }
-}}    // namespace hpx::lcos
-#endif
+}    // namespace hpx::lcos

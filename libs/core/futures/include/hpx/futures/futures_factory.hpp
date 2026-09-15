@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,23 +9,18 @@
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
 
-#include <hpx/allocator_support/allocator_deleter.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/execution_base/execution.hpp>
-#include <hpx/functional/deferred_call.hpp>
 #include <hpx/futures/detail/future_data.hpp>
 #include <hpx/futures/future.hpp>
 #include <hpx/futures/traits/future_access.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/concurrency.hpp>
+#include <hpx/modules/coroutines.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/threading_base/detail/get_default_pool.hpp>
-#include <hpx/threading_base/scheduler_base.hpp>
-#include <hpx/threading_base/thread_description.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/threading_base/thread_num_tss.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -128,8 +123,7 @@ namespace hpx::lcos::local {
                 {
                     threads::thread_init_data data(
                         threads::make_thread_function_nullary(
-                            util::deferred_call(
-                                &base_type::run_impl, HPX_MOVE(this_))),
+                            &base_type::run_impl, HPX_MOVE(this_)),
                         threads::thread_description(f_, annotation),
                         policy.priority(),
                         threads::thread_schedule_hint(
@@ -159,8 +153,7 @@ namespace hpx::lcos::local {
                     // create the thread without running it
                     threads::thread_init_data data(
                         threads::make_thread_function_nullary(
-                            util::deferred_call(
-                                &base_type::run_impl, std::move(this_))),
+                            &base_type::run_impl, std::move(this_)),
                         threads::thread_description(f_, annotation),
                         policy.priority(), policy.hint(), policy.stacksize(),
                         threads::thread_schedule_state::suspended, true);
@@ -178,8 +171,8 @@ namespace hpx::lcos::local {
                 }
 
                 threads::thread_init_data data(
-                    threads::make_thread_function_nullary(util::deferred_call(
-                        &base_type::run_impl, HPX_MOVE(this_))),
+                    threads::make_thread_function_nullary(
+                        &base_type::run_impl, HPX_MOVE(this_)),
                     threads::thread_description(f_, annotation),
                     policy.priority(), policy.hint(), policy.stacksize(),
                     threads::thread_schedule_state::pending);
@@ -528,10 +521,11 @@ namespace hpx::lcos::local {
     // We provide this class to avoid semantic differences to the C++11
     // std::packaged_task, while otoh it is a very convenient way for us to
     // implement hpx::async.
-    template <typename Func, bool Cancelable = false>
+    HPX_CXX_CORE_EXPORT template <typename Func, bool Cancelable = false>
     class futures_factory;
 
     namespace detail {
+
         ///////////////////////////////////////////////////////////////////////
         template <typename Result, bool Cancelable, typename Executor = void>
         struct create_task_object;
@@ -770,7 +764,8 @@ namespace hpx::lcos::local {
                 !std::is_same_v<std::decay_t<F>, futures_factory>>>
         explicit futures_factory(F&& f)
           : task_(detail::create_task_object<Result, Cancelable>::call(
-                hpx::util::thread_local_caching_allocator<char,
+                hpx::util::thread_local_caching_allocator<
+                    hpx::lockfree::variable_size_stack,
                     hpx::util::internal_allocator<>>{},
                 HPX_FORWARD(F, f)))
         {
@@ -778,7 +773,8 @@ namespace hpx::lcos::local {
 
         explicit futures_factory(Result (*f)())
           : task_(detail::create_task_object<Result, Cancelable>::call(
-                hpx::util::thread_local_caching_allocator<char,
+                hpx::util::thread_local_caching_allocator<
+                    hpx::lockfree::variable_size_stack,
                     hpx::util::internal_allocator<>>{},
                 f))
         {

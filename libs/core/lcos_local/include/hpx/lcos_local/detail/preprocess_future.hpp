@@ -9,8 +9,8 @@
 
 #include <hpx/assert.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/synchronization/spinlock.hpp>
-#include <hpx/type_support/extra_data.hpp>
+#include <hpx/modules/synchronization.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <mutex>
@@ -22,7 +22,7 @@ namespace hpx::serialization::detail {
 
     // This class allows to register futures during serialization preprocessing
     // to ensure each future is ready before serializing it.
-    class preprocess_futures
+    HPX_CXX_CORE_EXPORT class preprocess_futures
     {
         using mutex_type = hpx::spinlock;
 
@@ -195,15 +195,17 @@ namespace hpx::serialization::detail {
     };
 }    // namespace hpx::serialization::detail
 
-// This is explicitly instantiated to ensure that the id is stable across
-// shared libraries.
-template <>
-struct hpx::util::extra_data_helper<
-    hpx::serialization::detail::preprocess_futures>
-{
-    HPX_CORE_EXPORT static hpx::util::extra_data_id_type id() noexcept;
-    static constexpr void reset(
-        hpx::serialization::detail::preprocess_futures*) noexcept
+namespace hpx::util {
+
+    // This is explicitly instantiated to ensure that the id is stable across
+    // shared libraries.
+    template <>
+    struct extra_data_helper<hpx::serialization::detail::preprocess_futures>
     {
-    }
-};
+        HPX_CORE_EXPORT static hpx::util::extra_data_id_type id() noexcept;
+        static constexpr void reset(
+            hpx::serialization::detail::preprocess_futures*) noexcept
+        {
+        }
+    };
+}    // namespace hpx::util

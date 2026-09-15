@@ -66,6 +66,20 @@ void verify_vector(hpx::partitioned_vector<T> const& v, T const& val,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+template <typename T>
+void verify_against_std(
+    hpx::partitioned_vector<T>& part_v, std::vector<T>& std_v)
+{
+    auto std_it = std_v.begin();
+    HPX_ASSERT(part_v.size() == std_v.size());
+    for (auto part_it = part_v.begin(); part_it != part_v.end();
+        part_it++, std_it++)
+    {
+        HPX_TEST_EQ(*part_it, *std_it);
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
 template <typename T, typename DistPolicy, typename ExPolicy>
 void fill_algo_tests_with_policy(
     std::size_t size, DistPolicy const& policy, ExPolicy const& fill_policy)
@@ -73,15 +87,30 @@ void fill_algo_tests_with_policy(
     hpx::partitioned_vector<T> c(size, policy);
     iota_vector(c, T(1234));
 
-    const T v(42);
+    T const v(42);
     hpx::fill(fill_policy, c.begin(), c.end(), v);
     verify_vector(c, v);
 
-    const T v1(43);
+    T const v1(43);
     hpx::fill(fill_policy, c.begin() + 1, c.end() - 1, v1);
     verify_values(c.begin() + 1, c.end() - 1, v1);
     verify_values(c.begin(), c.begin() + 1, v1, false);
     verify_values(c.end() - 1, c.end(), v1, false);
+}
+
+template <typename T, typename DistPolicy, typename Count, typename ExPolicy>
+void fill_n_algo_tests_with_policy(std::size_t size, Count count,
+    DistPolicy const& policy, ExPolicy const& fill_policy)
+{
+    hpx::partitioned_vector<T> c(size, policy);
+    std::vector<T> l(size);
+    iota_vector(c, T(1234));
+    std::iota(l.begin(), l.end(), T(1234));
+
+    T const v(42);
+    hpx::fill_n(fill_policy, c.begin(), count, v);
+    std::fill_n(l.begin(), count, v);
+    verify_against_std(c, l);
 }
 
 template <typename T, typename DistPolicy, typename ExPolicy>
@@ -91,13 +120,13 @@ void fill_algo_tests_with_policy_async(
     hpx::partitioned_vector<T> c(size, policy);
     iota_vector(c, T(1234));
 
-    const T v(42);
+    T const v(42);
     hpx::future<void> f = hpx::fill(fill_policy, c.begin(), c.end(), v);
     f.wait();
 
     verify_vector(c, v);
 
-    const T v1(43);
+    T const v1(43);
     hpx::future<void> f1 =
         hpx::fill(fill_policy, c.begin() + 1, c.end() - 1, v1);
     f1.wait();
@@ -105,6 +134,22 @@ void fill_algo_tests_with_policy_async(
     verify_values(c.begin() + 1, c.end() - 1, v1);
     verify_values(c.begin(), c.begin() + 1, v1, false);
     verify_values(c.end() - 1, c.end(), v1, false);
+}
+
+template <typename T, typename DistPolicy, typename Count, typename ExPolicy>
+void fill_n_algo_tests_with_policy_async(std::size_t size, Count count,
+    DistPolicy const& policy, ExPolicy const& fill_policy)
+{
+    hpx::partitioned_vector<T> c(size, policy);
+    std::vector<T> l(size);
+    iota_vector(c, T(1234));
+    std::iota(l.begin(), l.end(), T(1234));
+
+    T const v(42);
+    hpx::future<void> f = hpx::fill_n(fill_policy, c.begin(), count, v);
+    f.wait();
+    std::fill_n(l.begin(), count, v);
+    verify_against_std(c, l);
 }
 
 template <typename T, typename DistPolicy>
@@ -121,6 +166,22 @@ void fill_tests_with_policy(
     fill_algo_tests_with_policy_async<T>(size, policy, par(task));
 }
 
+template <typename T, typename DistPolicy>
+void fill_n_tests_with_policy(std::size_t size, std::size_t count_range,
+    std::size_t /* localities */, DistPolicy const& policy)
+{
+    using namespace hpx::execution;
+    for (std::size_t count = 0; count < count_range; count++)
+    {
+        fill_n_algo_tests_with_policy<T>(size, count, policy, seq);
+        fill_n_algo_tests_with_policy<T>(size, count, policy, par);
+
+        //async
+        fill_n_algo_tests_with_policy_async<T>(size, count, policy, seq(task));
+        fill_n_algo_tests_with_policy_async<T>(size, count, policy, par(task));
+    }
+}
+
 template <typename T>
 void fill_tests()
 {
@@ -134,12 +195,28 @@ void fill_tests()
         length, localities.size(), hpx::container_layout(localities));
 }
 
+template <typename T>
+void fill_n_tests()
+{
+    std::size_t const length = 12;
+    std::vector<hpx::id_type> localities = hpx::find_all_localities();
+
+    fill_n_tests_with_policy<T>(length, 8, 1, hpx::container_layout);
+    fill_n_tests_with_policy<T>(length, 8, 3, hpx::container_layout(3));
+    fill_n_tests_with_policy<T>(
+        length, 8, 3, hpx::container_layout(3, localities));
+    fill_n_tests_with_policy<T>(
+        length, 8, localities.size(), hpx::container_layout(localities));
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 int main()
 {
     fill_tests<double>();
     fill_tests<int>();
+    fill_n_tests<double>();
+    fill_n_tests<int>();
 
-    return 0;
+    return hpx::util::report_errors();
 }
 #endif

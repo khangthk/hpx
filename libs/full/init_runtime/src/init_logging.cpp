@@ -7,14 +7,15 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_LOGGING)
-#include <hpx/init_runtime/detail/init_logging.hpp>
 #include <hpx/modules/logging.hpp>
-#include <hpx/runtime_configuration/runtime_mode.hpp>
+#include <hpx/modules/runtime_configuration.hpp>
 
 #if defined(HPX_HAVE_DISTRIBUTED_RUNTIME)
-#include <hpx/runtime_components/console_logging.hpp>
-#include <hpx/threading_base/thread_data.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/threading_base.hpp>
 #endif
+
+#include <hpx/init_runtime/detail/init_logging.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -23,7 +24,7 @@
 #include <string>
 
 ///////////////////////////////////////////////////////////////////////////////
-namespace hpx { namespace util {
+namespace hpx::util {
 
 #if defined(HPX_HAVE_DISTRIBUTED_RUNTIME)
     ///////////////////////////////////////////////////////////////////////////
@@ -88,6 +89,6 @@ namespace hpx { namespace util {
                 define_formatters);
         }
     }    // namespace detail
-}}       // namespace hpx::util
+}    // namespace hpx::util
 
 #endif

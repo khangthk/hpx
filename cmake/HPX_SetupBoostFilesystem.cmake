@@ -7,12 +7,17 @@
 if(HPX_FILESYSTEM_WITH_BOOST_FILESYSTEM_COMPATIBILITY)
   # In case find_package(HPX) is called multiple times
   if(NOT TARGET Boost::filesystem)
-    hpx_set_cmake_policy(CMP0167 OLD) # use CMake's FindBoost for now
 
     find_package(
-      Boost ${Boost_MINIMUM_VERSION} NO_POLICY_SCOPE MODULE
+      Boost ${Boost_MINIMUM_VERSION} NO_POLICY_SCOPE CONFIG QUIET
       COMPONENTS filesystem
     )
+    if(NOT Boost_FOUND)
+      find_package(
+        Boost ${Boost_MINIMUM_VERSION} NO_POLICY_SCOPE MODULE
+        COMPONENTS filesystem
+      )
+    endif()
 
     if(NOT Boost_FILESYSTEM_FOUND)
       hpx_error(

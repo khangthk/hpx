@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2011-2017 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,21 +8,20 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/components_base/server/component_heap.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/type_support/bit_cast.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/type_support.hpp>
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx::components::server {
 
     ///////////////////////////////////////////////////////////////////////////
-    HPX_EXPORT void destroy_component(
+    HPX_CXX_EXPORT HPX_EXPORT void destroy_component(
         naming::gid_type const& gid, naming::address const& addr);
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Component>
+    HPX_CXX_EXPORT template <typename Component>
     void destroy(naming::gid_type const& gid, naming::address const& addr)
     {
         // make sure this component is located here
@@ -52,13 +51,15 @@ namespace hpx::components::server {
         --instance_count(type);
 
         // delete the local instances
+
+        // NOLINTNEXTLINE(bugprone-bitwise-pointer-cast)
         Component* c = hpx::bit_cast<Component*>(addr.address_);
         c->finalize();
         std::destroy_at(c);
         component_heap<Component>().free(c, 1);
     }
 
-    template <typename Component>
+    HPX_CXX_EXPORT template <typename Component>
     void destroy(naming::gid_type const& gid)
     {
         naming::address addr;

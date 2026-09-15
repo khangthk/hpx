@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2014-2015 Agustin Berge
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,21 +8,18 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/allocator_support/allocator_deleter.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
-#include <hpx/allocator_support/thread_local_caching_allocator.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
 #include <hpx/futures/detail/future_data.hpp>
 #include <hpx/futures/traits/acquire_shared_state.hpp>
 #include <hpx/futures/traits/future_access.hpp>
 #include <hpx/futures/traits/future_traits.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/concurrency.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/threading_base/annotated_function.hpp>
-#include <hpx/threading_base/scoped_annotation.hpp>
-#include <hpx/threading_base/thread_description.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <exception>
 #include <functional>
@@ -210,6 +207,12 @@ namespace hpx::lcos::detail {
         template <bool Unwrap>
         void run_impl(traits::detail::shared_state_ptr_for_t<Future>&& f)
         {
+            hpx::tracing::continuation_run(f.get());
+            auto on_exit =
+                hpx::experimental::scope_exit([id = f.get()]() noexcept {
+                    hpx::tracing::continuation_finished(id);
+                });
+
             auto future = traits::future_access<std::decay_t<Future>>::create(
                 HPX_MOVE(f));
             if constexpr (Unwrap)
@@ -330,7 +333,7 @@ namespace hpx::lcos::detail {
                 [this_ = HPX_MOVE(this_), state = HPX_MOVE(state),
                     policy = HPX_FORWARD(Policy, policy),
                     spawner = HPX_FORWARD(Spawner, spawner)]() mutable -> void {
-                    if (hpx::detail::has_async_policy(policy))
+                    if (hpx::has_async_policy(policy))
                     {
                         this_->template async<Unwrap>(
                             HPX_MOVE(state), HPX_FORWARD(Spawner, spawner));
@@ -540,7 +543,7 @@ struct hpx::traits::detail::shared_state_allocator<
 namespace hpx::lcos::detail {
 
     template <typename Allocator, typename Future>
-    inline traits::detail::shared_state_ptr_t<future_unwrap_result_t<Future>>
+    traits::detail::shared_state_ptr_t<future_unwrap_result_t<Future>>
     unwrap_impl_alloc(Allocator const& a, Future&& future, error_code& /*ec*/)
     {
         using base_allocator = Allocator;
@@ -572,18 +575,19 @@ namespace hpx::lcos::detail {
         return result;
     }
 
-    template <typename Allocator, typename Future>
-    inline traits::detail::shared_state_ptr_t<future_unwrap_result_t<Future>>
+    HPX_CXX_CORE_EXPORT template <typename Allocator, typename Future>
+    traits::detail::shared_state_ptr_t<future_unwrap_result_t<Future>>
     unwrap_alloc(Allocator const& a, Future&& future, error_code& ec)
     {
         return unwrap_impl_alloc(a, HPX_FORWARD(Future, future), ec);
     }
 
-    template <typename Future>
-    inline traits::detail::shared_state_ptr_t<future_unwrap_result_t<Future>>
-    unwrap(Future&& future, error_code& ec)
+    HPX_CXX_CORE_EXPORT template <typename Future>
+    traits::detail::shared_state_ptr_t<future_unwrap_result_t<Future>> unwrap(
+        Future&& future, error_code& ec)
     {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
+        using allocator_type = hpx::util::thread_local_caching_allocator<
+            hpx::lockfree::variable_size_stack,
             hpx::util::internal_allocator<>>;
         return unwrap_impl_alloc(
             allocator_type{}, HPX_FORWARD(Future, future), ec);

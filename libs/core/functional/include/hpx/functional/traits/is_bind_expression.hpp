@@ -28,7 +28,7 @@ namespace hpx {
     ///          argument of this type will be invoked as a function object and
     ///          will be given all the unbound arguments passed to the
     ///          bind-generated object.
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct is_bind_expression : std::is_bind_expression<T>
     {
     };
@@ -38,20 +38,6 @@ namespace hpx {
     {
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr bool is_bind_expression_v = is_bind_expression<T>::value;
 }    // namespace hpx
-
-namespace hpx::traits {
-
-    template <typename T>
-    using is_bind_expression HPX_DEPRECATED_V(1, 8,
-        "hpx::traits::is_bind_expression is deprecated, use "
-        "hpx::is_bind_expression instead") = hpx::is_bind_expression<T>;
-
-    template <typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::traits::is_bind_expression_v is deprecated, use "
-        "hpx::is_bind_expression_v instead")
-    inline constexpr bool is_bind_expression_v = hpx::is_bind_expression_v<T>;
-}    // namespace hpx::traits

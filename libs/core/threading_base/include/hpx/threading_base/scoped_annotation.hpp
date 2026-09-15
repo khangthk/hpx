@@ -1,4 +1,4 @@
-//  Copyright (c) 2017-2023 Hartmut Kaiser
+//  Copyright (c) 2017-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -13,15 +13,10 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
+#include <hpx/modules/tracing.hpp>
 #include <hpx/threading_base/thread_data.hpp>
 #include <hpx/threading_base/thread_description.hpp>
 #include <hpx/threading_base/thread_helpers.hpp>
-
-#if HPX_HAVE_ITTNOTIFY != 0
-#include <hpx/modules/itt_notify.hpp>
-#elif defined(HPX_HAVE_APEX)
-#include <hpx/threading_base/external_timer.hpp>
-#endif
 #endif
 
 #include <string>
@@ -31,15 +26,19 @@ namespace hpx {
 
     namespace detail {
 
-        HPX_CORE_EXPORT char const* store_function_annotation(std::string name);
+        HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT char const*
+        store_function_annotation(std::string name);
     }    // namespace detail
 
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
     ///////////////////////////////////////////////////////////////////////////
 #if defined(HPX_COMPUTE_DEVICE_CODE)
-    struct [[nodiscard]] scoped_annotation
+    HPX_CXX_CORE_EXPORT struct [[nodiscard]] scoped_annotation
     {
-        HPX_NON_COPYABLE(scoped_annotation);
+        scoped_annotation(scoped_annotation const&) = delete;
+        scoped_annotation(scoped_annotation&&) = delete;
+        scoped_annotation& operator=(scoped_annotation const&) = delete;
+        scoped_annotation& operator=(scoped_annotation&&) = delete;
 
         explicit constexpr scoped_annotation(char const*) noexcept {}
 
@@ -51,26 +50,32 @@ namespace hpx {
         // add empty (but non-trivial) destructor to silence warnings
         HPX_HOST_DEVICE ~scoped_annotation() {}
     };
-#elif HPX_HAVE_ITTNOTIFY != 0
-    struct [[nodiscard]] scoped_annotation
+#elif defined(HPX_HAVE_THREAD_DESCRIPTION)
+    HPX_CXX_CORE_EXPORT struct [[nodiscard]] scoped_annotation
     {
-        HPX_NON_COPYABLE(scoped_annotation);
+        scoped_annotation(scoped_annotation const&) = delete;
+        scoped_annotation(scoped_annotation&&) = delete;
+        scoped_annotation& operator=(scoped_annotation const&) = delete;
+        scoped_annotation& operator=(scoped_annotation&&) = delete;
 
         explicit scoped_annotation(char const* name)
-          : task_(thread_domain_, hpx::util::itt::string_handle(name))
         {
             auto const* self = hpx::threads::get_self_ptr();
             if (self != nullptr)
             {
                 desc_ = threads::get_thread_id_data(self->get_thread_id())
                             ->set_description(name);
+
+                if (auto timer_data = threads::get_self_timer_data();
+                    timer_data.valid())
+                {
+                    hpx::tracing::update_task_timer(timer_data, name);
+                    threads::set_self_timer_data(HPX_MOVE(timer_data));
+                }
             }
         }
 
         explicit scoped_annotation(std::string name)
-          : task_(thread_domain_,
-                hpx::util::itt::string_handle(
-                    detail::store_function_annotation(name)))
         {
             auto const* self = hpx::threads::get_self_ptr();
             if (self != nullptr)
@@ -79,6 +84,13 @@ namespace hpx {
                     detail::store_function_annotation(HPX_MOVE(name));
                 desc_ = threads::get_thread_id_data(self->get_thread_id())
                             ->set_description(name_c_str);
+
+                if (auto timer_data = threads::get_self_timer_data();
+                    timer_data.valid())
+                {
+                    hpx::tracing::update_task_timer(timer_data, name_c_str);
+                    threads::set_self_timer_data(HPX_MOVE(timer_data));
+                }
             }
         }
 
@@ -86,9 +98,6 @@ namespace hpx {
             typename =
                 std::enable_if_t<!std::is_same_v<std::decay_t<F>, std::string>>>
         explicit scoped_annotation(F&& f)
-          : task_(thread_domain_,
-                hpx::traits::get_function_annotation_itt<std::decay_t<F>>::call(
-                    f))
         {
             auto const* self = hpx::threads::get_self_ptr();
             if (self != nullptr)
@@ -96,6 +105,14 @@ namespace hpx {
                 desc_ =
                     threads::get_thread_id_data(self->get_thread_id())
                         ->set_description(hpx::threads::thread_description(f));
+
+                if (auto timer_data = threads::get_self_timer_data();
+                    timer_data.valid())
+                {
+                    hpx::tracing::update_task_timer(
+                        timer_data, desc_.get_description());
+                    threads::set_self_timer_data(HPX_MOVE(timer_data));
+                }
             }
         }
 
@@ -109,15 +126,15 @@ namespace hpx {
             }
         }
 
-    private:
-        hpx::util::itt::thread_domain thread_domain_;
-        hpx::util::itt::task task_;
         hpx::threads::thread_description desc_;
     };
 #else
-    struct [[nodiscard]] scoped_annotation
+    HPX_CXX_CORE_EXPORT struct [[nodiscard]] scoped_annotation
     {
-        HPX_NON_COPYABLE(scoped_annotation);
+        scoped_annotation(scoped_annotation const&) = delete;
+        scoped_annotation(scoped_annotation&&) = delete;
+        scoped_annotation& operator=(scoped_annotation const&) = delete;
+        scoped_annotation& operator=(scoped_annotation&&) = delete;
 
         explicit scoped_annotation(char const* name)
         {
@@ -126,13 +143,14 @@ namespace hpx {
             {
                 desc_ = threads::get_thread_id_data(self->get_thread_id())
                             ->set_description(name);
-            }
 
-#if defined(HPX_HAVE_APEX)
-            /* update the task wrapper in APEX to use the specified name */
-            threads::set_self_timer_data(hpx::util::external_timer::update_task(
-                threads::get_self_timer_data(), std::string(name)));
-#endif
+                if (auto timer_data = threads::get_self_timer_data();
+                    timer_data.valid())
+                {
+                    hpx::tracing::update_task_timer(timer_data, name);
+                    threads::set_self_timer_data(HPX_MOVE(timer_data));
+                }
+            }
         }
 
         explicit scoped_annotation(std::string name)
@@ -141,20 +159,17 @@ namespace hpx {
             if (self != nullptr)
             {
                 char const* name_c_str =
-#if defined(HPX_HAVE_APEX)
-                    detail::store_function_annotation(name);
-#else
                     detail::store_function_annotation(HPX_MOVE(name));
-#endif
                 desc_ = threads::get_thread_id_data(self->get_thread_id())
                             ->set_description(name_c_str);
-            }
 
-#if defined(HPX_HAVE_APEX)
-            /* update the task wrapper in APEX to use the specified name */
-            threads::set_self_timer_data(hpx::util::external_timer::update_task(
-                threads::get_self_timer_data(), HPX_MOVE(name)));
-#endif
+                if (auto timer_data = threads::get_self_timer_data();
+                    timer_data.valid())
+                {
+                    hpx::tracing::update_task_timer(timer_data, name_c_str);
+                    threads::set_self_timer_data(HPX_MOVE(timer_data));
+                }
+            }
         }
 
         template <typename F,
@@ -169,11 +184,6 @@ namespace hpx {
                     threads::get_thread_id_data(self->get_thread_id())
                         ->set_description(hpx::threads::thread_description(f));
             }
-
-#if defined(HPX_HAVE_APEX)
-            /* no need to update the task description in APEX, because
-             * this same description was used when the task was created. */
-#endif
         }
 
         ~scoped_annotation()
@@ -196,9 +206,12 @@ namespace hpx {
     ///        tools like \a Intel \a VTune, \a Apex \a Profiler, etc. That
     ///        allows analyzing performance to figure out which part(s) of code
     ///        is (are) responsible for performance degradation, etc.
-    struct [[nodiscard]] scoped_annotation
+    HPX_CXX_CORE_EXPORT struct [[nodiscard]] scoped_annotation
     {
-        HPX_NON_COPYABLE(scoped_annotation);
+        scoped_annotation(scoped_annotation const&) = delete;
+        scoped_annotation(scoped_annotation&&) = delete;
+        scoped_annotation& operator=(scoped_annotation const&) = delete;
+        scoped_annotation& operator=(scoped_annotation&&) = delete;
 
         explicit constexpr scoped_annotation(char const* /*name*/) noexcept {}
 
@@ -212,10 +225,3 @@ namespace hpx {
     };
 #endif
 }    // namespace hpx
-
-namespace hpx::util {
-
-    using annotate_function HPX_DEPRECATED_V(1, 8,
-        "hpx::util::scoped_annotation has been deprecated, please use "
-        "hpx::scoped_annotation instead.") = hpx::scoped_annotation;
-}    // namespace hpx::util

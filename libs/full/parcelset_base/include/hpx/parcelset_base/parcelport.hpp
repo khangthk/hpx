@@ -1,5 +1,5 @@
 //  Copyright (c) 2014-2015 Thomas Heller
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2007 Richard D Guidry Jr
 //  Copyright (c) 2011 Bryce Lelbach
 //  Copyright (c) 2011 Katelyn Kufahl
@@ -13,9 +13,9 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_NETWORKING)
-#include <hpx/io_service/io_service_pool_fwd.hpp>
 #include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/functional.hpp>
+#include <hpx/modules/io_service.hpp>
 #include <hpx/modules/runtime_configuration.hpp>
 #include <hpx/modules/synchronization.hpp>
 
@@ -44,7 +44,7 @@ namespace hpx::parcelset {
     /// The parcelport is the lowest possible representation of the parcel
     /// interface inside a locality. It provides the minimal functionality
     /// to send and to receive parcels.
-    class HPX_EXPORT parcelport
+    HPX_CXX_EXPORT class HPX_EXPORT parcelport
       : public std::enable_shared_from_this<parcelport>
     {
         parcelport(parcelport const&) = delete;
@@ -53,7 +53,8 @@ namespace hpx::parcelset {
         parcelport& operator=(parcelport&&) = delete;
 
     public:
-        using write_handler_type = parcel_write_handler_type;
+        using write_handler_type = hpx::function<void(
+            std::error_code const&, parcelset::parcel const&)>;
 
         using read_handler_type = hpx::function<void(parcelport& pp,
             std::shared_ptr<std::vector<char>>, threads::thread_priority)>;
@@ -171,7 +172,18 @@ namespace hpx::parcelset {
             connection_cache_evictions = 1,
             connection_cache_hits = 2,
             connection_cache_misses = 3,
-            connection_cache_reclaims = 4
+            connection_cache_reclaims = 4,
+            // Number of get_or_reserve() calls that returned false because all
+            // connection slots were checked out (pool saturation, distinct from
+            // normal cache misses which do not cause parcel deferral).
+            connection_cache_reservation_failures = 5,
+            // Current number of connections tracked by the cache (in-use +
+            // available). Use with connection_cache_max_connections to compute
+            // pool utilisation.
+            connection_cache_num_connections = 6,
+            // Configured maximum total connections (hpx.max_connections ini
+            // key). Fixed at startup; returned without reset semantics.
+            connection_cache_max_connections = 7
         };
 
         // invoke pending background work
@@ -346,8 +358,8 @@ namespace hpx::parcelset {
         locality here_;
 
         // The maximally allowed message size
-        std::int64_t const max_inbound_message_size_;
-        std::int64_t const max_outbound_message_size_;
+        std::int64_t max_inbound_message_size_;
+        std::int64_t max_outbound_message_size_;
 
 #if defined(HPX_HAVE_PARCELPORT_COUNTERS)
         // Overall parcel statistics

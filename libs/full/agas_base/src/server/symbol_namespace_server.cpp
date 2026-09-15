@@ -7,17 +7,15 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/agas_base/server/symbol_namespace.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/format.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/naming/credit_handling.hpp>
-#include <hpx/naming/split_gid.hpp>
-#include <hpx/thread_support/unlock_guard.hpp>
-#include <hpx/timing/scoped_timer.hpp>
-#include <hpx/util/get_and_reset_value.hpp>
-#include <hpx/util/insert_checked.hpp>
-#include <hpx/util/regex_from_pattern.hpp>
+#include <hpx/modules/format.hpp>
+#include <hpx/modules/naming.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/util.hpp>
+
+#include <hpx/agas_base/server/symbol_namespace.hpp>
 
 #include <atomic>
 #include <cstdint>
@@ -28,6 +26,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::agas {
 
@@ -55,9 +55,8 @@ namespace hpx::agas::server {
         this->base_type::set_locality_id(locality_id);
 
         // now register this AGAS instance with AGAS :-P
-        instance_name_ = agas::service_name;
-        instance_name_ += servicename;
-        instance_name_ += agas::server::symbol_namespace_service_name;
+        instance_name_ = agas::service_instance_name(
+            servicename, agas::server::symbol_namespace_service_name);
 
         // register a gid (not the id) to avoid AGAS holding a reference to this
         // component

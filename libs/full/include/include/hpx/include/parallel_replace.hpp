@@ -7,5 +7,6 @@
 
 #pragma once
 
-#include <hpx/parallel/algorithms/replace.hpp>
-#include <hpx/parallel/container_algorithms/replace.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/algorithms.hpp>
+#include <hpx/modules/segmented_algorithms.hpp>

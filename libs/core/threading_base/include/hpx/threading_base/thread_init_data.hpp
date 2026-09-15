@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2008-2009 Chirag Dekate, Anshul Tandon
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,24 +8,20 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/tracing.hpp>
 #include <hpx/threading_base/thread_description.hpp>
 #include <hpx/threading_base/threading_base_fwd.hpp>
-#if defined(HPX_HAVE_APEX)
-#include <hpx/threading_base/external_timer.hpp>
-#endif
 
 #include <cstddef>
 #include <cstdint>
 #include <utility>
-#ifdef HPX_HAVE_APEX
-#include <memory>
-#endif
 
 namespace hpx::threads {
 
     ///////////////////////////////////////////////////////////////////////////
-    class thread_init_data
+    HPX_CXX_CORE_EXPORT class thread_init_data
     {
     public:
         thread_init_data()
@@ -38,11 +34,9 @@ namespace hpx::threads {
           , parent_id(nullptr)
           , parent_phase(0)
 #endif
-#ifdef HPX_HAVE_APEX
-          , timer_data(nullptr)
-#endif
-          , priority(thread_priority::normal)
+          , timer_data()
           , schedulehint()
+          , priority(thread_priority::normal)
           , stacksize(thread_stacksize::default_)
           , initial_state(thread_schedule_state::pending)
           , run_now(false)
@@ -60,8 +54,8 @@ namespace hpx::threads {
         thread_init_data& operator=(thread_init_data&& rhs) noexcept
         {
             func = HPX_MOVE(rhs.func);
-            priority = rhs.priority;
             schedulehint = rhs.schedulehint;
+            priority = rhs.priority;
             stacksize = rhs.stacksize;
             initial_state = rhs.initial_state;
             run_now = rhs.run_now;
@@ -74,11 +68,7 @@ namespace hpx::threads {
             parent_id = HPX_MOVE(rhs.parent_id);
             parent_phase = rhs.parent_phase;
 #endif
-#ifdef HPX_HAVE_APEX
-            // HPX_HAVE_APEX forces the HPX_HAVE_THREAD_DESCRIPTION
-            // and HPX_HAVE_THREAD_PARENT_REFERENCE settings to be on
-            timer_data = rhs.timer_data;
-#endif
+            timer_data = HPX_MOVE(rhs.timer_data);
             return *this;
         }
 
@@ -93,14 +83,9 @@ namespace hpx::threads {
           , parent_id(HPX_MOVE(rhs.parent_id))
           , parent_phase(rhs.parent_phase)
 #endif
-#ifdef HPX_HAVE_APEX
-          // HPX_HAVE_APEX forces the HPX_HAVE_THREAD_DESCRIPTION and
-          // HPX_HAVE_THREAD_PARENT_REFERENCE settings to be on
-          , timer_data(util::external_timer::new_task(
-                description, parent_locality_id, parent_id))
-#endif
-          , priority(rhs.priority)
+          , timer_data(HPX_MOVE(rhs.timer_data))
           , schedulehint(rhs.schedulehint)
+          , priority(rhs.priority)
           , stacksize(rhs.stacksize)
           , initial_state(rhs.initial_state)
           , run_now(rhs.run_now)
@@ -127,14 +112,9 @@ namespace hpx::threads {
           , parent_id(nullptr)
           , parent_phase(0)
 #endif
-#ifdef HPX_HAVE_APEX
-          // HPX_HAVE_APEX forces the HPX_HAVE_THREAD_DESCRIPTION and
-          // HPX_HAVE_THREAD_PARENT_REFERENCE settings to be on
-          , timer_data(util::external_timer::new_task(
-                description, parent_locality_id, parent_id))
-#endif
-          , priority(priority_)
+          , timer_data(setup_timer_data(desc, 0, threads::thread_id_type{}))
           , schedulehint(os_thread)
+          , priority(priority_)
           , stacksize(stacksize_)
           , initial_state(initial_state_)
           , run_now(run_now_)
@@ -158,14 +138,36 @@ namespace hpx::threads {
         threads::thread_id_type parent_id;
         std::size_t parent_phase;
 #endif
-#ifdef HPX_HAVE_APEX
-        // HPX_HAVE_APEX forces the HPX_HAVE_THREAD_DESCRIPTION and
-        // HPX_HAVE_THREAD_PARENT_REFERENCE settings to be on
-        std::shared_ptr<util::external_timer::task_wrapper> timer_data;
-#endif
+        HPX_NO_UNIQUE_ADDRESS hpx::tracing::task_timer_data timer_data;
 
-        thread_priority priority;
+        static hpx::tracing::task_timer_data setup_timer_data(
+            [[maybe_unused]] threads::thread_description const& desc,
+            [[maybe_unused]] std::uint32_t parent_locality_id,
+            [[maybe_unused]] threads::thread_id_type const& parent_id)
+        {
+#if defined(HPX_HAVE_THREAD_DESCRIPTION) &&                                    \
+    defined(HPX_HAVE_THREAD_PARENT_REFERENCE)
+            return hpx::tracing::create_task_timer(
+                desc, parent_locality_id, parent_id);
+#else
+            return hpx::tracing::task_timer_data{};
+#endif
+        }
+
+        static hpx::tracing::task_timer_data setup_timer_data(
+            [[maybe_unused]] thread_init_data const& data)
+        {
+#if defined(HPX_HAVE_THREAD_DESCRIPTION) &&                                    \
+    defined(HPX_HAVE_THREAD_PARENT_REFERENCE)
+            return hpx::tracing::create_task_timer(
+                data.description, data.parent_locality_id, data.parent_id);
+#else
+            return hpx::tracing::task_timer_data{};
+#endif
+        }
+
         thread_schedule_hint schedulehint;
+        thread_priority priority;
         thread_stacksize stacksize;
         thread_schedule_state initial_state;
         bool run_now;

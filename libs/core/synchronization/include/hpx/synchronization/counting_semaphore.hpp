@@ -14,9 +14,9 @@
 
 #include <hpx/config.hpp>
 #include <hpx/modules/memory.hpp>
+#include <hpx/modules/timing.hpp>
 #include <hpx/synchronization/detail/counting_semaphore.hpp>
 #include <hpx/synchronization/spinlock.hpp>
-#include <hpx/timing/steady_clock.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -364,6 +364,7 @@ namespace hpx {
             }
 
             explicit counting_semaphore(std::ptrdiff_t value) noexcept
+              // NOLINTNEXTLINE(bugprone-unhandled-exception-at-new)
               : data_(new data_type(value), false)
             {
             }
@@ -409,11 +410,11 @@ namespace hpx {
         };
     }    // namespace detail
 
-    template <std::ptrdiff_t LeastMaxValue = PTRDIFF_MAX>
+    HPX_CXX_CORE_EXPORT template <std::ptrdiff_t LeastMaxValue = PTRDIFF_MAX>
     using counting_semaphore = detail::counting_semaphore<LeastMaxValue>;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Mutex = hpx::spinlock, int N = 0>
+    HPX_CXX_CORE_EXPORT template <typename Mutex = hpx::spinlock, int N = 0>
     class counting_semaphore_var
       : public detail::counting_semaphore<PTRDIFF_MAX, Mutex>
     {
@@ -462,29 +463,6 @@ namespace hpx {
         }
     };
 }    // namespace hpx
-
-/// \cond NOINTERN
-namespace hpx::lcos::local {
-
-    template <std::ptrdiff_t LeastMaxValue = PTRDIFF_MAX,
-        typename Mutex = hpx::spinlock>
-    using cpp20_counting_semaphore HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::cpp20_counting_semaphore is deprecated, use "
-        "hpx::counting_semaphore instead") =
-        hpx::detail::counting_semaphore<LeastMaxValue, Mutex>;
-
-    template <typename Mutex = hpx::spinlock, int N = 0>
-    using counting_semaphore_var HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::counting_semaphore_var is deprecated, use "
-        "hpx::counting_semaphore_var instead") =
-        hpx::counting_semaphore_var<Mutex, N>;
-
-    using counting_semaphore HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::counting_semaphore is deprecated, use "
-        "hpx::counting_semaphore_var<> instead") =
-        hpx::counting_semaphore_var<>;
-}    // namespace hpx::lcos::local
-     /// \endcond
 
 #endif
 

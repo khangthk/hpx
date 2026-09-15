@@ -8,15 +8,15 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/functional/detail/invoke.hpp>
-#include <hpx/type_support/identity.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <utility>
 
 namespace hpx::parallel::util {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Compare, typename... Proj>
+    HPX_CXX_CORE_EXPORT template <typename Compare, typename... Proj>
     struct compare_projected;
 
     ///////////////////////////////////////////////////////////////////////////

@@ -6,8 +6,9 @@
 
 #pragma once
 
-#include <hpx/datastructures/tuple.hpp>
 #include <hpx/functional/traits/is_action.hpp>
+#include <hpx/modules/datastructures.hpp>
+
 #include <type_traits>
 
 namespace hpx::util {
@@ -65,7 +66,7 @@ namespace hpx::util {
         };
     }    // namespace detail
 
-    template <typename F, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename F, typename Enable = void>
     struct first_argument
     {
     };
@@ -95,6 +96,6 @@ namespace hpx::util {
     {
     };
 
-    template <typename F>
+    HPX_CXX_CORE_EXPORT template <typename F>
     using first_argument_t = typename first_argument<F>::type;
 }    // namespace hpx::util

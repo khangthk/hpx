@@ -7,19 +7,18 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/async_base/sync.hpp>
-#include <hpx/execution/detail/sync_launch_policy_dispatch.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
 #include <hpx/executors/parallel_executor.hpp>
-#include <hpx/functional/deferred_call.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
 
 #include <type_traits>
 #include <utility>
 
 namespace hpx::detail {
 
-    template <typename Func, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Func, typename Enable = void>
     struct sync_dispatch_launch_policy_helper;
 
     template <typename Func>
@@ -60,7 +59,7 @@ namespace hpx::detail {
 
     // Launch the given function or function object synchronously. This exists
     // mostly for symmetry with hpx::async.
-    template <typename Func, typename Enable>
+    HPX_CXX_CORE_EXPORT template <typename Func, typename Enable>
     struct sync_dispatch
     {
         // clang-format off

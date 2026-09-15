@@ -4,9 +4,8 @@
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
-#include <hpx/errors/error.hpp>
-#include <hpx/errors/throw_exception.hpp>
 #include <hpx/execution_base/any_sender.hpp>
+#include <hpx/modules/errors.hpp>
 #include <hpx/modules/format.hpp>
 
 #include <atomic>
@@ -28,10 +27,9 @@ namespace hpx::execution::experimental::detail {
         return true;
     }
 
-    void tag_invoke(
-        hpx::execution::experimental::start_t, any_operation_state& os) noexcept
+    void any_operation_state::start() & noexcept
     {
-        os.storage.get().start();
+        storage.get().start();
     }
 
     void throw_bad_any_call(char const* class_name, char const* function_name)

@@ -7,8 +7,8 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/functional/detail/tag_fallback_invoke.hpp>
-#include <hpx/functional/invoke.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/loop.hpp>
 #include <hpx/parallel/util/result_types.hpp>
 
@@ -17,26 +17,25 @@
 
 namespace hpx::parallel::detail {
 
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     struct sequential_mismatch_t final
-      : hpx::functional::detail::tag_fallback<sequential_mismatch_t<ExPolicy>>
+      : hpx::detail::tag_dispatch<sequential_mismatch_t<ExPolicy>,
+            hpx::detail::no_base>
     {
-    private:
         template <typename Iter1, typename Sent, typename Iter2, typename F>
-        friend constexpr auto tag_fallback_invoke(sequential_mismatch_t,
+        static constexpr auto invoke_default(
             Iter1 first1, Sent last1, Iter2 first2, F&& f)
         {
             while (first1 != last1 && HPX_INVOKE(f, *first1, *first2))
             {
-                ++first1, ++first2;
+                (void) ++first1, ++first2;
             }
             return std::make_pair(first1, first2);
         }
 
         template <typename ZipIterator, typename Token, typename F>
-        friend constexpr void tag_fallback_invoke(sequential_mismatch_t,
-            std::size_t base_idx, ZipIterator it, std::size_t part_count,
-            Token& tok, F&& f)
+        static constexpr void invoke_default(std::size_t base_idx,
+            ZipIterator it, std::size_t part_count, Token& tok, F&& f)
         {
             util::loop_idx_n<ExPolicy>(base_idx, it, part_count, tok,
                 [&f, &tok](auto t, std::size_t i) mutable -> void {
@@ -49,12 +48,12 @@ namespace hpx::parallel::detail {
     };
 
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     inline constexpr sequential_mismatch_t<ExPolicy> sequential_mismatch =
         sequential_mismatch_t<ExPolicy>{};
 #else
-    template <typename ExPolicy, typename Iter1, typename Sent, typename Iter2,
-        typename F>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter1,
+        typename Sent, typename Iter2, typename F>
     HPX_HOST_DEVICE HPX_FORCEINLINE auto sequential_mismatch(
         Iter1 first1, Sent last1, Iter2 first2, F&& f)
     {
@@ -62,8 +61,8 @@ namespace hpx::parallel::detail {
             first1, last1, first2, HPX_FORWARD(F, f));
     }
 
-    template <typename ExPolicy, typename ZipIterator, typename Token,
-        typename F>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename ZipIterator,
+        typename Token, typename F>
     HPX_HOST_DEVICE HPX_FORCEINLINE void sequential_mismatch(
         std::size_t base_idx, ZipIterator it, std::size_t part_count,
         Token& tok, F&& f)
@@ -73,18 +72,17 @@ namespace hpx::parallel::detail {
     }
 #endif
 
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     struct sequential_mismatch_binary_t final
-      : hpx::functional::detail::tag_fallback<
-            sequential_mismatch_binary_t<ExPolicy>>
+      : hpx::detail::tag_dispatch<sequential_mismatch_binary_t<ExPolicy>,
+            hpx::detail::no_base>
     {
-    private:
         // Our own version of the C++14 equal (_binary).
         template <typename Iter1, typename Sent1, typename Iter2,
             typename Sent2, typename F, typename Proj1, typename Proj2>
-        friend constexpr util::in_in_result<Iter1, Iter2> tag_fallback_invoke(
-            sequential_mismatch_binary_t, Iter1 first1, Sent1 last1,
-            Iter2 first2, Sent2 last2, F&& f, Proj1&& proj1, Proj2&& proj2)
+        static constexpr util::in_in_result<Iter1, Iter2> invoke_default(
+            Iter1 first1, Sent1 last1, Iter2 first2, Sent2 last2, F&& f,
+            Proj1&& proj1, Proj2&& proj2)
         {
             while (first1 != last1 && first2 != last2 &&
                 HPX_INVOKE(
@@ -97,9 +95,9 @@ namespace hpx::parallel::detail {
 
         template <typename ZipIterator, typename Token, typename F,
             typename Proj1, typename Proj2>
-        friend constexpr void tag_fallback_invoke(sequential_mismatch_binary_t,
-            std::size_t base_idx, ZipIterator it, std::size_t part_count,
-            Token& tok, F&& f, Proj1&& proj1, Proj2&& proj2)
+        static constexpr void invoke_default(std::size_t base_idx,
+            ZipIterator it, std::size_t part_count, Token& tok, F&& f,
+            Proj1&& proj1, Proj2&& proj2)
         {
             util::loop_idx_n<ExPolicy>(base_idx, it, part_count, tok,
                 [&f, &proj1, &proj2, &tok](
@@ -114,12 +112,13 @@ namespace hpx::parallel::detail {
     };
 
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     inline constexpr sequential_mismatch_binary_t<ExPolicy>
         sequential_mismatch_binary = sequential_mismatch_binary_t<ExPolicy>{};
 #else
-    template <typename ExPolicy, typename Iter1, typename Sent1, typename Iter2,
-        typename Sent2, typename F, typename Proj1, typename Proj2>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter1,
+        typename Sent1, typename Iter2, typename Sent2, typename F,
+        typename Proj1, typename Proj2>
     HPX_HOST_DEVICE HPX_FORCEINLINE util::in_in_result<Iter1, Iter2>
     sequential_mismatch_binary(Iter1 first1, Sent1 last1, Iter2 first2,
         Sent2 last2, F&& f, Proj1&& proj1, Proj2&& proj2)
@@ -129,8 +128,8 @@ namespace hpx::parallel::detail {
             HPX_FORWARD(Proj2, proj2));
     }
 
-    template <typename ExPolicy, typename ZipIterator, typename Token,
-        typename F, typename Proj1, typename Proj2>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename ZipIterator,
+        typename Token, typename F, typename Proj1, typename Proj2>
     HPX_HOST_DEVICE HPX_FORCEINLINE void sequential_mismatch_binary(
         std::size_t base_idx, ZipIterator it, std::size_t part_count,
         Token& tok, F&& f, Proj1&& proj1, Proj2&& proj2)

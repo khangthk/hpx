@@ -55,10 +55,12 @@ set(agas_base_sources
     gva.cpp
     locality_namespace.cpp
     primary_namespace.cpp
+    rpc_timeout.cpp
     server/component_namespace_server.cpp
     server/locality_namespace_server.cpp
     server/primary_namespace_server.cpp
     server/symbol_namespace_server.cpp
+    service_name.cpp
     symbol_namespace.cpp
 )
 
@@ -66,8 +68,14 @@ include(HPX_AddModule)
 add_hpx_module(
   full agas_base
   GLOBAL_HEADER_GEN ON
+  GLOBAL_HEADER_MODULE_GEN ON
   SOURCES ${agas_base_sources}
   HEADERS ${agas_base_headers}
+  ADD_TO_GLOBAL_HEADER
+    "hpx/agas_base/detail/bootstrap_component_namespace.hpp"
+    "hpx/agas_base/detail/bootstrap_locality_namespace.hpp"
+    "hpx/agas_base/detail/hosted_component_namespace.hpp"
+    "hpx/agas_base/detail/hosted_locality_namespace.hpp"
   COMPAT_HEADERS ${agas_base_compat_headers}
   DEPENDENCIES hpx_core
   MODULE_DEPENDENCIES

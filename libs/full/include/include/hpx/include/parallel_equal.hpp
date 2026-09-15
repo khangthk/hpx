@@ -7,5 +7,5 @@
 
 #pragma once
 
-#include <hpx/parallel/algorithms/equal.hpp>
-#include <hpx/parallel/container_algorithms/equal.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/algorithms.hpp>

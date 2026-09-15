@@ -1,4 +1,4 @@
-//  Copyright (c) 2015-2021 Hartmut Kaiser
+//  Copyright (c) 2015-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,12 +7,12 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/algorithms/traits/segmented_iterator_traits.hpp>
+#include <hpx/modules/algorithms.hpp>
 
-namespace hpx { namespace util { namespace functional {
+namespace hpx::util::functional {
 
     ///////////////////////////////////////////////////////////////////////////
-    struct segmented_iterator_segment
+    HPX_CXX_EXPORT struct segmented_iterator_segment
     {
         template <typename Iterator>
         struct apply
@@ -29,7 +29,7 @@ namespace hpx { namespace util { namespace functional {
         };
     };
 
-    struct segmented_iterator_local
+    HPX_CXX_EXPORT struct segmented_iterator_local
     {
         template <typename Iterator>
         struct apply
@@ -45,7 +45,7 @@ namespace hpx { namespace util { namespace functional {
         };
     };
 
-    struct segmented_iterator_begin
+    HPX_CXX_EXPORT struct segmented_iterator_begin
     {
         template <typename Iterator>
         struct apply
@@ -61,7 +61,7 @@ namespace hpx { namespace util { namespace functional {
         };
     };
 
-    struct segmented_iterator_end
+    HPX_CXX_EXPORT struct segmented_iterator_end
     {
         template <typename Iterator>
         struct apply
@@ -77,7 +77,7 @@ namespace hpx { namespace util { namespace functional {
         };
     };
 
-    struct segmented_iterator_local_begin
+    HPX_CXX_EXPORT struct segmented_iterator_local_begin
     {
         template <typename Iterator>
         struct apply
@@ -93,7 +93,7 @@ namespace hpx { namespace util { namespace functional {
         };
     };
 
-    struct segmented_iterator_local_end
+    HPX_CXX_EXPORT struct segmented_iterator_local_end
     {
         template <typename Iterator>
         struct apply
@@ -108,4 +108,4 @@ namespace hpx { namespace util { namespace functional {
             }
         };
     };
-}}}    // namespace hpx::util::functional
+}    // namespace hpx::util::functional

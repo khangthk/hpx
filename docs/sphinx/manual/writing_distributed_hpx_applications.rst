@@ -52,25 +52,25 @@ The only predefined global addresses are assigned to all localities. The
 following |hpx| API functions allow one to retrieve the global addresses of
 localities:
 
-* :cpp:func:`hpx::find_here`: retrieves the global address of the
+* :hpx:func:`hpx::find_here`: retrieves the global address of the
   :term:`locality` this function is called on.
-* :cpp:func:`hpx::find_all_localities()`: retrieves the global addresses of all
+* :hpx:func:`hpx::find_all_localities()`: retrieves the global addresses of all
   localities available to this application (including the :term:`locality` the
   function is being called on).
-* :cpp:func:`hpx::find_remote_localities()`: retrieves the global addresses of
+* :hpx:func:`hpx::find_remote_localities()`: retrieves the global addresses of
   all remote localities available to this application (not including the
   :term:`locality` the function is being called on).
-* :cpp:func:`hpx::get_num_localities()`: retrieves the number of localities
+* :hpx:func:`hpx::get_num_localities()`: retrieves the number of localities
   available to this application.
-* :cpp:func:`hpx::find_locality()`: retrieves the global address of any
+* :hpx:func:`hpx::find_locality()`: retrieves the global address of any
   :term:`locality` supporting the given component type.
-* :cpp:func:`hpx::get_colocation_id()`: retrieves the global address of the
+* :hpx:func:`hpx::get_colocation_id()`: retrieves the global address of the
   :term:`locality` currently hosting the object with the given global address.
 
 Additionally, the global addresses of localities can be used to create new
 instances of components using the following |hpx| API function:
 
-* :cpp:func:`hpx::components::new_()`: Creates a new instance of the given
+* :hpx:func:`hpx::components::new_()`: Creates a new instance of the given
   ``Component`` type on the specified :term:`locality`.
 
 .. note::
@@ -173,7 +173,7 @@ go into the header file::
         {
             int some_member_function(std::string s)
             {
-                return boost::lexical_cast<int>(s);
+                return std::stoi(s);
             }
 
             // This will define the action type 'some_member_action' which
@@ -207,6 +207,40 @@ functions, they should still be manageable.
 The most important macro invocation is the :c:macro:`HPX_DEFINE_COMPONENT_ACTION` in the header file
 as this defines the action type we need to invoke the member function. For a
 complete example of a simple component action see :download:`component_in_executable.cpp <../../examples/quickstart/component_in_executable.cpp>`.
+
+.. _reflection_based_component_actions:
+
+Reflection-based component actions (experimental)
+---------------------------------------------------
+
+.. note::
+
+   This feature requires a compiler with C++26 reflection support
+   (``HPX_HAVE_CXX26_REFLECTION``) and is currently experimental.
+
+When reflection support is available, component actions can be defined with
+a single macro instead of the three-step process described above::
+
+    namespace app
+    {
+        struct some_component
+          : hpx::components::component_base<some_component>
+        {
+            int some_member_function(std::string s)
+            {
+                return std::stoi(s);
+            }
+            // This single line replaces HPX_DEFINE_COMPONENT_ACTION,
+            // HPX_REGISTER_ACTION_DECLARATION, and HPX_REGISTER_ACTION.
+            HPX_COMPONENT_ACTION(some_component, some_member_function,
+                some_member_action);
+        };
+    }
+
+The resulting ``some_member_action`` type can be used exactly like an action
+type created with :c:macro:`HPX_DEFINE_COMPONENT_ACTION`, with :hpx:func:`hpx::post`,
+:hpx:func:`hpx::async`, and :hpx:func:`hpx::sync`, or by invoking it directly. No
+separate registration step is required in the source file.
 
 .. _action_invocation:
 
@@ -569,7 +603,7 @@ executed::
     HPX_PLAIN_ACTION(app::some_function_with_error, some_error_action);
 
 The use of :c:macro:`HPX_THROW_EXCEPTION` to report the error encapsulates the
-creation of a :cpp:class:`hpx::exception` which is initialized with the error
+creation of a :hpx:class:`hpx::exception` which is initialized with the error
 code ``hpx::error::bad_parameter``. Additionally it carries the passed strings, the
 information about the file name, line number, and call stack of the point the
 exception was thrown from.
@@ -639,7 +673,7 @@ class::
             // This member function is has to be invoked remotely
             int some_member_function(std::string const& s)
             {
-                return boost::lexical_cast<int>(s);
+                return std::stoi(s);
             }
 
             // This will define the action type 'some_member_action' which
@@ -679,6 +713,21 @@ For instance::
     // (system-wide) unique C++-style identifier (without any namespaces)
     //
     HPX_REGISTER_COMPONENT(some_component_type, some_component);
+
+.. note::
+
+   When C++26 reflection is enabled (``HPX_WITH_CXX26_REFLECTION=ON``),
+   the second argument to :c:macro:`HPX_REGISTER_COMPONENT` can be omitted.
+   The component name is then derived automatically from the server type
+   via ``std::meta::identifier_of``::
+
+       // With C++26 reflection -- single argument, name derived automatically
+       HPX_REGISTER_COMPONENT(some_component_type)
+
+   The derived name is fully qualified (includes enclosing namespaces) and
+   is equivalent to the explicit two-argument form. Explicit names always
+   take precedence over reflection-derived ones.
+
 
     // The parameters for this macro have to be the same as used in the corresponding
     // HPX_REGISTER_ACTION_DECLARATION() macro invocation in the corresponding
@@ -731,7 +780,7 @@ A client side object stores the global id of the component instance it
 represents. This global id is accessible by calling the function
 ``client_base<>::get_id()``. The special constructor which is provided in the
 example allows to create this client side object directly using the API function
-:cpp:func:`hpx::new_`.
+:hpx:func:`hpx::new_`.
 
 .. _create_components:
 
@@ -897,7 +946,7 @@ An example of how to use the ``partitioned_vector`` container
 with distribution policies would be::
 
     #include <hpx/include/partitioned_vector.hpp>
-    #include <hpx/runtime_distributed/find_localities.hpp>
+    #include <hpx/modules/runtime_distributed.hpp>
 
     // The following code generates all necessary boiler plate to enable the
     // remote creation of 'partitioned_vector' segments
@@ -905,7 +954,7 @@ with distribution policies would be::
     HPX_REGISTER_PARTITIONED_VECTOR(double);
 
     std::size_t num_segments = 10;
-    std::vector<hpx::id_type> locs = hpx::find_all_localities()
+    std::vector<hpx::id_type> locs = hpx::find_all_localities();
 
     auto layout =
             hpx::container_layout( num_segments, locs );
@@ -1004,7 +1053,7 @@ beginning of the next segment.
 It is sometimes useful not only to iterate element by element, but also segment
 by segment, or simply get a local iterator in order to avoid additional
 construction costs at each deferencing operations. To mitigate this need, the
-:cpp:class:`hpx::traits::segmented_iterator_traits` are used.
+:hpx:struct:`hpx::traits::segmented_iterator_traits` are used.
 
 With ``segmented_iterator_traits`` users can uniformly get the iterators
 which specifically iterates over segments (by providing a segmented iterator
@@ -1085,7 +1134,7 @@ variables is prohibited, this parallel section is created via the RAII idiom.
 To define a parallel section, simply write an action taking a ``spmd_block``
 variable as a first parameter::
 
-    #include <hpx/collectives/spmd_block.hpp>
+    #include <hpx/modules/collectives.hpp>
 
     void bulk_function(hpx::lcos::spmd_block block /* , arg0, arg1, ... */)
     {
@@ -1109,7 +1158,7 @@ The ``spmd_block`` class contains the following methods:
 Here is a sample code summarizing the features offered by the ``spmd_block``
 class::
 
-    #include <hpx/collectives/spmd_block.hpp>
+    #include <hpx/modules/collectives.hpp>
 
     void bulk_function(hpx::lcos::spmd_block block /* , arg0, arg1, ... */)
     {
@@ -1448,7 +1497,7 @@ view. We illustrate below how a single constructor call can perform those two
 operations::
 
     #include <hpx/components/containers/coarray/coarray.hpp>
-    #include <hpx/collectives/spmd_block.hpp>
+    #include <hpx/modules/collectives.hpp>
 
     // The following code generates all necessary boiler plate to enable the
     // co-creation of 'coarray'
@@ -1516,7 +1565,7 @@ is possible.
 Here is an example of using local subscripts::
 
     #include <hpx/components/containers/coarray/coarray.hpp>
-    #include <hpx/collectives/spmd_block.hpp>
+    #include <hpx/modules/collectives.hpp>
 
     // The following code generates all necessary boiler plate to enable the
     // co-creation of 'coarray'

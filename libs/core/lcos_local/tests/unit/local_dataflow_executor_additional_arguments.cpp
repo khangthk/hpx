@@ -1,5 +1,5 @@
 //  Copyright (c) 2020 ETH Zurich
-//  Copyright (c) 2015-2022 Hartmut Kaiser
+//  Copyright (c) 2015-2024 Hartmut Kaiser
 //  Copyright (c) 2013 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -50,24 +50,22 @@ struct additional_argument
 struct additional_argument_executor
 {
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::async_execute_t,
-        additional_argument_executor const&, F&& f, Ts&&... ts)
+    decltype(auto) async_execute(F&& f, Ts&&... ts) const
     {
         return hpx::async(
             std::forward<F>(f), additional_argument{}, std::forward<Ts>(ts)...);
     }
 
     template <typename A, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::post_t,
-        additional_argument_executor const&,
-        hpx::lcos::detail::dataflow_finalization<A>&& f, hpx::tuple<Ts...>&& t)
+    decltype(auto) post(hpx::lcos::detail::dataflow_finalization<A>&& f,
+        hpx::tuple<Ts...>&& t) const
     {
         additional_argument a;
         hpx::post(f, hpx::tuple_cat(hpx::tie(a), std::move(t)));
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
     template <>
     struct is_one_way_executor<additional_argument_executor> : std::true_type
     {
@@ -77,7 +75,7 @@ namespace hpx::parallel::execution {
     struct is_two_way_executor<additional_argument_executor> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 std::atomic<std::uint32_t> void_f_count;
 std::atomic<std::uint32_t> int_f_count;

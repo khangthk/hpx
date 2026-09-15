@@ -7,15 +7,14 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/topology/config/defines.hpp>
+#include <hpx/modules/topology.hpp>
 
 #include <hpx/assert.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/format.hpp>
 #include <hpx/modules/logging.hpp>
-#include <hpx/topology/cpu_mask.hpp>
-#include <hpx/topology/topology.hpp>
-#include <hpx/util/ios_flags_saver.hpp>
+#include <hpx/modules/topology.hpp>
+#include <hpx/modules/util.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -312,6 +311,61 @@ namespace hpx::threads {
         {
             thread_affinity_masks_.emplace_back(init_thread_affinity_mask(i));
         }
+
+        init_numa_node_distances();
+    }
+
+    void topology::init_numa_node_distances()
+    {
+        std::size_t num_nodes = get_number_of_numa_nodes();
+        if (num_nodes == 0)
+            num_nodes = 1;
+
+        // Initialise with ACPI SLIT defaults: local = 10, remote = 20.
+        // These are the standard baseline values used on systems that do not
+        // expose a distance matrix (single-socket VMs, MIC, etc.).
+        numa_node_distances_.assign(
+            num_nodes, std::vector<std::size_t>(num_nodes, 20u));
+        for (std::size_t i = 0; i < num_nodes; ++i)
+            numa_node_distances_[i][i] = 10u;
+
+#if HWLOC_API_VERSION >= 0x00020000
+        // hwloc 2.x: query the latency distance matrix for NUMA nodes.
+        unsigned nr = 1;
+        hwloc_distances_s* dist = nullptr;
+        {
+            std::unique_lock<mutex_type> lk(topo_mtx);
+            if (hwloc_distances_get_by_type(topo, HWLOC_OBJ_NUMANODE, &nr,
+                    &dist, HWLOC_DISTANCES_KIND_MEANS_LATENCY, 0) < 0)
+            {
+                dist = nullptr;
+            }
+        }
+        if (dist != nullptr)
+        {
+            for (unsigned i = 0; i < dist->nbobjs; ++i)
+            {
+                if (dist->objs[i] == nullptr)
+                    continue;
+                std::size_t const ni =
+                    static_cast<std::size_t>(dist->objs[i]->logical_index);
+                for (unsigned j = 0; j < dist->nbobjs; ++j)
+                {
+                    if (dist->objs[j] == nullptr)
+                        continue;
+                    std::size_t const nj =
+                        static_cast<std::size_t>(dist->objs[j]->logical_index);
+                    if (ni < num_nodes && nj < num_nodes)
+                    {
+                        numa_node_distances_[ni][nj] = static_cast<std::size_t>(
+                            dist->values[i * dist->nbobjs + j]);
+                    }
+                }
+            }
+            std::unique_lock<mutex_type> lk(topo_mtx);
+            hwloc_distances_release(topo, dist);
+        }
+#endif
     }
 
     void topology::write_to_log() const
@@ -491,7 +545,8 @@ namespace hpx::threads {
 
         int const pu_depth = hwloc_get_type_or_below_depth(topo, HWLOC_OBJ_PU);
 
-        for (std::size_t i = 0; i != mask_size(mask); ++i)
+        auto const size = mask_size(mask);
+        for (std::size_t i = 0; i != size; ++i)
         {
             if (test(mask, i))
             {
@@ -571,7 +626,7 @@ namespace hpx::threads {
                 int const pu_depth =
                     hwloc_get_type_or_below_depth(topo, HWLOC_OBJ_PU);
                 for (unsigned int i = 0;
-                     static_cast<std::size_t>(i) != num_of_pus_; ++i)
+                    static_cast<std::size_t>(i) != num_of_pus_; ++i)
                 {
                     hwloc_obj_t const pu_obj =
                         hwloc_get_obj_by_depth(topo, pu_depth, i);
@@ -1417,8 +1472,8 @@ namespace hpx::threads {
             topo, addr, 1, ns, HWLOC_MEMBIND_BYNODESET);
         if (ret < 0)
         {
-#if defined(__FreeBSD__)
-            // on some platforms this API is not supported (e.g. FreeBSD)
+#if defined(__FreeBSD__) || defined(__APPLE__)
+            // on some platforms this API is not supported (e.g. FreeBSD, macOS)
             return 0;
 #else
             std::string msg(strerror(errno));
@@ -1458,26 +1513,21 @@ namespace hpx::threads {
         return pu_obj;
     }
 
-    template <typename F>
-    static void iterate(hwloc_bitmap_t cpuset, F&& f)
-    {
-        for (auto id = hwloc_bitmap_first(cpuset);
-             static_cast<unsigned>(id) != static_cast<unsigned>(-1);
-             id = hwloc_bitmap_next(cpuset, id))
+    namespace {
+        template <typename F>
+        void iterate(hwloc_bitmap_t cpuset, F&& f)
         {
-            if (hwloc_bitmap_isset(cpuset, id))
+            for (auto id = hwloc_bitmap_first(cpuset);
+                static_cast<unsigned>(id) != static_cast<unsigned>(-1);
+                id = hwloc_bitmap_next(cpuset, id))
             {
-                f(id);
+                if (hwloc_bitmap_isset(cpuset, id))
+                {
+                    f(id);
+                }
             }
         }
-    }
-
-    static auto num_set_bits(hwloc_bitmap_t cpuset)
-    {
-        std::size_t count = 0;
-        iterate(cpuset, [&](auto) { ++count; });
-        return count;
-    }
+    }    // namespace
 
     // Return the size of the cache associated with the given cpuset.
     std::size_t topology::get_cache_size(mask_cref_type mask, int level) const
@@ -1489,7 +1539,9 @@ namespace hpx::threads {
 
         std::unique_lock<mutex_type> lk(topo_mtx);
 
-        hwloc_bitmap_t cpuset = mask_to_bitmap(mask, HWLOC_OBJ_PU);
+        unsigned cpuset_size = 0;
+        hwloc_bitmap_t cpuset =
+            mask_to_bitmap(mask, HWLOC_OBJ_PU, &cpuset_size);
         std::size_t cache_size = 0;
 
 #if HWLOC_API_VERSION >= 0x00020000
@@ -1532,7 +1584,7 @@ namespace hpx::threads {
 
             cache_size +=
                 static_cast<std::size_t>(cache_obj->attr->cache.size) /
-                num_set_bits(cache_obj->cpuset);
+                cpuset_size;
 #else
             // traverse up until found the requested cache level
             int levels = 0;
@@ -1543,7 +1595,7 @@ namespace hpx::threads {
                     continue;
 
                 cache_size += std::size_t(obj->attr->cache.size) /
-                    num_set_bits(obj->cpuset);
+                    cpuset_size;
             }
 #endif
         });
@@ -1554,14 +1606,16 @@ namespace hpx::threads {
 
     ///////////////////////////////////////////////////////////////////////////
     hwloc_bitmap_t topology::mask_to_bitmap(
-        mask_cref_type mask, hwloc_obj_type_t htype) const
+        mask_cref_type mask, hwloc_obj_type_t htype, unsigned* count) const
     {
         hwloc_bitmap_t const bitmap = hwloc_bitmap_alloc();
         hwloc_bitmap_zero(bitmap);
-        //
+
         int const depth = hwloc_get_type_or_below_depth(topo, htype);
 
-        for (std::size_t i = 0; i != mask_size(mask); ++i)
+        unsigned count_bits = 0;
+        auto const size = mask_size(mask);
+        for (std::size_t i = 0; i != size; ++i)
         {
             if (test(mask, i))
             {
@@ -1570,7 +1624,13 @@ namespace hpx::threads {
                 HPX_ASSERT(i == detail::get_index(hw_obj));
                 hwloc_bitmap_set(
                     bitmap, static_cast<unsigned int>(hw_obj->os_index));
+                ++count_bits;
             }
+        }
+
+        if (count != nullptr)
+        {
+            *count = count_bits;
         }
         return bitmap;
     }
@@ -1585,7 +1645,7 @@ namespace hpx::threads {
 
         int const pu_depth = hwloc_get_type_or_below_depth(topo, htype);
         for (unsigned int i = 0; static_cast<std::size_t>(i) != num;
-             ++i)    //-V104
+            ++i)    //-V104
         {
             hwloc_obj_t const pu_obj =
                 hwloc_get_obj_by_depth(topo, pu_depth, i);

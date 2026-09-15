@@ -1,4 +1,5 @@
-//  Copyright (c) 2020-2023 Hartmut Kaiser
+//  Copyright (c) 2020-2025 Hartmut Kaiser
+//  Copyright (c) 2026 Sai Charan Arvapally
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,16 +8,16 @@
 #pragma once
 
 #include <hpx/resiliency/config.hpp>
-#include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution/traits/executor_traits.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/executors/current_executor.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/iterator_support/range.hpp>
 #include <hpx/resiliency/async_replicate_executor.hpp>
-#include <hpx/synchronization/latch.hpp>
+
+#include <hpx/assert.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/synchronization.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -27,7 +28,8 @@
 namespace hpx::resiliency::experimental {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename BaseExecutor, typename Vote, typename Validate>
+    HPX_CXX_CORE_EXPORT template <typename BaseExecutor, typename Vote,
+        typename Validate>
     class replicate_executor
     {
     public:
@@ -68,23 +70,18 @@ namespace hpx::resiliency::experimental {
             return *this;
         }
 
-    private:
         // TwoWayExecutor interface
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_execute_t,
-            replicate_executor const& exec, F&& f, Ts&&... ts)
+        decltype(auto) async_execute(F&& f, Ts&&... ts) const
         {
-            return async_replicate_vote_validate(exec.exec_,
-                exec.replicate_count_, exec.voter_, exec.validator_,
-                HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+            return async_replicate_vote_validate(exec_, replicate_count_,
+                voter_, validator_, HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
         // BulkTwoWayExecutor interface
         template <typename F, typename S, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_async_execute_t,
-            replicate_executor const& exec, F&& f, S const& shape, Ts&&... ts)
+        decltype(auto) bulk_async_execute(
+            F&& f, S const& shape, Ts&&... ts) const
         {
             std::size_t size = hpx::util::size(shape);
 
@@ -97,9 +94,9 @@ namespace hpx::resiliency::experimental {
             std::vector<future_type> results;
             results.resize(size);
 
-            hpx::latch l(size + 1);
+            hpx::latch l(static_cast<std::ptrdiff_t>(size + 1));
 
-            exec.spawn_hierarchical(results, l, 0, size, num_tasks, f,
+            spawn_hierarchical(results, l, 0, size, num_tasks, f,
                 hpx::util::begin(shape), ts...);
 
             l.arrive_and_wait();
@@ -119,12 +116,10 @@ namespace hpx::resiliency::experimental {
 
             for (std::size_t i = 0; i != size; (void) ++i, ++it)
             {
-                results[base + i] =
-                    tag_invoke(hpx::parallel::execution::async_execute_t{},
-                        *this, func, *it, ts...);
+                results[base + i] = async_execute(func, *it, ts...);
             }
 
-            l.count_down(size);
+            l.count_down(static_cast<std::ptrdiff_t>(size));
         }
 
         template <typename Result, typename F, typename Iter, typename... Ts>
@@ -136,7 +131,7 @@ namespace hpx::resiliency::experimental {
             {
                 // spawn hierarchical tasks
                 std::size_t chunk_size = (size + num_spread) / num_spread - 1;
-                chunk_size = (std::max)(chunk_size, num_tasks);
+                chunk_size = (std::max) (chunk_size, num_tasks);
 
                 while (size > chunk_size)
                 {
@@ -175,6 +170,22 @@ namespace hpx::resiliency::experimental {
             return validator_;
         }
 
+        // support scheduling properties via query() for new CPO dispatch
+        template <typename Tag, typename... Args>
+            requires(
+                hpx::execution::experimental::is_scheduling_property_v<Tag>)
+        auto query(Tag tag, Args&&... args) const
+            -> decltype(replicate_executor<BaseExecutor, Vote, Validate>(
+                std::declval<Tag>()(
+                    std::declval<BaseExecutor>(), HPX_FORWARD(Args, args)...),
+                std::declval<std::size_t>(), std::declval<Vote>(),
+                std::declval<Validate>()))
+        {
+            return replicate_executor<BaseExecutor, Vote, Validate>(
+                tag(exec_, HPX_FORWARD(Args, args)...), replicate_count_,
+                voter_, validator_);
+        }
+
     private:
         BaseExecutor exec_;
         std::size_t replicate_count_;
@@ -183,44 +194,8 @@ namespace hpx::resiliency::experimental {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    // support all properties exposed by the wrapped executor
-    // clang-format off
-    template <typename Tag, typename BaseExecutor,
-        typename Vote, typename Validate, typename Property,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::execution::experimental::is_scheduling_property_v<Tag>
-        )>
-    // clang-format on
-    auto tag_invoke(Tag tag,
-        replicate_executor<BaseExecutor, Vote, Validate> const& exec,
-        Property&& prop)
-        -> decltype(replicate_executor<BaseExecutor, Vote, Validate>(
-            std::declval<Tag>()(
-                std::declval<BaseExecutor>(), std::declval<Property>()),
-            std::declval<std::size_t>(), std::declval<Vote>(),
-            std::declval<Validate>()))
-    {
-        return replicate_executor<BaseExecutor, Vote, Validate>(
-            tag(exec.get_executor(), HPX_FORWARD(Property, prop)),
-            exec.get_replicate_count(), exec.get_voter(), exec.get_validator());
-    }
-
-    // clang-format off
-    template <typename Tag, typename BaseExecutor,
-        typename Vote, typename Validate,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::execution::experimental::is_scheduling_property_v<Tag>
-        )>
-    // clang-format on
-    auto tag_invoke(
-        Tag tag, replicate_executor<BaseExecutor, Vote, Validate> const& exec)
-        -> decltype(std::declval<Tag>()(std::declval<BaseExecutor>()))
-    {
-        return tag(exec.get_executor());
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    template <typename BaseExecutor, typename Voter, typename Validate>
+    HPX_CXX_CORE_EXPORT template <executor_any BaseExecutor, typename Voter,
+        typename Validate>
     replicate_executor<BaseExecutor, std::decay_t<Voter>,
         std::decay_t<Validate>>
     make_replicate_executor(
@@ -231,7 +206,7 @@ namespace hpx::resiliency::experimental {
             HPX_FORWARD(Validate, validate));
     }
 
-    template <typename BaseExecutor, typename Validate>
+    HPX_CXX_CORE_EXPORT template <executor_any BaseExecutor, typename Validate>
     replicate_executor<BaseExecutor, detail::replicate_voter,
         std::decay_t<Validate>>
     make_replicate_executor(
@@ -242,7 +217,7 @@ namespace hpx::resiliency::experimental {
             HPX_FORWARD(Validate, validate));
     }
 
-    template <typename BaseExecutor>
+    HPX_CXX_CORE_EXPORT template <executor_any BaseExecutor>
     replicate_executor<BaseExecutor, detail::replicate_voter,
         detail::replicate_validator>
     make_replicate_executor(BaseExecutor& exec, std::size_t n)
@@ -253,7 +228,7 @@ namespace hpx::resiliency::experimental {
     }
 }    // namespace hpx::resiliency::experimental
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     template <typename BaseExecutor, typename Voter, typename Validator>
     struct is_two_way_executor<hpx::resiliency::experimental::
@@ -266,4 +241,4 @@ namespace hpx::parallel::execution {
             replicate_executor<BaseExecutor, Voter, Validator>> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental

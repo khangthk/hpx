@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -10,9 +10,12 @@
 #if !defined(HPX_HAVE_STATIC_LINKING)
 #include <hpx/async_distributed/base_lco_with_value.hpp>
 #include <hpx/async_distributed/detail/post.hpp>
+#include <hpx/async_distributed/macros.hpp>
 #include <hpx/async_distributed/post.hpp>
 
 #include <cstdint>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 HPX_REGISTER_BASE_LCO_WITH_VALUE_ID(float, float,
     hpx::actions::base_lco_with_value_float_get,

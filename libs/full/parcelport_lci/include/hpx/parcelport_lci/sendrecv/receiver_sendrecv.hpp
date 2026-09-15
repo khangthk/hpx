@@ -14,9 +14,9 @@
 
 #include <hpx/parcelport_lci/config.hpp>
 #include <hpx/assert.hpp>
+#include <hpx/modules/parcelset.hpp>
 #include <hpx/parcelport_lci/parcelport_lci.hpp>
 #include <hpx/parcelport_lci/receiver_base.hpp>
-#include <hpx/parcelset/decode_parcels.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -42,20 +42,21 @@ namespace hpx::parcelset::policies::lci {
         {
             if (config_t::protocol == config_t::protocol_t::sendrecv)
             {
-                for (std::size_t i = 0; i < pp_->devices.size(); ++i)
-                {
-                    auto& device = pp->devices[i];
-                    for (int j = 0; j < config_t::prepost_recv_num; ++j)
-                    {
-                        LCI_comp_t completion =
-                            device.completion_manager_p->recv_new
-                                ->alloc_completion();
-                        LCI_recvmn(device.endpoint_new, LCI_RANK_ANY, 0,
-                            completion, reinterpret_cast<void*>(i));
-                        device.completion_manager_p->recv_new
-                            ->enqueue_completion(completion);
-                    }
-                }
+                HPX_ASSERT(false);
+                // for (std::size_t i = 0; i < pp_->devices.size(); ++i)
+                // {
+                //     auto& device = pp->devices[i];
+                //     for (int j = 0; j < config_t::prepost_recv_num; ++j)
+                //     {
+                //         ::lci::comp_t completion =
+                //             device.completion_manager_p->recv_new
+                //                 ->alloc_completion();
+                //         ::lci::post_recv(device.endpoint_new, LCI_RANK_ANY, 0,
+                //             completion, reinterpret_cast<void*>(i));
+                //         device.completion_manager_p->recv_new
+                //             ->enqueue_completion(completion);
+                //     }
+                // }
             }
         }
 

@@ -7,6 +7,7 @@
 #include <hpx/config.hpp>
 #include <hpx/asio/asio_util.hpp>
 #include <hpx/asio/map_hostnames.hpp>
+#include <hpx/asio/tcp_util.hpp>
 
 #include <cstdint>
 #include <iostream>
@@ -44,8 +45,8 @@ namespace hpx::util {
         }
 
         // do full host name resolution
-        asio::io_context io_service;
-        asio::ip::tcp::endpoint const ep = util::resolve_hostname(
+        ::asio::io_context io_service;
+        ::asio::ip::tcp::endpoint const ep = util::resolve_hostname(
             prefix_ + host_name + suffix_, port, io_service, ipv4_);
 
         std::string resolved_addr(util::get_endpoint_name(ep));

@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2011 Bryce Lelbach
 //  Copyright (c) 2011-2017 Thomas Heller
 //
@@ -9,27 +9,25 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions/transfer_action.hpp>
-#include <hpx/actions_base/component_action.hpp>
-#include <hpx/actions_base/traits/action_does_termination_detection.hpp>
-#include <hpx/agas/agas_fwd.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/transfer_continuation_action.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/components_base/server/create_component.hpp>
-#include <hpx/components_base/traits/is_component.hpp>
+#include <hpx/modules/actions.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/agas.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/logging.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset_base.hpp>
+#include <hpx/modules/performance_counters.hpp>
 #include <hpx/modules/plugin.hpp>
+#include <hpx/modules/plugin_factories.hpp>
 #include <hpx/modules/program_options.hpp>
-#include <hpx/parcelset_base/locality.hpp>
-#include <hpx/performance_counters/counters.hpp>
-#include <hpx/plugin_factories/plugin_factory_base.hpp>
-#include <hpx/runtime_components/components_fwd.hpp>
-#include <hpx/runtime_configuration/static_factory_data.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/runtime_configuration.hpp>
+#include <hpx/modules/synchronization.hpp>
+
 #include <hpx/runtime_distributed/find_here.hpp>
-#include <hpx/synchronization/latch.hpp>
-#include <hpx/synchronization/mutex.hpp>
-#include <hpx/synchronization/spinlock.hpp>
 
 #include <atomic>
 #include <condition_variable>
@@ -51,34 +49,32 @@
 namespace hpx::components::server {
 
     ///////////////////////////////////////////////////////////////////////////
-    class runtime_support
+    HPX_CXX_EXPORT class runtime_support
     {
     private:
-        typedef hpx::spinlock plugin_map_mutex_type;
+        using plugin_map_mutex_type = hpx::spinlock;
 
         struct plugin_factory
         {
             plugin_factory(
                 std::shared_ptr<plugins::plugin_factory_base> const& f,
-                hpx::util::plugin::dll const& d, bool enabled)
+                bool enabled)
               : first(f)
-              , second(d)
               , isenabled(enabled)
             {
             }
 
             std::shared_ptr<plugins::plugin_factory_base> first;
-            hpx::util::plugin::dll const& second;
             bool isenabled;
         };
-        typedef plugin_factory plugin_factory_type;
-        typedef std::map<std::string, plugin_factory_type> plugin_map_type;
+        using plugin_factory_type = plugin_factory;
+        using plugin_map_type = std::map<std::string, plugin_factory_type>;
 
-        typedef std::map<std::string, hpx::util::plugin::dll> modules_map_type;
-        typedef std::vector<static_factory_load_data_type> static_modules_type;
+        using modules_map_type = std::map<std::string, hpx::util::plugin::dll>;
+        using static_modules_type = std::vector<static_factory_load_data_type>;
 
     public:
-        typedef runtime_support type_holder;
+        using type_holder = runtime_support;
 
         static component_type get_component_type()
         {
@@ -99,10 +95,6 @@ namespace hpx::components::server {
 
         /// \brief finalize() will be called just before the instance gets
         ///        destructed
-        ///
-        /// \param self [in] The HPX \a thread used to execute this function.
-        /// \param appl [in] The applier to be used for finalization of the
-        ///             component instance.
         static constexpr void finalize() {}
 
         void delete_function_lists();
@@ -125,12 +117,13 @@ namespace hpx::components::server {
         template <typename Component, typename T, typename... Ts>
         naming::gid_type create_component(T v, Ts... vs);
 
-        template <typename Component>
-        std::vector<naming::gid_type> bulk_create_component(std::size_t count);
-
-        template <typename Component, typename T, typename... Ts>
+        template <typename Component, typename... Ts>
         std::vector<naming::gid_type> bulk_create_component(
-            std::size_t count, T v, Ts... vs);
+            std::size_t count, Ts... vs);
+
+        template <typename Component, typename... Ts>
+        std::vector<naming::gid_type> bulk_create_component_with_count(
+            std::size_t count, Ts... vs);
 
         template <typename Component>
         naming::gid_type copy_create_component(
@@ -141,7 +134,8 @@ namespace hpx::components::server {
             std::shared_ptr<Component> const& p, hpx::id_type);
 
         /// \brief Gracefully shutdown this runtime system instance
-        void shutdown(double timeout, hpx::id_type const& respond_to);
+        void shutdown(double timeout, hpx::id_type const& respond_to,
+            bool force_disconnect);
 
         /// \brief Gracefully shutdown runtime system instances on all localities
         void shutdown_all(double timeout);
@@ -189,7 +183,7 @@ namespace hpx::components::server {
 #endif
 
         ///////////////////////////////////////////////////////////////////////
-        // Each of the exposed functions needs to be encapsulated into a action
+        // Each of the exposed functions needs to be encapsulated into an action
         // type, allowing to generate all require boilerplate code for threads,
         // serialization, etc.
         HPX_DEFINE_COMPONENT_ACTION(runtime_support, load_components)
@@ -235,9 +229,19 @@ namespace hpx::components::server {
         ///
         /// \note      This function can be called from any thread.
         void stop(double timeout, hpx::id_type const& respond_to,
-            bool remove_from_remote_caches);
+            bool remove_from_remote_caches, bool force_disconnect);
 
-        /// called locally only
+        /// \brief Remove the given locality from this locality's runtime
+        ///        support component.
+        ///
+        /// \param locality  The locality to be removed.
+        /// \param ec        Used to hold error code value originating from
+        ///                  the AGAS operations invoked by this function.
+        ///
+        /// \note This function must be called locally only; it is not
+        ///       exposed as a component action.
+        bool remove_locality(
+            hpx::id_type const& locality, error_code& ec = hpx::throws);
         void stopped();
         void notify_waiting_main();
 
@@ -251,8 +255,24 @@ namespace hpx::components::server {
         void add_pre_shutdown_function(shutdown_function_type f);
         void add_shutdown_function(shutdown_function_type f);
 
-        void remove_here_from_connection_cache();
-        void remove_here_from_console_connection_cache();
+        /// \brief Broadcast a request to remove the given locality from the
+        ///        connection caches of all remote, non-console localities.
+        ///
+        /// \param locality      The locality to remove from the remote
+        ///                      connection caches.
+        /// \param skip_current  If true, omits the locality identified by
+        ///                      \a locality from this broadcast (that locality
+        ///                      will not receive a removal request for itself).
+        static void remove_locality_from_connection_cache(
+            hpx::naming::gid_type const& locality, bool skip_current = false);
+
+        /// \brief Remove the given locality from the console's connection
+        ///        cache.
+        ///
+        /// \param locality  The locality to remove from the console's
+        ///                  connection cache.
+        static void remove_locality_from_console_connection_cache(
+            hpx::naming::gid_type const& locality);
 
 #if defined(HPX_HAVE_NETWORKING)
         ///////////////////////////////////////////////////////////////////////
@@ -274,7 +294,7 @@ namespace hpx::components::server {
     protected:
         // Load all components from the ini files found in the configuration
         int load_components(util::section& ini, naming::gid_type const& prefix,
-            naming::resolver_client& agas_client,
+            agas::addressing_service& agas_client,
             hpx::program_options::options_description& options,
             std::set<std::string>& startup_handled);
 
@@ -282,13 +302,13 @@ namespace hpx::components::server {
         bool load_component(hpx::util::plugin::dll& d, util::section& ini,
             std::string const& instance, std::string const& component,
             filesystem::path const& lib, naming::gid_type const& prefix,
-            naming::resolver_client& agas_client, bool isdefault,
+            agas::addressing_service& agas_client, bool isdefault,
             bool isenabled, hpx::program_options::options_description& options,
             std::set<std::string>& startup_handled);
         bool load_component_dynamic(util::section& ini,
             std::string const& instance, std::string const& component,
             filesystem::path lib, naming::gid_type const& prefix,
-            naming::resolver_client& agas_client, bool isdefault,
+            agas::addressing_service& agas_client, bool isdefault,
             bool isenabled, hpx::program_options::options_description& options,
             std::set<std::string>& startup_handled);
 
@@ -301,7 +321,7 @@ namespace hpx::components::server {
         bool load_component_static(util::section& ini,
             std::string const& instance, std::string const& component,
             filesystem::path const& lib, naming::gid_type const& prefix,
-            naming::resolver_client& agas_client, bool isdefault,
+            agas::addressing_service& agas_client, bool isdefault,
             bool isenabled, hpx::program_options::options_description& options,
             std::set<std::string>& startup_handled);
         bool load_startup_shutdown_functions_static(
@@ -327,12 +347,17 @@ namespace hpx::components::server {
             std::set<std::string>& startup_handled);
 #endif
 
+        bool load_plugin_static(util::section& ini, std::string const& instance,
+            std::string const& plugin, bool isenabled,
+            hpx::program_options::options_description& options,
+            std::set<std::string>& startup_handled);
+
         // the name says it all
         std::size_t dijkstra_termination_detection(
             std::vector<hpx::id_type> const& locality_ids);
 
 #if defined(HPX_HAVE_NETWORKING)
-        void send_dijkstra_termination_token(std::uint32_t target_locality_id,
+        bool send_dijkstra_termination_token(std::uint32_t target_locality_id,
             std::uint32_t initiating_locality_id, std::uint32_t num_localities,
             bool dijkstra_token);
 #endif
@@ -348,7 +373,7 @@ namespace hpx::components::server {
         std::atomic<bool> shutdown_all_invoked_;
 
 #if defined(HPX_HAVE_NETWORKING)
-        typedef hpx::spinlock dijkstra_mtx_type;
+        using dijkstra_mtx_type = hpx::spinlock;
         dijkstra_mtx_type dijkstra_mtx_;
         std::unique_ptr<hpx::latch> dijkstra_cond_;
         std::atomic<bool> dijkstra_color_;    // false: white, true: black
@@ -390,7 +415,7 @@ namespace hpx::components::server {
         components::component_type const type =
             components::get_component_type<typename Component::wrapped_type>();
 
-        typedef typename Component::wrapping_type wrapping_type;
+        using wrapping_type = Component::wrapping_type;
         naming::gid_type id = create<wrapping_type>();
         LRT_(info).format("successfully created component {} of type: {}", id,
             components::get_component_type_name(type));
@@ -404,7 +429,7 @@ namespace hpx::components::server {
         components::component_type const type =
             components::get_component_type<typename Component::wrapped_type>();
 
-        typedef typename Component::wrapping_type wrapping_type;
+        using wrapping_type = Component::wrapping_type;
         // Note, T and Ts can't be (non-const) references, and parameters
         // should be moved to allow for move-only constructor argument
         // types.
@@ -418,9 +443,9 @@ namespace hpx::components::server {
     }
 #endif
 
-    template <typename Component>
+    template <typename Component, typename... Ts>
     std::vector<naming::gid_type> runtime_support::bulk_create_component(
-        std::size_t count)
+        std::size_t count, Ts... vs)
     {
         components::component_type const type =
             components::get_component_type<typename Component::wrapped_type>();
@@ -428,10 +453,10 @@ namespace hpx::components::server {
         std::vector<naming::gid_type> ids;
         ids.reserve(count);
 
-        typedef typename Component::wrapping_type wrapping_type;
+        using wrapping_type = Component::wrapping_type;
         for (std::size_t i = 0; i != count; ++i)
         {
-            ids.emplace_back(create<wrapping_type>());
+            ids.push_back(create<wrapping_type>(vs...));
         }
 
         LRT_(info).format("successfully created {} component(s) of type: {}",
@@ -440,26 +465,40 @@ namespace hpx::components::server {
         return ids;
     }
 
-    template <typename Component, typename T, typename... Ts>
-    std::vector<naming::gid_type> runtime_support::bulk_create_component(
-        std::size_t count, T v, Ts... vs)
-    {
-        components::component_type const type =
-            components::get_component_type<typename Component::wrapped_type>();
+    namespace detail {
 
-        std::vector<naming::gid_type> ids;
-        ids.reserve(count);
-
-        typedef typename Component::wrapping_type wrapping_type;
-        for (std::size_t i = 0; i != count; ++i)
+        template <typename Component, typename... Ts>
+        std::vector<naming::gid_type> bulk_create_component_with_count_helper(
+            std::size_t count, std::size_t first, Ts... vs)
         {
-            ids.push_back(create<wrapping_type>(v, vs...));
+            components::component_type const type =
+                components::get_component_type<
+                    typename Component::wrapped_type>();
+
+            std::vector<naming::gid_type> ids;
+            ids.reserve(count);
+
+            using wrapping_type = Component::wrapping_type;
+            for (std::size_t i = 0; i != count; ++i)
+            {
+                ids.push_back(create<wrapping_type>(first + i, vs...));
+            }
+
+            LRT_(info).format(
+                "successfully created {} component(s) of type: {}", count,
+                components::get_component_type_name(type));
+
+            return ids;
         }
+    }    // namespace detail
 
-        LRT_(info).format("successfully created {} component(s) of type: {}",
-            count, components::get_component_type_name(type));
-
-        return ids;
+    template <typename Component, typename... Ts>
+    std::vector<naming::gid_type>
+    runtime_support::bulk_create_component_with_count(
+        std::size_t count, Ts... vs)
+    {
+        return detail::bulk_create_component_with_count_helper<Component>(
+            count, HPX_MOVE(vs)...);
     }
 
     template <typename Component>
@@ -469,7 +508,7 @@ namespace hpx::components::server {
         components::component_type const type =
             components::get_component_type<typename Component::wrapped_type>();
 
-        typedef typename Component::wrapping_type wrapping_type;
+        using wrapping_type = Component::wrapping_type;
         naming::gid_type id;
 
         if (!local_op)
@@ -499,7 +538,7 @@ namespace hpx::components::server {
         // AGAS
         naming::gid_type migrated_id = to_migrate.get_gid();
 
-        typedef typename Component::wrapping_type wrapping_type;
+        using wrapping_type = Component::wrapping_type;
         typename wrapping_type::derived_type* new_instance = nullptr;
 
         naming::gid_type id = create_migrated<wrapping_type>(
@@ -600,7 +639,7 @@ HPX_REGISTER_ACTION_DECLARATION(
 
 namespace hpx::components::server {
 
-    template <typename Component, typename... Ts>
+    HPX_CXX_EXPORT template <typename Component, typename... Ts>
     struct create_component_action
       : ::hpx::actions::action<naming::gid_type (runtime_support::*)(Ts...),
             &runtime_support::create_component<Component, Ts...>,
@@ -616,7 +655,7 @@ namespace hpx::components::server {
     {
     };
 
-    template <typename Component, typename... Ts>
+    HPX_CXX_EXPORT template <typename Component, typename... Ts>
     struct create_component_direct_action
       : ::hpx::actions::direct_action<naming::gid_type (runtime_support::*)(
                                           Ts...),
@@ -634,45 +673,48 @@ namespace hpx::components::server {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Component, typename... Ts>
+    HPX_CXX_EXPORT template <bool WithCount, typename Component, typename... Ts>
     struct bulk_create_component_action
       : ::hpx::actions::action<std::vector<naming::gid_type> (
                                    runtime_support::*)(std::size_t, Ts...),
             &runtime_support::bulk_create_component<Component, Ts...>,
-            bulk_create_component_action<Component, Ts...>>
-    {
-    };
-
-    template <typename Component>
-    struct bulk_create_component_action<Component>
-      : ::hpx::actions::action<std::vector<naming::gid_type> (
-                                   runtime_support::*)(std::size_t),
-            &runtime_support::bulk_create_component<Component>,
-            bulk_create_component_action<Component>>
+            bulk_create_component_action<WithCount, Component, Ts...>>
     {
     };
 
     template <typename Component, typename... Ts>
+    struct bulk_create_component_action<true, Component, Ts...>
+      : ::hpx::actions::action<std::vector<naming::gid_type> (
+                                   runtime_support::*)(std::size_t, Ts...),
+            &runtime_support::bulk_create_component_with_count<Component,
+                Ts...>,
+            bulk_create_component_action<true, Component, Ts...>>
+    {
+    };
+
+    HPX_CXX_EXPORT template <bool WithCount, typename Component, typename... Ts>
     struct bulk_create_component_direct_action
       : ::hpx::actions::direct_action<std::vector<naming::gid_type> (
                                           runtime_support::*)(
                                           std::size_t, Ts...),
             &runtime_support::bulk_create_component<Component, Ts...>,
-            bulk_create_component_direct_action<Component, Ts...>>
+            bulk_create_component_direct_action<WithCount, Component, Ts...>>
     {
     };
 
-    template <typename Component>
-    struct bulk_create_component_direct_action<Component>
+    template <typename Component, typename... Ts>
+    struct bulk_create_component_direct_action<true, Component, Ts...>
       : ::hpx::actions::direct_action<std::vector<naming::gid_type> (
-                                          runtime_support::*)(std::size_t),
-            &runtime_support::bulk_create_component<Component>,
-            bulk_create_component_direct_action<Component>>
+                                          runtime_support::*)(
+                                          std::size_t, Ts...),
+            &runtime_support::bulk_create_component_with_count<Component,
+                Ts...>,
+            bulk_create_component_direct_action<true, Component, Ts...>>
     {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Component>
+    HPX_CXX_EXPORT template <typename Component>
     struct copy_create_component_action
       : ::hpx::actions::action<naming::gid_type (runtime_support::*)(
                                    std::shared_ptr<Component> const&, bool),
@@ -680,7 +722,8 @@ namespace hpx::components::server {
             copy_create_component_action<Component>>
     {
     };
-    template <typename Component>
+
+    HPX_CXX_EXPORT template <typename Component>
     struct migrate_component_here_action
       : ::hpx::actions::action<naming::gid_type (runtime_support::*)(
                                    std::shared_ptr<Component> const&,
@@ -693,21 +736,24 @@ namespace hpx::components::server {
 
 ///////////////////////////////////////////////////////////////////////////
 // Termination detection does not make this locality black
+namespace hpx::traits {
+
 #if !defined(HPX_COMPUTE_DEVICE_CODE) && defined(HPX_HAVE_NETWORKING)
-template <>
-struct hpx::traits::action_does_termination_detection<
-    hpx::components::server::runtime_support::dijkstra_termination_action>
-{
-    static constexpr bool call() noexcept
+    template <>
+    struct action_does_termination_detection<
+        hpx::components::server::runtime_support::dijkstra_termination_action>
     {
-        return true;
-    }
-};
+        static constexpr bool call() noexcept
+        {
+            return true;
+        }
+    };
 #endif
 
-// runtime_support is a (hand-rolled) component
-template <>
-struct hpx::traits::is_component<hpx::components::server::runtime_support>
-  : std::true_type
-{
-};
+    // runtime_support is a (hand-rolled) component
+    template <>
+    struct is_component<hpx::components::server::runtime_support>
+      : std::true_type
+    {
+    };
+}    // namespace hpx::traits

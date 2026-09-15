@@ -1,4 +1,5 @@
-//  Copyright (c) 2020-2022 Hartmut Kaiser
+//  Copyright (c) 2020-2024 Hartmut Kaiser
+//  Copyright (c) 2026 Sai Charan Arvapally
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -32,9 +33,9 @@ namespace executor_example {
         using executor_parameters_type =
             typename BaseExecutor::executor_parameters_type;
 
-        template <typename Executor,
-            typename Enable = std::enable_if_t<!std::is_same_v<
-                std::decay_t<Executor>, disable_thread_stealing_executor>>>
+        template <typename Executor>
+            requires(!std::is_same_v<std::decay_t<Executor>,
+                disable_thread_stealing_executor>)
         explicit disable_thread_stealing_executor(Executor&& exec)
           : BaseExecutor(std::forward<Executor>(exec))
         {
@@ -48,55 +49,37 @@ namespace executor_example {
         // Add two executor API functions that will be called before the
         // parallel algorithm starts executing and after it has finished
         // executing.
-        //
-        // Note that this method can cause problems if two parallel algorithms
-        // are executed concurrently.
-        template <typename Parameters>
-        static void mark_begin_execution(Parameters&&)
+        template <typename Executor>
+        void mark_begin_execution(Executor&&) const
         {
+            auto const pu_mask =
+                hpx::execution::experimental::get_processing_units_mask(*this);
             hpx::threads::remove_scheduler_mode(
-                hpx::threads::policies::scheduler_mode::enable_stealing);
+                hpx::threads::policies::scheduler_mode::enable_stealing,
+                pu_mask);
         }
 
-        template <typename Parameters>
-        static void mark_end_execution(Parameters&&)
+        template <typename Executor>
+        void mark_end_execution(Executor&&) const
         {
+            auto const pu_mask =
+                hpx::execution::experimental::get_processing_units_mask(*this);
             hpx::threads::add_scheduler_mode(
-                hpx::threads::policies::scheduler_mode::enable_stealing);
+                hpx::threads::policies::scheduler_mode::enable_stealing,
+                pu_mask);
+        }
+
+        // support scheduling properties via query() for new CPO dispatch
+        template <typename Tag, typename... Args>
+            requires(
+                hpx::execution::experimental::is_scheduling_property_v<Tag>)
+        auto query(Tag tag, Args&&... args) const -> decltype(tag(
+            std::declval<BaseExecutor const&>(), HPX_FORWARD(Args, args)...))
+        {
+            return tag(static_cast<BaseExecutor const&>(*this),
+                HPX_FORWARD(Args, args)...);
         }
     };
-
-    // support all properties exposed by the wrapped executor
-    // clang-format off
-    template <typename Tag, typename BaseExecutor,typename Property,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::execution::experimental::is_scheduling_property_v<Tag>
-        )>
-    auto tag_invoke(Tag tag,
-        disable_thread_stealing_executor<BaseExecutor> const& exec,
-        Property&& prop)
-        -> decltype(disable_thread_stealing_executor<BaseExecutor>(
-            std::declval<Tag>()(
-                std::declval<BaseExecutor>(), std::declval<Property>())))
-    // clang-format on
-    {
-        return disable_thread_stealing_executor<BaseExecutor>(
-            tag(static_cast<BaseExecutor const&>(exec),
-                HPX_FORWARD(Property, prop)));
-    }
-
-    // clang-format off
-    template <typename Tag, typename BaseExecutor,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::execution::experimental::is_scheduling_property_v<Tag>
-        )>
-    // clang-format on
-    auto tag_invoke(
-        Tag tag, disable_thread_stealing_executor<BaseExecutor> const& exec)
-        -> decltype(std::declval<Tag>()(std::declval<BaseExecutor>()))
-    {
-        return tag(static_cast<BaseExecutor const&>(exec));
-    }
 
     template <typename BaseExecutor>
     auto make_disable_thread_stealing_executor(BaseExecutor&& exec)
@@ -108,7 +91,7 @@ namespace executor_example {
 
 ///////////////////////////////////////////////////////////////////////////////
 // simple forwarding implementations of executor traits
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     template <typename BaseExecutor>
     struct is_one_way_executor<
@@ -144,7 +127,7 @@ namespace hpx::parallel::execution {
       : is_bulk_two_way_executor<std::decay_t<BaseExecutor>>
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 int hpx_main()
 {
@@ -153,10 +136,18 @@ int hpx_main()
 
     // The following for_loop will be executed while thread stealing is disabled
     auto exec = executor_example::make_disable_thread_stealing_executor(
-        hpx::execution::par.executor());
+        hpx::execution::to_hierarchical_spawning(
+            hpx::execution::par.executor()));
 
-    hpx::experimental::for_loop(
-        hpx::execution::par.on(exec), 0, v.size(), [](std::size_t) {});
+    // This may lead to deadlock situations if the main thread executes some of
+    // the chunks synchronously.
+    auto hint = hpx::execution::experimental::get_hint(exec);
+    hint.sharing_mode(hpx::threads::thread_sharing_hint::do_not_share_function |
+        hpx::threads::thread_sharing_hint::do_not_combine_tasks);
+    auto no_sharing_exec = hpx::execution::experimental::with_hint(exec, hint);
+
+    hpx::experimental::for_loop(hpx::execution::par.on(no_sharing_exec), 0,
+        v.size(), [](std::size_t) {});
 
     return hpx::local::finalize();
 }

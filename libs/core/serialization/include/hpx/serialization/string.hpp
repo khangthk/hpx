@@ -1,4 +1,5 @@
 //  Copyright (c) 2014 Thomas Heller
+//  Copyright (c) 2022-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,6 +8,7 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/serialization/basic_archive.hpp>
 #include <hpx/serialization/serialization_fwd.hpp>
 
 #include <cstdint>
@@ -15,7 +17,8 @@
 namespace hpx::serialization {
 
     // load string
-    template <typename Char, typename CharTraits, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename Char, typename CharTraits,
+        typename Allocator>
     void serialize(input_archive& ar,
         std::basic_string<Char, CharTraits, Allocator>& s, unsigned)
     {
@@ -26,16 +29,19 @@ namespace hpx::serialization {
         if (s.size() < size)
             s.resize(size);
 
-        load_binary(ar, &s[0], size * sizeof(Char));
+        load_binary(ar, detail::array_of_fundamental_type_v<Char>, &s[0],
+            size * sizeof(Char));
     }
 
     // save string
-    template <typename Char, typename CharTraits, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename Char, typename CharTraits,
+        typename Allocator>
     void serialize(output_archive& ar,
         std::basic_string<Char, CharTraits, Allocator> const& s, unsigned)
     {
         std::uint64_t const size = s.size();
         ar << size;
-        save_binary(ar, s.data(), s.size() * sizeof(Char));
+        save_binary(ar, detail::array_of_fundamental_type_v<Char>, s.data(),
+            s.size() * sizeof(Char));
     }
 }    // namespace hpx::serialization

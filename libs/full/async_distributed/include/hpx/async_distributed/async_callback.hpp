@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,18 +7,13 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/traits/extract_action.hpp>
-#include <hpx/actions_base/traits/is_client.hpp>
-#include <hpx/actions_base/traits/is_distribution_policy.hpp>
-#include <hpx/actions_base/traits/is_valid_action.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/async_base/traits/is_launch_policy.hpp>
 #include <hpx/async_distributed/async_callback_fwd.hpp>
 #include <hpx/async_distributed/detail/async_implementations_fwd.hpp>
-#include <hpx/components/client_base.hpp>
-#include <hpx/functional/traits/is_action.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/promise_local_result.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/components.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
 
 #include <type_traits>
 #include <utility>
@@ -91,7 +86,7 @@ namespace hpx::detail {
         call(hpx::id_type const& id, Callback&& cb, Ts&&... ts)
         {
             return async_cb_action_dispatch<Action,
-                hpx::detail::async_policy>::call(launch::async, id,
+                hpx::launch::async_policy>::call(launch::async, id,
                 HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, ts)...);
         }
     };
@@ -116,7 +111,7 @@ namespace hpx::detail {
                 "The action to invoke is not supported by the target");
 
             return async_cb_action_dispatch<Action,
-                hpx::detail::async_policy>::call(launch::async, c.get_id(),
+                hpx::launch::async_policy>::call(launch::async, c.get_id(),
                 HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, ts)...);
         }
     };
@@ -133,7 +128,7 @@ namespace hpx::detail {
         call(DistPolicy const& policy, Callback&& cb, Ts&&... ts)
         {
             return async_cb_action_dispatch<Action,
-                hpx::detail::async_policy>::call(launch::async, policy,
+                hpx::launch::async_policy>::call(launch::async, policy,
                 HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, ts)...);
         }
     };
@@ -142,7 +137,7 @@ namespace hpx::detail {
 namespace hpx {
 
     // clang-format off
-    template <typename Action, typename F, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename F, typename... Ts>
     HPX_FORCEINLINE auto async_cb(F&& f, Ts&&... ts) -> decltype(
         detail::async_cb_action_dispatch<Action, std::decay_t<F>>::call(
             HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...))
@@ -264,7 +259,7 @@ namespace hpx {
 
     // different versions of clang-format disagree
     // clang-format off
-    template <typename F, typename... Ts>
+    HPX_CXX_EXPORT template <typename F, typename... Ts>
     HPX_FORCEINLINE auto async_cb(F&& f, Ts&&... ts) -> decltype(
         detail::async_cb_dispatch< std::decay_t<F>>::call(
             HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...))
@@ -273,4 +268,57 @@ namespace hpx {
         return detail::async_cb_dispatch<std::decay_t<F>>::call(
             HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
     }
+#if defined(HPX_HAVE_CXX26_REFLECTION)
+    /// \brief Reflection-based async_cb overload.
+    ///
+    /// Allows calling hpx::async_cb<^^func>(target, callback, ...) directly
+    /// without defining an explicit action type. Internally constructs
+    /// reflect_action<F> and delegates to the existing async_cb machinery.
+    ///
+    /// \tparam F        A std::meta::info reflection of a free function.
+    /// \tparam Target   id_type, client, or distribution policy.
+    /// \tparam Callback Callback type invoked on completion.
+    /// \tparam Ts       Additional arguments to pass to the function.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Target,
+        typename Callback, typename... Ts>
+        requires(std::meta::is_namespace_member(F) && std::meta::is_function(F) &&
+            (std::is_same_v<std::decay_t<Target>, hpx::id_type> ||
+                hpx::traits::is_client_v<std::decay_t<Target>> ||
+                hpx::traits::is_distribution_policy_v<std::decay_t<Target>>))
+    HPX_FORCEINLINE auto async_cb(
+        Target&& target, Callback&& cb, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::async_cb(hpx::actions::reflect_action<F>{},
+            HPX_FORWARD(Target, target), HPX_FORWARD(Callback, cb),
+            HPX_FORWARD(Ts, ts)...);
+    }
+    /// \brief Reflection-based async_cb overload with launch policy.
+    ///
+    /// Allows calling hpx::async_cb<^^func>(policy, target, callback, ...)
+    /// without defining an explicit action type.
+    ///
+    /// \tparam F        A std::meta::info reflection of a free function.
+    /// \tparam Policy   Launch policy type.
+    /// \tparam Target   id_type, client, or distribution policy.
+    /// \tparam Callback Callback type invoked on completion.
+    /// \tparam Ts       Additional arguments to pass to the function.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Policy,
+        typename Target, typename Callback, typename... Ts>
+        requires(std::meta::is_namespace_member(F) && std::meta::is_function(F) &&
+            traits::is_launch_policy_v<Policy> &&
+            (std::is_same_v<std::decay_t<Target>, hpx::id_type> ||
+                hpx::traits::is_client_v<std::decay_t<Target>> ||
+                hpx::traits::is_distribution_policy_v<std::decay_t<Target>>))
+    HPX_FORCEINLINE auto async_cb(
+        Policy&& policy, Target&& target, Callback&& cb, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::async_cb(hpx::actions::reflect_action<F>{},
+            HPX_FORWARD(Policy, policy), HPX_FORWARD(Target, target),
+            HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, ts)...);
+    }
+#endif    // HPX_HAVE_CXX26_REFLECTION
 }    // namespace hpx

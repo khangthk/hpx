@@ -6,38 +6,29 @@
 
 #pragma once
 
+#include <hpx/config.hpp>
+
 #include <type_traits>
-
-// Macro to specialize template for given type
-#define HPX_DECLARE_TRIVIALLY_RELOCATABLE(T)                                   \
-    namespace hpx::experimental {                                              \
-        template <>                                                            \
-        struct is_trivially_relocatable<T> : std::true_type                    \
-        {                                                                      \
-        };                                                                     \
-    }
-
-#define HPX_DECLARE_TRIVIALLY_RELOCATABLE_TEMPLATE(T)                          \
-    namespace hpx::experimental {                                              \
-        template <typename... K>                                               \
-        struct is_trivially_relocatable<T<K...>> : std::true_type              \
-        {                                                                      \
-        };                                                                     \
-    }
-
-#define HPX_DECLARE_TRIVIALLY_RELOCATABLE_TEMPLATE_IF(T, Condition)            \
-    namespace hpx::experimental {                                              \
-        template <typename... K>                                               \
-        struct is_trivially_relocatable<T<K...>> : Condition<K...>             \
-        {                                                                      \
-        };                                                                     \
-    }
 
 namespace hpx::experimental {
 
-    template <typename T>
+// P2786R13 specifies a single feature-test macro __cpp_trivial_relocatability
+// that signals availability of both the language facilities and the library
+// trait std::is_trivially_relocatable, see
+
+// Note: while Clang V22.0.0 defines __cpp_trivial_relocatability pre C++26, it
+// does not have std::is_trivially_relocatable.
+
+// https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p2786r13.html#language-feature-test-macros
+#if __cplusplus >= 202611 && defined(__cpp_trivial_relocatability)
+    HPX_CXX_CORE_EXPORT template <typename T>
+    struct is_trivially_relocatable : std::is_trivially_relocatable<T>
+    {
+    };
+#else
     // All trivially copyable types are trivially relocatable
     // Other types should default to false.
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct is_trivially_relocatable : std::is_trivially_copyable<T>
     {
     };
@@ -96,8 +87,9 @@ namespace hpx::experimental {
       : is_trivially_relocatable<T>
     {
     };
+#endif
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr bool is_trivially_relocatable_v =
         is_trivially_relocatable<T>::value;
 }    // namespace hpx::experimental

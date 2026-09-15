@@ -13,8 +13,8 @@
 #if defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCI)
 
 #include <hpx/assert.hpp>
+#include <hpx/modules/parcelset.hpp>
 #include <hpx/parcelport_lci/header.hpp>
-#include <hpx/parcelset/decode_parcels.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -39,16 +39,16 @@ namespace hpx::parcelset::policies::lci {
         void* ptr;
         size_t length;
         buffer_wrapper() = default;
-        buffer_wrapper(const buffer_wrapper& wrapper) = default;
-        buffer_wrapper& operator=(const buffer_wrapper& wrapper) = default;
-        explicit buffer_wrapper(const allocator_type& alloc)
+        buffer_wrapper(buffer_wrapper const& wrapper) = default;
+        buffer_wrapper& operator=(buffer_wrapper const& wrapper) = default;
+        explicit buffer_wrapper(allocator_type const& alloc)
         {
             HPX_UNUSED(alloc);
             ptr = nullptr;
             length = 0;
         }
         buffer_wrapper(
-            const buffer_wrapper& wrapper, const allocator_type& alloc)
+            buffer_wrapper const& wrapper, allocator_type const& alloc)
         {
             HPX_UNUSED(alloc);
             ptr = wrapper.ptr;
@@ -77,47 +77,15 @@ namespace hpx::parcelset::policies::lci {
         void free()
         {
             HPX_ASSERT(ptr != nullptr);
-            delete[](char*) ptr;
-        }
-    };
-
-    struct request_wrapper_t
-    {
-        LCI_request_t request;
-        request_wrapper_t()
-        {
-            request.flag = LCI_ERR_RETRY;
-        }
-        ~request_wrapper_t()
-        {
-            if (request.flag == LCI_OK)
-            {
-                if (request.type == LCI_IOVEC)
-                {
-                    for (int j = 0; j < request.data.iovec.count; ++j)
-                    {
-                        LCI_lbuffer_free(request.data.iovec.lbuffers[j]);
-                    }
-                    free(request.data.iovec.lbuffers);
-                    free(request.data.iovec.piggy_back.address);
-                }
-                else
-                {
-                    HPX_ASSERT(request.type = LCI_MEDIUM);
-                    LCI_mbuffer_free(request.data.mbuffer);
-                }
-            }
-            else
-            {
-                HPX_ASSERT(request.flag == LCI_ERR_RETRY);
-            }
+            // clang-format off
+            delete[] (char*) ptr;
+            // clang-format on
         }
     };
 
     struct receiver_base
     {
-        using buffer_type =
-            parcel_buffer<buffer_wrapper, serialization::serialization_chunk>;
+        using buffer_type = parcel_buffer<buffer_wrapper>;
 
         explicit receiver_base(parcelport* pp) noexcept
           : pp_(pp)

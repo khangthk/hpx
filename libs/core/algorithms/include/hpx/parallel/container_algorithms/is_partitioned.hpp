@@ -244,7 +244,8 @@ namespace hpx { namespace ranges {
 #include <hpx/config.hpp>
 #include <hpx/algorithms/traits/projected.hpp>
 #include <hpx/algorithms/traits/projected_range.hpp>
-#include <hpx/executors/execution_policy.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/is_partitioned.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
@@ -252,30 +253,30 @@ namespace hpx { namespace ranges {
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
 namespace hpx::ranges {
 
-    inline constexpr struct is_partitioned_t final
-      : hpx::detail::tag_parallel_algorithm<is_partitioned_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct is_partitioned_t final
+      : hpx::detail::tag_dispatch<is_partitioned_t,
+            hpx::detail::tag_parallel_algorithm<is_partitioned_t>>
     {
-    private:
+        template <typename FwdIter, typename Sent, typename Pred,
+            typename Proj = hpx::identity>
         // clang-format off
-        template <typename FwdIter, typename Sent,
-            typename Pred,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_forward_iterator_v<FwdIter> &&
-                hpx::traits::is_sentinel_for_v<Sent, FwdIter> &&
+            requires(
+                std::forward_iterator<FwdIter> &&
+                std::sentinel_for<Sent, FwdIter> &&
                 hpx::parallel::traits::is_projected_v<Proj, FwdIter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected<Proj, FwdIter>
                 >
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(hpx::ranges::is_partitioned_t,
+        static bool invoke_default(
             FwdIter first, Sent last, Pred pred, Proj proj = Proj())
         {
             return hpx::parallel::detail::is_partitioned<FwdIter, Sent>().call(
@@ -283,72 +284,67 @@ namespace hpx::ranges {
                 HPX_MOVE(proj));
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter, typename Sent,
-            typename Pred,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
+            typename Pred, typename Proj = hpx::identity>
+        // clang-format off
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_forward_iterator_v<FwdIter> &&
+                std::forward_iterator<FwdIter> &&
                 hpx::parallel::traits::is_projected_v<Proj, FwdIter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected<Proj, FwdIter>
                 >
-            )>
+            )
         // clang-format on
-        friend typename parallel::util::detail::algorithm_result<ExPolicy,
+        static typename parallel::util::detail::algorithm_result<ExPolicy,
             bool>::type
-        tag_fallback_invoke(hpx::ranges::is_partitioned_t, ExPolicy&& policy,
-            FwdIter first, Sent last, Pred pred, Proj proj = Proj())
+        invoke_default(ExPolicy&& policy, FwdIter first, Sent last, Pred pred,
+            Proj proj = Proj())
         {
             return hpx::parallel::detail::is_partitioned<FwdIter, Sent>().call(
                 HPX_FORWARD(ExPolicy, policy), first, last, HPX_MOVE(pred),
                 HPX_MOVE(proj));
         }
 
+        template <typename Rng, typename Pred, typename Proj = hpx::identity>
         // clang-format off
-        template <typename Rng,
-            typename Pred,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_range_v<Rng> &&
+            requires(
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(hpx::ranges::is_partitioned_t,
-            Rng&& rng, Pred& pred, Proj proj = Proj())
+        static bool invoke_default(Rng&& rng, Pred pred, Proj proj = Proj())
         {
             using iterator_type =
                 typename hpx::traits::range_traits<Rng>::iterator_type;
 
             return hpx::parallel::detail::is_partitioned<iterator_type,
                 iterator_type>()
-                .call(hpx::execution::seq, std::begin(rng), std::end(rng),
-                    HPX_MOVE(pred), HPX_MOVE(proj));
+                .call(hpx::execution::seq, hpx::util::begin(rng),
+                    hpx::util::end(rng), HPX_MOVE(pred), HPX_MOVE(proj));
         }
 
+        template <typename ExPolicy, typename Rng, typename Pred,
+            typename Proj = hpx::identity>
         // clang-format off
-        template <typename ExPolicy, typename Rng,
-            typename Pred,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_range_v<Rng> &&
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend parallel::util::detail::algorithm_result_t<ExPolicy, bool>
-        tag_fallback_invoke(hpx::ranges::is_partitioned_t, ExPolicy&& policy,
-            Rng&& rng, Pred pred, Proj proj = Proj())
+        static parallel::util::detail::algorithm_result_t<ExPolicy, bool>
+        invoke_default(
+            ExPolicy&& policy, Rng&& rng, Pred pred, Proj proj = Proj())
         {
             using iterator_type =
                 typename hpx::traits::range_traits<Rng>::iterator_type;

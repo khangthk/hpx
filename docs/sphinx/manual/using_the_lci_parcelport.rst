@@ -120,3 +120,34 @@ when using the LCI parcelport to get better performance.
 
 This setting needs roughly 800MB memory per process. The memory consumption mainly
 comes from the packets, which can be calculated using `LCI_SERVER_NUM_PKTS x LCI_PACKET_SIZE`.
+
+In addition, users can tune the following command-line options
+when using the LCI parcelport to get better performance.
+
+.. option:: --hpx:ini=hpx.parcel.lci.ndevices=<int>
+
+   The number of LCI devices to use. The default value is 2.
+   An LCI device represents a collection of network resources.
+   More devices lead to lower thread contention, but too many devices
+   may lead to load imbalance or hardware overhead.
+
+.. option:: --hpx:ini=hpx.parcel.lci.progress_type=<worker|rp>
+
+   The way to progress the LCI device. The default value is ``worker``.
+   The ``worker`` option uses all worker threads to progress the LCI devices.
+   The ``rp`` option uses dedicated pinned threads to progress the LCI devices.
+   Normally, the ``worker`` option gives better performance, but the ``rp`` option
+   has been observed with better performance on some clusters with 
+   prior generation of InfiniBand hardware.
+
+Reference
+=========
+
+Yan, Jiakun, Hartmut Kaiser, and Marc Snir. *Understanding the Communication
+Needs of Asynchronous Many-Task Systems--A Case Study of HPX+ LCI.* arXiv
+preprint, 2025.
+
+Yan, Jiakun, and Marc Snir. *LCI: a Lightweight Communication Interface for
+Efficient Asynchronous Multithreaded Communication.* The International
+Conference for High Performance Computing, Networking, Storage, and Analysis
+(SC), 2025.

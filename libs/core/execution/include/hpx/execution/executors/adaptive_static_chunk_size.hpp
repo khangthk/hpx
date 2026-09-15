@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2022 Karame M.Shokooh
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -10,10 +10,11 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/execution/detail/future_exec.hpp>
 #include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/execution_base/traits/is_executor_parameters.hpp>
-#include <hpx/serialization/serialize.hpp>
-#include <hpx/timing/steady_clock.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/timing.hpp>
 
 #include <chrono>
 #include <cmath>
@@ -30,7 +31,7 @@ namespace hpx::execution::experimental {
     /// \note This executor parameters type is equivalent to OpenMP's STATIC
     ///       scheduling directive.
     ///
-    struct adaptive_static_chunk_size
+    HPX_CXX_CORE_EXPORT struct adaptive_static_chunk_size
     {
         /// Construct a \a adaptive_static_chunk_size executor parameters object
         ///
@@ -47,27 +48,26 @@ namespace hpx::execution::experimental {
         ///                     thread.
         ///
         constexpr explicit adaptive_static_chunk_size(
-            std::size_t chunk_size) noexcept
+            std::size_t const chunk_size) noexcept
           : chunk_size_(chunk_size)
         {
         }
 
         /// \cond NOINTERNAL
         template <typename Executor>
-        friend std::size_t tag_override_invoke(
-            hpx::parallel::execution::get_chunk_size_t,
-            adaptive_static_chunk_size const& this_, Executor& exec,
-            hpx::chrono::steady_duration const&, std::size_t cores,
-            std::size_t input_size)
+        std::size_t get_chunk_size(Executor&& exec,
+            hpx::chrono::steady_duration const&, std::size_t const cores,
+            std::size_t const input_size) const
         {
             // Make sure the internal round-robin counter of the executor is
             // reset
-            parallel::execution::reset_thread_distribution(this_, exec);
+            hpx::execution::experimental::reset_thread_distribution(
+                *this, exec);
 
             // use the given chunk size if given
-            if (this_.chunk_size_ != 0)
+            if (chunk_size_ != 0)
             {
-                return this_.chunk_size_;
+                return chunk_size_;
             }
 
             if (cores == 1)
@@ -102,7 +102,7 @@ namespace hpx::execution::experimental {
         friend class hpx::serialization::access;
 
         template <typename Archive>
-        void serialize(Archive& ar, const unsigned int /* version */)
+        void serialize(Archive& ar, unsigned int const /* version */)
         {
             // clang-format off
             ar & chunk_size_;
@@ -115,15 +115,16 @@ namespace hpx::execution::experimental {
         std::size_t chunk_size_ = 0;
         /// \endcond
     };
-}    // namespace hpx::execution::experimental
 
-/// \cond NOINTERNAL
-template <>
-struct hpx::parallel::execution::is_executor_parameters<
-    hpx::execution::experimental::adaptive_static_chunk_size> : std::true_type
-{
-};
-/// \endcond
+    /// \cond NOINTERNAL
+    template <>
+    struct is_executor_parameters<
+        hpx::execution::experimental::adaptive_static_chunk_size>
+      : std::true_type
+    {
+    };
+    /// \endcond
+}    // namespace hpx::execution::experimental
 
 namespace hpx::execution {
 
@@ -131,4 +132,4 @@ namespace hpx::execution {
         "hpx::execution::adaptive_static_chunk_size is deprecated, use "
         "hpx::execution::experimental::adaptive_static_chunk_size instead") =
         hpx::execution::experimental::adaptive_static_chunk_size;
-}
+}    // namespace hpx::execution

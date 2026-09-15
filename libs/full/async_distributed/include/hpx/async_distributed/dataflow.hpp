@@ -1,11 +1,11 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 /// \file dataflow.hpp
-/// \page hpx::dataflow (distributed)
+/// \page hpx::dataflow_distributed hpx::dataflow (distributed)
 /// \headerfile hpx/async.hpp
 
 #pragma once
@@ -42,22 +42,20 @@ namespace hpx {
 #else
 
 #include <hpx/config.hpp>
-#include <hpx/async_local/dataflow.hpp>
-#include <hpx/coroutines/detail/get_stack_pointer.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/invoke_fused.hpp>
-#include <hpx/functional/traits/is_action.hpp>
 #include <hpx/modules/actions_base.hpp>
 #include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/async_local.hpp>
 #include <hpx/modules/concepts.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
 #include <hpx/modules/memory.hpp>
 #include <hpx/modules/naming.hpp>
+#include <hpx/modules/pack_traversal.hpp>
 #include <hpx/modules/threading_base.hpp>
-#include <hpx/pack_traversal/pack_traversal_async.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -69,7 +67,7 @@ namespace hpx {
 #include <utility>
 
 ///////////////////////////////////////////////////////////////////////////////
-namespace hpx { namespace lcos { namespace detail {
+namespace hpx::lcos::detail {
 
     template <typename Policy, typename Action, typename Args>
     struct dataflow_return_impl</*IsAction=*/true, Policy, Action, Args>
@@ -108,21 +106,18 @@ namespace hpx { namespace lcos { namespace detail {
                 act,
             hpx::id_type const& id, Ts&&... ts)
         {
+            // Enable inline execution by default (uses launch::async).
             return dataflow_dispatch_impl<true, launch>::call(
                 alloc, launch::async, act, id, HPX_FORWARD(Ts, ts)...);
         }
     };
-}}}    // namespace hpx::lcos::detail
+}    // namespace hpx::lcos::detail
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx {
 
-    // clang-format off
-    template <typename Action, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(
-            traits::is_action_v<Action> &&
-           !traits::is_launch_policy_v<F>
-        )>
+    template <typename Action, typename F, typename... Ts>
+        requires(traits::is_action_v<Action> && !traits::is_launch_policy_v<F>)
     HPX_DEPRECATED_V(1, 9,
         "hpx::dataflow<Action>(...) is deprecated, use hpx::dataflow(Action{}, "
         "...) instead")
@@ -134,12 +129,8 @@ namespace hpx {
             HPX_FORWARD(Ts, ts)...);
     }
 
-    // clang-format off
-    template <typename Action, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(
-            traits::is_action_v<Action> &&
-            traits::is_launch_policy_v<F>
-        )>
+    template <typename Action, typename F, typename... Ts>
+        requires(traits::is_action_v<Action> && traits::is_launch_policy_v<F>)
     HPX_DEPRECATED_V(1, 9,
         "hpx::dataflow<Action>(policy, ...) is deprecated, use "
         "hpx::dataflow(policy, Action{}, ...) instead")
@@ -150,5 +141,60 @@ namespace hpx {
             HPX_FORWARD(F, f), Action{}, HPX_FORWARD(Ts, ts)...);
     }
 }    // namespace hpx
+
+#if defined(HPX_HAVE_CXX26_REFLECTION)
+
+namespace hpx {
+
+    /// \brief Reflection-based dataflow overload.
+    ///
+    /// Allows calling hpx::dataflow<^^func>(target, ts...) directly
+    /// without defining an explicit action type.
+    ///
+    /// \tparam F      A std::meta::info reflection of a free function.
+    /// \tparam Ts     Additional arguments forwarded to the action.
+    /// \param ts      Target and additional arguments forwarded to the action.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Target,
+        typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F) &&
+            (std::is_same_v<std::decay_t<Target>, hpx::id_type> ||
+                hpx::traits::is_client_v<std::decay_t<Target>> ||
+                hpx::traits::is_distribution_policy_v<std::decay_t<Target>>))
+    // clang-format on
+    decltype(auto) dataflow(Target&& target, Ts&&... ts)
+    {
+        return hpx::dataflow(hpx::actions::reflect_action<F>{},
+            HPX_FORWARD(Target, target), HPX_FORWARD(Ts, ts)...);
+    }
+    /// \brief Reflection-based dataflow overload with launch policy.
+    ///
+    /// \tparam F       A std::meta::info reflection of a free function.
+    /// \tparam Policy  Launch policy type.
+    /// \tparam Target  id_type, client, or distribution policy.
+    /// \tparam Ts      Additional arguments forwarded to the action.
+    /// \param policy   The launch policy.
+    /// \param target   The target where the action should be executed.
+    /// \param ts       Additional arguments forwarded to the action.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Policy,
+        typename Target, typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F) &&
+            traits::is_launch_policy_v<Policy> &&
+            (std::is_same_v<std::decay_t<Target>, hpx::id_type> ||
+                hpx::traits::is_client_v<std::decay_t<Target>> ||
+                hpx::traits::is_distribution_policy_v<std::decay_t<Target>>))
+    // clang-format on
+    decltype(auto) dataflow(Policy&& policy, Target&& target, Ts&&... ts)
+    {
+        return hpx::dataflow(HPX_FORWARD(Policy, policy),
+            hpx::actions::reflect_action<F>{}, HPX_FORWARD(Target, target),
+            HPX_FORWARD(Ts, ts)...);
+    }
+
+}    // namespace hpx
+#endif    // HPX_HAVE_CXX26_REFLECTION
 
 #endif

@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,25 +7,22 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/datastructures/detail/small_vector.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/functional/function.hpp>
 #include <hpx/futures/future_fwd.hpp>
 #include <hpx/futures/traits/future_access.hpp>
 #include <hpx/futures/traits/get_remote_result.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/lock_registration.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/synchronization/condition_variable.hpp>
-#include <hpx/synchronization/spinlock.hpp>
-#include <hpx/thread_support/atomic_count.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/type_support/assert_owns_lock.hpp>
-#include <hpx/type_support/construct_at.hpp>
-#include <hpx/type_support/unused.hpp>
+#include <hpx/modules/synchronization.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -41,48 +38,36 @@
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx {
 
-    enum class future_status
-    {
+    HPX_CXX_CORE_EXPORT enum class future_status {
         ready,
         timeout,
         deferred,
         uninitialized
     };
-
-    namespace lcos {
-
-        enum class HPX_DEPRECATED_V(1, 8,
-            "hpx::lcos::future_status is deprecated. Use "
-            "hpx::future_status instead.") future_status
-        {
-            ready = static_cast<int>(hpx::future_status::ready),
-            timeout = static_cast<int>(hpx::future_status::timeout),
-            deferred = static_cast<int>(hpx::future_status::deferred),
-            uninitialized = static_cast<int>(hpx::future_status::uninitialized)
-        };
-    }    // namespace lcos
 }    // namespace hpx
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx::lcos::detail {
 
-    using run_on_completed_error_handler_type =
+    HPX_CXX_CORE_EXPORT using run_on_completed_error_handler_type =
         hpx::function<void(std::exception_ptr const& e)>;
-    HPX_CORE_EXPORT void set_run_on_completed_error_handler(
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void set_run_on_completed_error_handler(
         run_on_completed_error_handler_type f);
 
     ///////////////////////////////////////////////////////////////////////
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct future_data;
 
     ///////////////////////////////////////////////////////////////////////
-    struct future_data_refcnt_base;
+    HPX_CXX_CORE_EXPORT struct future_data_refcnt_base;
 
-    void intrusive_ptr_add_ref(future_data_refcnt_base* p) noexcept;
-    void intrusive_ptr_release(future_data_refcnt_base* p) noexcept;
+    HPX_CXX_CORE_EXPORT void intrusive_ptr_add_ref(
+        future_data_refcnt_base* p) noexcept;
+    HPX_CXX_CORE_EXPORT void intrusive_ptr_release(
+        future_data_refcnt_base* p) noexcept;
 
     ///////////////////////////////////////////////////////////////////////
-    struct HPX_CORE_EXPORT future_data_refcnt_base
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT future_data_refcnt_base
     {
         // future shared states are non-copyable and non-movable
         future_data_refcnt_base(future_data_refcnt_base const&) = delete;
@@ -103,7 +88,7 @@ namespace hpx::lcos::detail {
 
         HPX_FORCEINLINE bool requires_delete() noexcept
         {
-            return 0 == --count_;
+            return 0 == count_.decrement();
         }
 
         virtual void destroy() noexcept
@@ -135,14 +120,21 @@ namespace hpx::lcos::detail {
     };
 
     // support functions for hpx::intrusive_ptr
-    inline void intrusive_ptr_add_ref(future_data_refcnt_base* p) noexcept
+    HPX_CXX_CORE_EXPORT inline void intrusive_ptr_add_ref(
+        future_data_refcnt_base* p) noexcept
     {
-        ++p->count_;
+        p->count_.increment();
     }
-    inline void intrusive_ptr_release(future_data_refcnt_base* p) noexcept
+    HPX_CXX_CORE_EXPORT inline void intrusive_ptr_release(
+        future_data_refcnt_base* p) noexcept
     {
         if (p->requires_delete())
         {
+            // The thread that decrements the reference count to zero must
+            // perform an acquire to ensure that it doesn't start destructing
+            // the object until all previous writes have drained.
+            std::atomic_thread_fence(std::memory_order_acquire);
+
             p->destroy();
         }
     }
@@ -189,7 +181,7 @@ namespace hpx::lcos::detail {
     };
 
     template <typename Result>
-    using future_data_result_t = typename future_data_result<Result>::type;
+    using future_data_result_t = future_data_result<Result>::type;
 
     ///////////////////////////////////////////////////////////////////////////
     template <typename R>
@@ -210,14 +202,14 @@ namespace hpx::lcos::detail {
             (sizeof(value_type) > sizeof(error_type)) ? sizeof(value_type) :
                                                         sizeof(error_type);
 
-        using type = std::aligned_storage_t<max_size, max_alignment>;
+        using type = hpx::aligned_storage_t<max_size, max_alignment>;
     };
 
     template <typename Result>
     using future_data_storage_t = typename future_data_storage<Result>::type;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct future_data_base;
 
     // make sure continuation invocation does not recurse deeper than allowed
@@ -233,13 +225,15 @@ namespace hpx::lcos::detail {
         using mutex_type = hpx::spinlock;
 
         future_data_base() noexcept
-          : state_(empty)
+          : mtx_("future_data_base")
+          , state_(empty)
           , runs_child_(threads::invalid_thread_id)
         {
         }
 
         explicit future_data_base(init_no_addref no_addref) noexcept
           : future_data_refcnt_base(no_addref)
+          , mtx_("future_data_base")
           , state_(empty)
           , runs_child_(threads::invalid_thread_id)
         {
@@ -342,7 +336,7 @@ namespace hpx::lcos::detail {
         threads::thread_id_ref_type runs_child_;
     };
 
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct future_data_base : future_data_base<traits::detail::future_data_void>
     {
     private:
@@ -394,6 +388,7 @@ namespace hpx::lcos::detail {
           : base_type(no_addref)
         {
             auto* value_ptr = reinterpret_cast<result_type*>(&storage_);
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
             construct(value_ptr, HPX_FORWARD(Ts, ts)...);
             state_.store(value, std::memory_order_relaxed);
         }
@@ -463,12 +458,13 @@ namespace hpx::lcos::detail {
 
             // set the data
             auto* value_ptr = reinterpret_cast<result_type*>(&storage_);
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
             construct(value_ptr, HPX_FORWARD(Ts, ts)...);
 
             // At this point the lock needs to be acquired to safely access the
             // registered continuations
             std::unique_lock<mutex_type> l(mtx_);
-            [[maybe_unused]] util::ignore_while_checking il(&l);
+            [[maybe_unused]] util::ignore_while_checking<decltype(l)> il(&l);
 
             // handle all threads waiting for the future to become ready
             auto on_completed = HPX_MOVE(on_completed_);
@@ -491,6 +487,14 @@ namespace hpx::lcos::detail {
             // reset runs_child_ thread id to avoid keeping the thread
             // alive as long as the future
             this->base_type::runs_child_.reset();
+
+            // --- CAUSAL TRACING SIGNAL --------------------------------------
+            // Emitted after the CAS sets state to `value` (so any newly-woken
+            // consumer observes a ready future) and before notify_one() (so
+            // the producer message precedes the consumer wake in Tracy).
+            // The `this` pointer is the stable future_data correlation key.
+            hpx::tracing::future_fulfilled(this);
+            // ---------------------------------------------------------------
 
             // 26111: Caller failing to release lock 'this->mtx_'
             // 26115: Failing to release lock 'this->mtx_'
@@ -550,7 +554,7 @@ namespace hpx::lcos::detail {
             // At this point the lock needs to be acquired to safely access the
             // registered continuations
             std::unique_lock<mutex_type> l(mtx_);
-            [[maybe_unused]] util::ignore_while_checking il(&l);
+            [[maybe_unused]] util::ignore_while_checking<decltype(l)> il(&l);
 
             // handle all threads waiting for the future to become ready
             auto on_completed = HPX_MOVE(on_completed_);
@@ -573,6 +577,14 @@ namespace hpx::lcos::detail {
             // reset runs_child_ thread id to avoid keeping the thread
             // alive as long as the future
             this->base_type::runs_child_.reset();
+
+            // --- CAUSAL TRACING SIGNAL --------------------------------------
+            // Mirrors the set_value() placement: after state is set to
+            // `exception` (atomic CAS), before notify_one() wakes consumers.
+            // Emits a bright-red Tracy message so exception propagation paths
+            // are visually distinct from value-fulfillment paths.
+            hpx::tracing::future_exception_set(this);
+            // ---------------------------------------------------------------
 
             // 26111: Caller failing to release lock 'this->mtx_'
             // 26115: Failing to release lock 'this->mtx_'
@@ -702,12 +714,13 @@ namespace hpx::lcos::detail {
     ///////////////////////////////////////////////////////////////////////////
     // Customization point to have the ability for creating distinct shared
     // states depending on the value type held.
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct future_data : future_data_base<Result>
     {
         using init_no_addref =
             typename future_data_base<Result>::init_no_addref;
 
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
         future_data() = default;
 
         explicit future_data(init_no_addref no_addref) noexcept
@@ -730,6 +743,8 @@ namespace hpx::lcos::detail {
 
         future_data(future_data const&) = delete;
         future_data(future_data&&) = delete;
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
+
         future_data& operator=(future_data const&) = delete;
         future_data& operator=(future_data&&) = delete;
 
@@ -737,7 +752,8 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Result, typename Allocator, typename Derived = void>
+    HPX_CXX_CORE_EXPORT template <typename Result, typename Allocator,
+        typename Derived = void>
     struct future_data_allocator : future_data<Result>
     {
         using init_no_addref = typename future_data<Result>::init_no_addref;
@@ -748,6 +764,7 @@ namespace hpx::lcos::detail {
         using other_allocator = typename std::allocator_traits<
             Allocator>::template rebind_alloc<allocated_type>;
 
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
         explicit future_data_allocator(other_allocator const& alloc) noexcept
           : future_data<Result>()
           , alloc_(alloc)
@@ -779,6 +796,8 @@ namespace hpx::lcos::detail {
         }
         // clang-format on
 
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
+
     protected:
         void destroy() noexcept override
         {
@@ -794,7 +813,7 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct timed_future_data : future_data<Result>
     {
     public:
@@ -803,6 +822,7 @@ namespace hpx::lcos::detail {
         using init_no_addref = typename base_type::init_no_addref;
 
     public:
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
         timed_future_data() = default;
 
         template <typename Result_>
@@ -846,10 +866,11 @@ namespace hpx::lcos::detail {
                     hpx::detail::access_exception(ec));
             }
         }
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct task_base : future_data<Result>
     {
     protected:
@@ -862,7 +883,8 @@ namespace hpx::lcos::detail {
         using base_type::mtx_;
 
     public:
-        task_base()
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
+        task_base() noexcept
           : base_type()
           , started_(false)
         {
@@ -873,6 +895,7 @@ namespace hpx::lcos::detail {
           , started_(false)
         {
         }
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
 
         void execute_deferred(error_code& /*ec*/ = throws) override
         {
@@ -996,7 +1019,7 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Result>
+    HPX_CXX_CORE_EXPORT template <typename Result>
     struct cancelable_task_base : task_base<Result>
     {
     protected:
@@ -1021,6 +1044,7 @@ namespace hpx::lcos::detail {
         }
 
     public:
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
         cancelable_task_base() noexcept
           : id_(threads::invalid_thread_id)
         {
@@ -1031,6 +1055,7 @@ namespace hpx::lcos::detail {
           , id_(threads::invalid_thread_id)
         {
         }
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
 
     private:
         struct reset_id

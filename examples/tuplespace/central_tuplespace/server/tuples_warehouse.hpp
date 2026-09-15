@@ -9,10 +9,10 @@
 #include <hpx/config.hpp>
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
 #include <hpx/chrono.hpp>
-#include <hpx/components_base/server/locking_hook.hpp>
 #include <hpx/hpx.hpp>
 #include <hpx/include/components.hpp>
 #include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/components_base.hpp>
 #include <hpx/mutex.hpp>
 
 #include <algorithm>
@@ -141,7 +141,7 @@ namespace examples { namespace server {
                     tuple_field_container ::field_index_map_const_iterator_type,
                     tuple_field_container::field_index_map_const_iterator_type>
                     equal_range_type;
-                typedef const std::pair<elem_type, index_type> pair_type;
+                typedef std::pair<elem_type, index_type> const pair_type;
 
                 equal_range_type found_range =
                     tuple_fields_[pos].field_index_map_.equal_range(*it);

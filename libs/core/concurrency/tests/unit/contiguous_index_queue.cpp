@@ -8,9 +8,9 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <hpx/barrier.hpp>
-#include <hpx/concurrency/detail/contiguous_index_queue.hpp>
 #include <hpx/future.hpp>
 #include <hpx/init.hpp>
+#include <hpx/modules/concurrency.hpp>
 #include <hpx/modules/testing.hpp>
 #include <hpx/optional.hpp>
 #include <hpx/program_options.hpp>
@@ -45,10 +45,11 @@ void test_basic()
         hpx::concurrency::detail::contiguous_index_queue<> q{first, last};
 
         for (std::uint32_t curr_expected = first; curr_expected < last;
-             ++curr_expected)
+            ++curr_expected)
         {
             hpx::optional<std::uint32_t> curr = q.pop_left();
             HPX_TEST(curr);
+            // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
             HPX_TEST_EQ(curr.value(), curr_expected);
         }
 
@@ -64,10 +65,11 @@ void test_basic()
         hpx::concurrency::detail::contiguous_index_queue<> q{first, last};
 
         for (std::uint32_t curr_expected = last - 1; curr_expected >= first;
-             --curr_expected)
+            --curr_expected)
         {
             hpx::optional<std::uint32_t> curr = q.pop_right();
             HPX_TEST(curr);
+            // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
             HPX_TEST_EQ(curr.value(), curr_expected);
         }
 
@@ -80,10 +82,11 @@ void test_basic()
         q.reset(first, last);
 
         for (std::uint32_t curr_expected = last - 1; curr_expected >= first;
-             --curr_expected)
+            --curr_expected)
         {
             hpx::optional<std::uint32_t> curr = q.pop_right();
             HPX_TEST(curr);
+            // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
             HPX_TEST_EQ(curr.value(), curr_expected);
         }
 
@@ -143,9 +146,11 @@ void test_concurrent(pop_mode m)
     std::uint32_t last = 732100;
     hpx::concurrency::detail::contiguous_index_queue<> q{first, last};
 
-    std::size_t const num_threads = hpx::get_num_worker_threads();
+    std::size_t const num_threads = 2 * hpx::get_num_worker_threads();
+
     // This test should be run on at least two worker threads.
-    HPX_TEST_LTE(std::size_t(2), num_threads);
+    HPX_TEST_LTE(std::size_t(4), num_threads);
+
     std::vector<hpx::future<void>> fs;
     std::vector<std::vector<std::uint32_t>> popped_indices(num_threads);
     fs.reserve(num_threads);

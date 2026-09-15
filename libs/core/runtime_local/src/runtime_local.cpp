@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -6,21 +6,30 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
+#include <hpx/config/thread_name.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/command_line_handling_local/late_command_line_handling_local.hpp>
-#include <hpx/command_line_handling_local/parse_command_line_local.hpp>
-#include <hpx/coroutines/coroutine.hpp>
-#include <hpx/coroutines/signal_handler_debugging.hpp>
-#include <hpx/debugging/attach_debugger.hpp>
-#include <hpx/debugging/backtrace.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/functional/bind.hpp>
-#include <hpx/functional/function.hpp>
-#include <hpx/io_service/io_service_pool.hpp>
-#include <hpx/itt_notify/thread_name.hpp>
+
+#include <hpx/modules/command_line_handling_local.hpp>
+#include <hpx/modules/concurrency.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/debugging.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/io_service.hpp>
 #include <hpx/modules/logging.hpp>
+#include <hpx/modules/static_reinit.hpp>
+#include <hpx/modules/synchronization.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/threading_base.hpp>
 #include <hpx/modules/threadmanager.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/topology.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
+#include <hpx/modules/util.hpp>
+
 #include <hpx/runtime_local/config_entry.hpp>
 #include <hpx/runtime_local/custom_exception_info.hpp>
 #include <hpx/runtime_local/debugging.hpp>
@@ -30,17 +39,9 @@
 #include <hpx/runtime_local/shutdown_function.hpp>
 #include <hpx/runtime_local/startup_function.hpp>
 #include <hpx/runtime_local/state.hpp>
+#include <hpx/runtime_local/termination_detection.hpp>
 #include <hpx/runtime_local/thread_hooks.hpp>
 #include <hpx/runtime_local/thread_mapper.hpp>
-#include <hpx/static_reinit/static_reinit.hpp>
-#include <hpx/thread_support/set_thread_name.hpp>
-#include <hpx/threading_base/external_timer.hpp>
-#include <hpx/threading_base/scheduler_mode.hpp>
-#include <hpx/timing/high_resolution_clock.hpp>
-#include <hpx/topology/topology.hpp>
-#include <hpx/type_support/unused.hpp>
-#include <hpx/util/from_string.hpp>
-#include <hpx/util/get_entry_as.hpp>
 #include <hpx/version.hpp>
 
 #include <atomic>
@@ -87,6 +88,7 @@ namespace hpx::detail {
                         return true;
                     });
         }
+        // NOLINTNEXTLINE(bugprone-empty-catch)
         catch (...)
         {
         }
@@ -537,6 +539,13 @@ namespace hpx {
 #ifdef HPX_HAVE_IO_POOL
         io_pool_->stop();
 #endif
+
+        // Wait for all threads to complete before destroying allocators.
+        // This ensures that collective operations and other background work
+        // finish before reinit_destruct() destroys component heaps.
+        // Fixes issue #6776: crash in one_size_heap_list::alloc on macOS Debug
+        thread_manager_->wait();
+
         LRT_(debug).format("~runtime_local(finished)");
 
         LPROGRESS_;
@@ -625,22 +634,27 @@ namespace hpx {
 
         runtime_ = this;
         runtime_uptime() = hpx::chrono::high_resolution_clock::now();
+
+#if defined(HPX_HAVE_TRACY)
+        // Apply the runtime override for the 1-in-N task-sampling rate.
+        // Compile-time HPX_TRACING_SAMPLE_RATE is the default; a value in
+        // hpx.tracing.sample_rate (from the INI or command line) wins.
+        threads::set_tracing_sample_rate(hpx::util::get_entry_as<int>(
+            rtcfg_, "hpx.tracing.sample_rate", HPX_TRACING_SAMPLE_RATE));
+#endif
     }
 
     void runtime::deinit_global_data()
     {
         runtime*& runtime_ = get_runtime_ptr();
-        HPX_ASSERT(runtime_);
         runtime_uptime() = 0;
         runtime_ = nullptr;
     }
 
     std::uint64_t runtime::get_system_uptime()
     {
-        std::int64_t const diff =
-            static_cast<std::int64_t>(
-                hpx::chrono::high_resolution_clock::now()) -
-            runtime_uptime();
+        auto const diff = static_cast<std::int64_t>(
+            hpx::chrono::high_resolution_clock::now() - runtime_uptime());
         return diff < 0LL ? 0ULL : static_cast<std::uint64_t>(diff);
     }
 
@@ -1060,8 +1074,8 @@ namespace hpx {
 
     bool tolerate_node_faults()
     {
-#ifdef HPX_HAVE_FAULT_TOLERANCE
-        return true;
+#if defined(HPX_HAVE_FAULT_TOLERANCE)
+        return hpx::get_config_entry("hpx.enable_fault_tolerance", "0") != "0";
 #else
         return false;
 #endif
@@ -1125,12 +1139,14 @@ namespace hpx::threads {
 
     void set_scheduler_mode(threads::policies::scheduler_mode m)
     {
-        get_runtime().get_thread_manager().set_scheduler_mode(m);
+        get_runtime().get_thread_manager().set_scheduler_mode(
+            m, hpx::resource::get_partitioner().get_used_pus_mask());
     }
 
     void add_scheduler_mode(threads::policies::scheduler_mode m)
     {
-        get_runtime().get_thread_manager().add_scheduler_mode(m);
+        get_runtime().get_thread_manager().add_scheduler_mode(
+            m, hpx::resource::get_partitioner().get_used_pus_mask());
     }
 
     void add_remove_scheduler_mode(
@@ -1138,24 +1154,41 @@ namespace hpx::threads {
         threads::policies::scheduler_mode to_remove_mode)
     {
         get_runtime().get_thread_manager().add_remove_scheduler_mode(
-            to_add_mode, to_remove_mode);
+            to_add_mode, to_remove_mode,
+            hpx::resource::get_partitioner().get_used_pus_mask());
     }
 
     void remove_scheduler_mode(threads::policies::scheduler_mode m)
     {
-        get_runtime().get_thread_manager().remove_scheduler_mode(m);
+        get_runtime().get_thread_manager().remove_scheduler_mode(
+            m, hpx::resource::get_partitioner().get_used_pus_mask());
     }
 
-    topology const& get_topology()
+    void set_scheduler_mode(threads::policies::scheduler_mode m,
+        hpx::threads::mask_cref_type pu_mask)
     {
-        hpx::runtime const* rt = hpx::get_runtime_ptr();
-        if (rt == nullptr)
-        {
-            HPX_THROW_EXCEPTION(hpx::error::invalid_status,
-                "hpx::threads::get_topology",
-                "the hpx runtime system has not been initialized yet");
-        }
-        return rt->get_topology();
+        get_runtime().get_thread_manager().set_scheduler_mode(m, pu_mask);
+    }
+
+    void add_scheduler_mode(threads::policies::scheduler_mode m,
+        hpx::threads::mask_cref_type pu_mask)
+    {
+        get_runtime().get_thread_manager().add_scheduler_mode(m, pu_mask);
+    }
+
+    void add_remove_scheduler_mode(
+        threads::policies::scheduler_mode to_add_mode,
+        threads::policies::scheduler_mode to_remove_mode,
+        hpx::threads::mask_cref_type pu_mask)
+    {
+        get_runtime().get_thread_manager().add_remove_scheduler_mode(
+            to_add_mode, to_remove_mode, pu_mask);
+    }
+
+    void remove_scheduler_mode(threads::policies::scheduler_mode m,
+        hpx::threads::mask_cref_type pu_mask)
+    {
+        get_runtime().get_thread_manager().remove_scheduler_mode(m, pu_mask);
     }
 }    // namespace hpx::threads
 
@@ -1478,9 +1511,7 @@ namespace hpx {
 #endif
 
         // initialize instrumentation system
-#ifdef HPX_HAVE_APEX
-        util::external_timer::init(nullptr, 0, 1);
-#endif
+        hpx::tracing::tracing_init(nullptr, 0, nullptr);
 
         LRT_(info).format("cmd_line: {}", get_config().get_cmd_line());
 
@@ -1494,11 +1525,19 @@ namespace hpx {
             runtime_local::os_thread_type::main_thread, 0, 0, "", "", false);
 
 #ifdef HPX_HAVE_IO_POOL
-        // start the io pool
-        io_pool_->run(false);
-        HPX_UNUSED(
-            lbt_ << "(1st stage) runtime::start: started the application "
-                    "I/O service pool");
+        {
+            // start the io pool
+            auto const p =
+                std::make_shared<util::barrier>(io_pool_->size() + 1);
+            if (io_pool_->run(false, p))
+            {
+                p->wait();
+            }
+
+            HPX_UNUSED(lbt_
+                << "(1st stage) runtime::start: started the application "
+                   "I/O service pool");
+        }
 #endif
         // start the thread manager
         if (!thread_manager_->run())
@@ -1580,17 +1619,9 @@ namespace hpx {
             cond.notify_all();
         }
 
-        // register this thread with any possibly active Intel tool
         std::string const thread_name("main-thread#wait_helper");
-        HPX_ITT_THREAD_SET_NAME(thread_name.c_str());
-
         // set thread name as shown in Visual Studio
         util::set_thread_name(thread_name.c_str());
-
-#if defined(HPX_HAVE_APEX)
-        // not registering helper threads - for now
-        //util::external_timer::register_thread(thread_name.c_str());
-#endif
 
         wait_finalize();
 
@@ -1643,9 +1674,7 @@ namespace hpx {
         // stop runtime_local services (threads)
         thread_manager_->stop(false);    // just initiate shutdown
 
-#ifdef HPX_HAVE_APEX
-        util::external_timer::finalize();
-#endif
+        hpx::tracing::tracing_finalize();
 
         if (threads::get_self_ptr())
         {
@@ -1939,16 +1968,11 @@ namespace hpx {
         // initialize thread mapping for external libraries (i.e. PAPI)
         thread_support_->register_thread(name, type);
 
-        // register this thread with any possibly active Intel tool
-        HPX_ITT_THREAD_SET_NAME(name);
-
         // set thread name as shown in Visual Studio
         util::set_thread_name(name);
 
-#if defined(HPX_HAVE_APEX)
         if (std::strstr(name, "worker") != nullptr)
-            util::external_timer::register_thread(name);
-#endif
+            hpx::tracing::register_thread(name);
 
         // call thread-specific user-supplied on_start handler
         if (on_start_func_)
@@ -2196,4 +2220,103 @@ namespace hpx {
             return get_stack_size_enum_name(size_enum);
         }
     }    // namespace threads
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Termination detection API implementation
+    namespace local {
+        void termination_detection()
+        {
+            runtime* rt = get_runtime_ptr();
+            if (rt == nullptr)
+            {
+                HPX_THROW_EXCEPTION(hpx::error::invalid_status,
+                    "hpx::local::termination_detection",
+                    "the runtime system is not active");
+            }
+
+            hpx::threads::threadmanager& tm = rt->get_thread_manager();
+
+            // Wait for all HPX threads to complete
+            tm.wait();
+
+            // Clean up any terminated threads
+            tm.cleanup_terminated(true);
+        }
+
+        bool termination_detection(hpx::chrono::steady_duration const& timeout)
+        {
+            runtime* rt = get_runtime_ptr();
+            if (rt == nullptr)
+            {
+                HPX_THROW_EXCEPTION(hpx::error::invalid_status,
+                    "hpx::local::termination_detection",
+                    "the runtime system is not active");
+            }
+
+            hpx::threads::threadmanager& tm = rt->get_thread_manager();
+
+            // Return immediately if timeout is zero or negative
+            if (timeout.value().count() <= 0)
+            {
+                return false;
+            }
+
+            // Wait with timeout using threadmanager's wait_for
+            bool completed = tm.wait_for(timeout);
+
+            // Only cleanup if all threads completed
+            if (completed)
+            {
+                tm.cleanup_terminated(true);
+            }
+
+            return completed;
+        }
+
+        bool termination_detection(
+            hpx::chrono::steady_time_point const& deadline)
+        {
+            // Convert deadline to duration from now
+            auto now = hpx::chrono::steady_clock::now();
+
+            if (deadline.value() <= now)
+            {
+                // Deadline already passed
+                return false;
+            }
+
+            auto duration = deadline.value() - now;
+            return termination_detection(
+                hpx::chrono::steady_duration(duration));
+        }
+
+        bool termination_detection(hpx::stop_token stop_token,
+            hpx::chrono::steady_duration const& timeout)
+        {
+            runtime* rt = get_runtime_ptr();
+            if (rt == nullptr)
+            {
+                HPX_THROW_EXCEPTION(hpx::error::invalid_status,
+                    "hpx::local::termination_detection",
+                    "the runtime system is not active");
+            }
+
+            hpx::threads::threadmanager& tm = rt->get_thread_manager();
+
+            // Return immediately if timeout is zero or negative
+            if (timeout.value().count() <= 0)
+            {
+                return false;
+            }
+
+            bool completed = tm.wait_for(stop_token, timeout);
+
+            if (completed)
+            {
+                tm.cleanup_terminated(true);
+            }
+
+            return completed;
+        }
+    }    // namespace local
 }    // namespace hpx

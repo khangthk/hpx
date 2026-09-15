@@ -1,5 +1,5 @@
 //  Copyright (c) 2019 Thomas Heller
-//  Copyright (c) 2023 Hartmut Kaiser
+//  Copyright (c) 2023-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,14 +8,10 @@
 #pragma once
 
 #include <hpx/config.hpp>
-
-#include <hpx/coroutines/detail/coroutine_impl.hpp>
-#include <hpx/coroutines/detail/coroutine_stackful_self.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/execution_base/agent_base.hpp>
-#include <hpx/execution_base/context_base.hpp>
-#include <hpx/execution_base/resource_base.hpp>
-#include <hpx/timing/steady_clock.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/timing.hpp>
 
 #include <cstddef>
 #include <string>
@@ -24,7 +20,8 @@
 
 namespace hpx::threads {
 
-    struct HPX_CORE_EXPORT execution_context : hpx::execution_base::context_base
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT execution_context final
+      : hpx::execution_base::context_base
     {
         hpx::execution_base::resource_base const& resource()
             const noexcept override
@@ -35,7 +32,8 @@ namespace hpx::threads {
         hpx::execution_base::resource_base resource_;
     };
 
-    struct HPX_CORE_EXPORT execution_agent : hpx::execution_base::agent_base
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT execution_agent
+      : hpx::execution_base::agent_base
     {
         explicit execution_agent(
             coroutines::detail::coroutine_impl* coroutine) noexcept;
@@ -48,14 +46,18 @@ namespace hpx::threads {
         }
 
         void yield(char const* desc) override;
-        void yield_k(std::size_t k, char const* desc) override;
+        bool yield_k(std::size_t k, char const* desc) override;
         void suspend(char const* desc) override;
         void resume(
             hpx::threads::thread_priority priority, char const* desc) override;
         void abort(char const* desc) override;
-        void sleep_for(hpx::chrono::steady_duration const& sleep_duration,
+        threads::thread_restart_state sleep_for(
+            hpx::chrono::steady_duration const& sleep_duration,
+            hpx::move_only_function<bool()>&& wait_cond,
             char const* desc) override;
-        void sleep_until(hpx::chrono::steady_time_point const& sleep_time,
+        threads::thread_restart_state sleep_until(
+            hpx::chrono::steady_time_point const& sleep_time,
+            hpx::move_only_function<bool()>&& wait_cond,
             char const* desc) override;
 
     private:

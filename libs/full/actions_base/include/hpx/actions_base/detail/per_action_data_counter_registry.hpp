@@ -11,9 +11,9 @@
 #if defined(HPX_HAVE_PARCELPORT_COUNTERS) &&                                   \
     defined(HPX_HAVE_PARCELPORT_ACTION_COUNTERS) &&                            \
     defined(HPX_HAVE_NETWORKING)
-#include <hpx/functional/function.hpp>
-#include <hpx/hashing/jenkins_hash.hpp>
-#include <hpx/type_support/static.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/hashing.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstdint>
 #include <string>
@@ -96,17 +96,6 @@ namespace hpx::actions::detail {
         register_per_action_data_counters<Action>::instance;
 }    // namespace hpx::actions::detail
 
-#define HPX_REGISTER_PER_ACTION_DATA_COUNTER_TYPES(Action)                     \
-    namespace hpx::actions::detail {                                           \
-        template register_per_action_data_counters<Action>                     \
-            register_per_action_data_counters<Action>::instance;               \
-    }                                                                          \
-    /**/
-
 #include <hpx/config/warnings_suffix.hpp>
-
-#else
-
-#define HPX_REGISTER_PER_ACTION_DATA_COUNTER_TYPES(Action)
 
 #endif

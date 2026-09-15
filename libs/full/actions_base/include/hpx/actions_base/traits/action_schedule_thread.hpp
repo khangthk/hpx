@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,12 +6,11 @@
 
 #pragma once
 
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/naming_base/naming_base.hpp>
-#include <hpx/threading_base/register_thread.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/threading_base/thread_init_data.hpp>
-#include <hpx/type_support/detail/wrap_int.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/type_support.hpp>
 
 namespace hpx::traits {
 
@@ -43,7 +42,7 @@ namespace hpx::traits {
         };
     }    // namespace detail
 
-    template <typename Action, typename Enable = void>
+    HPX_CXX_EXPORT template <typename Action, typename Enable = void>
     struct action_schedule_thread
     {
         static void call(naming::address_type lva,

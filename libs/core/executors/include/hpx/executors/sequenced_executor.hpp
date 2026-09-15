@@ -1,4 +1,5 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
+//  Copyright (c) 2026 Sai Charan Arvapally
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,25 +10,19 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/errors/exception_list.hpp>
-#include <hpx/execution/detail/async_launch_policy_dispatch.hpp>
-#include <hpx/execution/detail/sync_launch_policy_dispatch.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
 #include <hpx/executors/execution_policy_mappings.hpp>
+#include <hpx/executors/executor_scheduler.hpp>
 #include <hpx/executors/parallel_executor.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/futures/future.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/pack_traversal.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/timing.hpp>
 #include <hpx/modules/topology.hpp>
-#include <hpx/pack_traversal/unwrap.hpp>
-#include <hpx/serialization/serialize.hpp>
-#include <hpx/threading_base/annotated_function.hpp>
-#include <hpx/threading_base/detail/get_default_pool.hpp>
-#include <hpx/threading_base/thread_description.hpp>
-#include <hpx/threading_base/thread_num_tss.hpp>
-#include <hpx/timing/steady_clock.hpp>
 
 #include <cstddef>
 #include <iterator>
@@ -43,7 +38,7 @@ namespace hpx::execution {
     /// which execute in the calling thread. The sequential order is given by
     /// the lexicographical order of indices in the index space.
     ///
-    struct sequenced_executor
+    HPX_CXX_CORE_EXPORT struct sequenced_executor
     {
         /// \cond NOINTERNAL
         bool operator==(sequenced_executor const& /*rhs*/) const noexcept
@@ -60,87 +55,118 @@ namespace hpx::execution {
         {
             return *this;
         }
+
+#if defined(HPX_HAVE_THREAD_DESCRIPTION)
+        [[nodiscard]] auto query(
+            experimental::with_annotation_t, char const* annotation) const
+        {
+            auto exec_with_annotation = *this;
+            exec_with_annotation.annotation_ = annotation;
+            return exec_with_annotation;
+        }
+
+        [[nodiscard]] auto query(
+            experimental::with_annotation_t, std::string annotation) const
+        {
+            auto exec_with_annotation = *this;
+            exec_with_annotation.annotation_ =
+                hpx::detail::store_function_annotation(HPX_MOVE(annotation));
+            return exec_with_annotation;
+        }
+
+        [[nodiscard]] constexpr char const* query(
+            experimental::get_annotation_t) const noexcept
+        {
+            return annotation_;
+        }
+#endif
+
+        template <typename Parameters>
+            requires(hpx::executor_parameters<Parameters>)
+        [[nodiscard]] std::size_t query(experimental::processing_units_count_t,
+            Parameters&& params,
+            hpx::chrono::steady_duration const& iter_dur =
+                hpx::chrono::null_duration,
+            std::size_t num_tasks = 0) const
+        {
+            if constexpr (requires(std::decay_t<Parameters> const& p,
+                              sequenced_executor const& e,
+                              hpx::chrono::steady_duration const& d) {
+                              p.processing_units_count(e, d, std::size_t{});
+                          })
+            {
+                return HPX_FORWARD(Parameters, params)
+                    .processing_units_count(*this, iter_dur, num_tasks);
+            }
+            else
+            {
+                return 1;
+            }
+        }
+
+        [[nodiscard]] auto query(
+            experimental::get_processing_units_mask_t) const
+        {
+            return threads::detail::get_self_or_default_pool()
+                ->get_used_processing_unit(hpx::get_worker_thread_num(), false);
+        }
+
+        [[nodiscard]] auto query(experimental::get_cores_mask_t) const
+        {
+            return threads::detail::get_self_or_default_pool()
+                ->get_used_processing_unit(hpx::get_worker_thread_num(), true);
+        }
+
         /// \endcond
 
         /// \cond NOINTERNAL
         using execution_category = sequenced_execution_tag;
 
-    private:
         // OneWayExecutor interface
         template <typename F, typename... Ts>
-        static decltype(auto) sync_execute_impl(F&& f, Ts&&... ts)
-        {
-            return hpx::detail::sync_launch_policy_dispatch<
-                launch::sync_policy>::call(launch::sync, HPX_FORWARD(F, f),
-                HPX_FORWARD(Ts, ts)...);
-        }
-
-        template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::sync_execute_t,
-            [[maybe_unused]] sequenced_executor const& exec, F&& f, Ts&&... ts)
+        decltype(auto) sync_execute(F&& f, Ts&&... ts) const
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-            hpx::scoped_annotation annotate(exec.annotation_ ?
-                    exec.annotation_ :
+            hpx::scoped_annotation annotate(annotation_ ?
+                    annotation_ :
                     "parallel_policy_executor::sync_execute");
 #endif
-            return sequenced_executor::sync_execute_impl(
-                HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+            return sync_execute_impl(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
         // TwoWayExecutor interface
         template <typename F, typename... Ts>
-        static decltype(auto) async_execute_impl(
-            hpx::threads::thread_description const& desc, F&& f, Ts&&... ts)
-        {
-            return hpx::detail::async_launch_policy_dispatch<
-                launch::deferred_policy>::call(launch::deferred, desc,
-                HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
-        }
-
-        template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_execute_t,
-            [[maybe_unused]] sequenced_executor const& exec, F&& f, Ts&&... ts)
+        decltype(auto) async_execute(F&& f, Ts&&... ts) const
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-            hpx::threads::thread_description desc(f, exec.annotation_);
+            hpx::threads::thread_description desc(f, annotation_);
 #else
             hpx::threads::thread_description desc(f);
 #endif
-            return sequenced_executor::async_execute_impl(
+            return async_execute_impl(
                 desc, HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
         // NonBlockingOneWayExecutor (adapted) interface
         template <typename F, typename... Ts>
-        friend void tag_invoke(hpx::parallel::execution::post_t,
-            [[maybe_unused]] sequenced_executor const& exec, F&& f, Ts&&... ts)
+        void post(F&& f, Ts&&... ts) const
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-            hpx::scoped_annotation annotate(exec.annotation_ ?
-                    exec.annotation_ :
+            hpx::scoped_annotation annotate(annotation_ ?
+                    annotation_ :
                     "parallel_policy_executor::sync_execute");
 #endif
-            sequenced_executor::sync_execute_impl(
-                HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+            sync_execute_impl(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
         // BulkTwoWayExecutor interface
-        // clang-format off
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(
-                !std::is_integral_v<S>
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_async_execute_t,
-            [[maybe_unused]] sequenced_executor const& exec, F&& f,
-            S const& shape, Ts&&... ts)
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_async_execute(
+            F&& f, S const& shape, Ts&&... ts) const
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-            hpx::threads::thread_description desc(f, exec.annotation_);
+            hpx::threads::thread_description desc(f, annotation_);
 #else
             hpx::threads::thread_description desc(f);
 #endif
@@ -154,13 +180,12 @@ namespace hpx::execution {
             {
                 for (auto const& elem : shape)
                 {
-                    results.push_back(sequenced_executor::async_execute_impl(
-                        desc, f, elem, ts...));
+                    results.push_back(async_execute_impl(desc, f, elem, ts...));
                 }
             }
-            catch (std::bad_alloc const& ba)
+            catch (std::bad_alloc const&)
             {
-                throw ba;
+                throw;
             }
             catch (...)
             {
@@ -170,105 +195,58 @@ namespace hpx::execution {
             return results;
         }
 
-        // clang-format off
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(
-                !std::is_integral_v<S>
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_sync_execute_t,
-            sequenced_executor const& exec, F&& f, S const& shape, Ts&&... ts)
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_sync_execute(
+            F&& f, S const& shape, Ts&&... ts) const
         {
-            return hpx::unwrap(hpx::parallel::execution::bulk_async_execute(
-                exec, HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...));
+            return hpx::unwrap(bulk_async_execute(
+                HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...));
         }
 
-#if defined(HPX_HAVE_THREAD_DESCRIPTION)
-        // clang-format off
-        template <typename Executor_,
-            HPX_CONCEPT_REQUIRES_(
-                std::is_convertible_v<Executor_, sequenced_executor>
-            )>
-        // clang-format on
-        friend constexpr auto tag_invoke(
-            hpx::execution::experimental::with_annotation_t,
-            Executor_ const& exec, char const* annotation)
-        {
-            auto exec_with_annotation = exec;
-            exec_with_annotation.annotation_ = annotation;
-            return exec_with_annotation;
-        }
-
-        // clang-format off
-        template <typename Executor_,
-            HPX_CONCEPT_REQUIRES_(
-                std::is_convertible_v<Executor_, sequenced_executor>
-            )>
-        // clang-format on
-        friend auto tag_invoke(hpx::execution::experimental::with_annotation_t,
-            Executor_ const& exec, std::string annotation)
-        {
-            auto exec_with_annotation = exec;
-            exec_with_annotation.annotation_ =
-                hpx::detail::store_function_annotation(HPX_MOVE(annotation));
-            return exec_with_annotation;
-        }
-
-        friend constexpr char const* tag_invoke(
-            hpx::execution::experimental::get_annotation_t,
-            sequenced_executor const& exec) noexcept
-        {
-            return exec.annotation_;
-        }
-#endif
-
-        // clang-format off
-        template <typename Parameters,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_parameters_v<Parameters>
-            )>
-        // clang-format on
-        friend constexpr std::size_t tag_invoke(
-            hpx::parallel::execution::processing_units_count_t, Parameters&&,
-            sequenced_executor const&,
-            hpx::chrono::steady_duration const& = hpx::chrono::null_duration,
-            std::size_t = 0)
-        {
-            return 1;
-        }
-
-        friend auto tag_invoke(
-            hpx::execution::experimental::get_processing_units_mask_t,
-            sequenced_executor const&)
-        {
-            return threads::detail::get_self_or_default_pool()
-                ->get_used_processing_unit(hpx::get_worker_thread_num(), false);
-        }
-
-        friend auto tag_invoke(hpx::execution::experimental::get_cores_mask_t,
-            sequenced_executor const&)
-        {
-            return threads::detail::get_self_or_default_pool()
-                ->get_used_processing_unit(hpx::get_worker_thread_num(), true);
-        }
-
-        friend decltype(auto) tag_invoke(hpx::execution::experimental::to_par_t,
-            [[maybe_unused]] sequenced_executor const& exec)
+        decltype(auto) to_par() const
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
             return hpx::execution::experimental::with_annotation(
-                parallel_executor(), exec.annotation_);
+                parallel_executor(), annotation_);
 #else
             return parallel_executor();
 #endif
         }
 
+    public:
+        /// \cond NOINTERNAL
+        constexpr hpx::execution::experimental::executor_scheduler<
+            sequenced_executor>
+        query(hpx::execution::experimental::get_scheduler_t) const noexcept
+        {
+            return hpx::execution::experimental::executor_scheduler<
+                sequenced_executor>(*this);
+        }
+        /// \endcond
+
     private:
+        template <typename F, typename... Ts>
+        static decltype(auto) sync_execute_impl(F&& f, Ts&&... ts)
+        {
+            return hpx::detail::sync_launch_policy_dispatch<
+                launch::sync_policy>::call(launch::sync, HPX_FORWARD(F, f),
+                HPX_FORWARD(Ts, ts)...);
+        }
+
+        template <typename F, typename... Ts>
+        static decltype(auto) async_execute_impl(
+            hpx::threads::thread_description const& desc, F&& f, Ts&&... ts)
+        {
+            return hpx::detail::async_launch_policy_dispatch<
+                launch::deferred_policy>::call(launch::deferred, desc,
+                HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+        }
+
         friend class hpx::serialization::access;
 
         template <typename Archive>
-        void serialize(Archive& /* ar */, unsigned int const /* version */)
+        static constexpr void serialize(Archive&, unsigned int const) noexcept
         {
         }
 
@@ -279,7 +257,7 @@ namespace hpx::execution {
     };
 }    // namespace hpx::execution
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     /// \cond NOINTERNAL
     template <>
@@ -312,4 +290,4 @@ namespace hpx::parallel::execution {
     {
     };
     /// \endcond
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental

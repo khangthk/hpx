@@ -8,16 +8,15 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <hpx/config.hpp>
-#include <hpx/async_distributed/continuation.hpp>
-#include <hpx/functional/bind.hpp>
-#include <hpx/functional/bind_front.hpp>
-#include <hpx/functional/function.hpp>
+#include <hpx/modules/async_distributed.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/runtime_local.hpp>
+#include <hpx/version.hpp>
+
 #include <hpx/performance_counters/counter_creators.hpp>
 #include <hpx/performance_counters/counters.hpp>
 #include <hpx/performance_counters/manage_counter_type.hpp>
-#include <hpx/version.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -25,7 +24,8 @@
 #include <string>
 #include <vector>
 
-namespace hpx { namespace performance_counters {
+namespace hpx::performance_counters {
+
     struct manage_counter_type
     {
         manage_counter_type(counter_info const& info)
@@ -36,7 +36,8 @@ namespace hpx { namespace performance_counters {
 
         ~manage_counter_type()
         {
-            uninstall();
+            hpx::error_code ec;
+            uninstall(ec);
         }
 
         counter_status install(error_code& ec = throws)
@@ -81,12 +82,15 @@ namespace hpx { namespace performance_counters {
         counter_info info_;
     };
 
-    static void counter_type_shutdown(
-        std::shared_ptr<manage_counter_type> const& p)
-    {
-        error_code ec(throwmode::lightweight);
-        p->uninstall(ec);
-    }
+    namespace {
+
+        void counter_type_shutdown(
+            std::shared_ptr<manage_counter_type> const& p)
+        {
+            error_code ec(throwmode::lightweight);
+            p->uninstall(ec);
+        }
+    }    // namespace
 
     ///////////////////////////////////////////////////////////////////////////
     counter_status install_counter_type(std::string const& name,
@@ -176,4 +180,4 @@ namespace hpx { namespace performance_counters {
                 break;
         }
     }
-}}    // namespace hpx::performance_counters
+}    // namespace hpx::performance_counters

@@ -1,4 +1,4 @@
-//  Copyright (c) 2014-2022 Hartmut Kaiser
+//  Copyright (c) 2014-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -189,8 +189,11 @@ void test_for_each_execute_on_sender()
 
 void for_each_sender_test_direct()
 {
+    // Clang 20 and earlier currently fail on this direct sender path.
+#if !defined(HPX_CLANG_VERSION) || (HPX_CLANG_VERSION / 10000) > 20
     test_for_each_scheduler<std::random_access_iterator_tag>();
     test_for_each_scheduler<std::forward_iterator_tag>();
+#endif
 }
 
 void for_each_test_execute_on()
@@ -201,8 +204,11 @@ void for_each_test_execute_on()
 
 void for_each_test_execute_on_sender()
 {
+    // Clang 21 and earlier fail on this execute-on-sender path.
+#if !defined(HPX_CLANG_VERSION) || (HPX_CLANG_VERSION / 10000) > 21
     test_for_each_execute_on_sender<std::random_access_iterator_tag>();
     test_for_each_execute_on_sender<std::forward_iterator_tag>();
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////

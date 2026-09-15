@@ -9,10 +9,8 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR)
-#include <hpx/execution/traits/is_execution_policy.hpp>
-#include <hpx/execution/traits/vector_pack_reduce.hpp>
-#include <hpx/executors/datapar/execution_policy.hpp>
-#include <hpx/functional/tag_invoke.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/detail/reduce.hpp>
 #include <hpx/parallel/datapar/handle_local_exceptions.hpp>
@@ -24,10 +22,10 @@
 #include <type_traits>
 #include <utility>
 
-namespace hpx { namespace parallel { namespace detail {
+namespace hpx::parallel::detail {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     struct datapar_reduce
     {
         template <typename InIterB, typename InIterE, typename T,
@@ -95,10 +93,10 @@ namespace hpx { namespace parallel { namespace detail {
         }
     };
 
-    template <typename ExPolicy, typename InIterB, typename InIterE, typename T,
-        typename Reduce,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE T tag_invoke(sequential_reduce_t<ExPolicy>,
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename InIterB,
+        typename InIterE, typename T, typename Reduce>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE T hpx_invoke(sequential_reduce_t<ExPolicy>,
         ExPolicy&& policy, InIterB first, InIterE last, T init, Reduce&& r)
     {
         if constexpr (hpx::parallel::util::detail::iterator_datapar_compatible<
@@ -120,9 +118,10 @@ namespace hpx { namespace parallel { namespace detail {
         }
     }
 
-    template <typename ExPolicy, typename T, typename FwdIter, typename Reduce,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE T tag_invoke(sequential_reduce_t<ExPolicy>,
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename T,
+        typename FwdIter, typename Reduce>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE T hpx_invoke(sequential_reduce_t<ExPolicy>,
         FwdIter part_begin, std::size_t part_size, T init, Reduce r)
     {
         if constexpr (hpx::parallel::util::detail::iterator_datapar_compatible<
@@ -141,10 +140,10 @@ namespace hpx { namespace parallel { namespace detail {
         }
     }
 
-    template <typename ExPolicy, typename Iter, typename Sent, typename T,
-        typename Reduce, typename Convert,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE T tag_invoke(sequential_reduce_t<ExPolicy>,
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter,
+        typename Sent, typename T, typename Reduce, typename Convert>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE T hpx_invoke(sequential_reduce_t<ExPolicy>,
         ExPolicy&& policy, Iter first, Sent last, T init, Reduce&& r,
         Convert&& conv)
     {
@@ -168,10 +167,10 @@ namespace hpx { namespace parallel { namespace detail {
         }
     }
 
-    template <typename ExPolicy, typename T, typename Iter, typename Reduce,
-        typename Convert,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE T tag_invoke(sequential_reduce_t<ExPolicy>,
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename T, typename Iter,
+        typename Reduce, typename Convert>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE T hpx_invoke(sequential_reduce_t<ExPolicy>,
         Iter part_begin, std::size_t part_size, T init, Reduce r, Convert conv)
     {
         if constexpr (hpx::parallel::util::detail::iterator_datapar_compatible<
@@ -190,10 +189,11 @@ namespace hpx { namespace parallel { namespace detail {
         }
     }
 
-    template <typename ExPolicy, typename Iter1, typename Sent, typename Iter2,
-        typename T, typename Reduce, typename Convert,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE T tag_invoke(sequential_reduce_t<ExPolicy>,
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter1,
+        typename Sent, typename Iter2, typename T, typename Reduce,
+        typename Convert>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE T hpx_invoke(sequential_reduce_t<ExPolicy>,
         Iter1 first1, Sent last1, Iter2 first2, T init, Reduce&& r,
         Convert&& conv)
     {
@@ -214,5 +214,6 @@ namespace hpx { namespace parallel { namespace detail {
                 init, HPX_FORWARD(Reduce, r), HPX_FORWARD(Convert, conv));
         }
     }
-}}}    // namespace hpx::parallel::detail
+}    // namespace hpx::parallel::detail
+
 #endif

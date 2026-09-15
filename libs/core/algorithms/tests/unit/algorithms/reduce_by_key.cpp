@@ -4,10 +4,9 @@
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
-#include <hpx/algorithm.hpp>
 #include <hpx/init.hpp>
+#include <hpx/modules/algorithms.hpp>
 #include <hpx/modules/testing.hpp>
-#include <hpx/parallel/algorithms/reduce_by_key.hpp>
 
 #include <iomanip>
 #include <random>
@@ -27,7 +26,7 @@
 //
 namespace debug {
     template <typename T>
-    void output(const std::string& name, const std::vector<T>& v)
+    void output(std::string const& name, std::vector<T> const& v)
     {
 #ifdef EXTRA_DEBUG
         std::cout << name.c_str() << "\t : {" << v.size() << "} : ";
@@ -38,7 +37,7 @@ namespace debug {
     }
 
     template <typename Iter>
-    void output(const std::string& name, Iter begin, Iter end)
+    void output(std::string const& name, Iter begin, Iter end)
     {
 #ifdef EXTRA_DEBUG
         std::cout << name.c_str() << "\t : {" << std::distance(begin, end)
@@ -100,13 +99,13 @@ struct almost_equal
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-int seed = std::random_device{}();
+unsigned int seed = std::random_device{}();
 std::mt19937 gen(seed);
 
 template <typename ExPolicy, typename Tkey, typename Tval, typename Op,
     typename HelperOp>
 void test_reduce_by_key1(ExPolicy&& policy, Tkey, Tval, bool benchmark,
-    const Op& op, const HelperOp& ho)
+    Op const& op, HelperOp const& ho)
 {
     static_assert(hpx::is_execution_policy<ExPolicy>::value,
         "hpx::is_execution_policy<ExPolicy>::value");
@@ -148,7 +147,7 @@ void test_reduce_by_key1(ExPolicy&& policy, Tkey, Tval, bool benchmark,
         //
         Tval sum = 0;
         for (int i = 0; i < numkeys && keysize < HPX_REDUCE_BY_KEY_TEST_SIZE;
-             ++i)
+            ++i)
         {
             Tval value = static_cast<Tval>(distr(eng));
             keys.push_back(key);
@@ -204,7 +203,7 @@ void test_reduce_by_key1(ExPolicy&& policy, Tkey, Tval, bool benchmark,
 template <typename ExPolicy, typename Tkey, typename Tval, typename Op,
     typename HelperOp>
 void test_reduce_by_key_const(ExPolicy&& policy, Tkey, Tval, bool benchmark,
-    const Op& op, const HelperOp& ho)
+    Op const& op, HelperOp const& ho)
 {
     static_assert(hpx::is_execution_policy<ExPolicy>::value,
         "hpx::is_execution_policy<ExPolicy>::value");
@@ -246,7 +245,7 @@ void test_reduce_by_key_const(ExPolicy&& policy, Tkey, Tval, bool benchmark,
         //
         Tval sum = 0;
         for (int i = 0; i < numkeys && keysize < HPX_REDUCE_BY_KEY_TEST_SIZE;
-             ++i)
+            ++i)
         {
             Tval value = static_cast<Tval>(distr(eng));
             keys.push_back(key);
@@ -259,8 +258,8 @@ void test_reduce_by_key_const(ExPolicy&& policy, Tkey, Tval, bool benchmark,
     o_values = values;
     o_keys = keys;
 
-    const std::vector<Tkey> const_keys(keys.begin(), keys.end());
-    const std::vector<Tval> const_values(values.begin(), values.end());
+    std::vector<Tkey> const const_keys(keys.begin(), keys.end());
+    std::vector<Tval> const const_values(values.begin(), values.end());
 
     hpx::chrono::high_resolution_timer t;
     // reduce_by_key, blocking when seq, par, par_vec
@@ -305,7 +304,7 @@ void test_reduce_by_key_const(ExPolicy&& policy, Tkey, Tval, bool benchmark,
 template <typename ExPolicy, typename Tkey, typename Tval, typename Op,
     typename HelperOp>
 void test_reduce_by_key_async(
-    ExPolicy&& policy, Tkey, Tval, const Op& op, const HelperOp& ho)
+    ExPolicy&& policy, Tkey, Tval, Op const& op, HelperOp const& ho)
 {
     static_assert(hpx::is_execution_policy<ExPolicy>::value,
         "hpx::is_execution_policy<ExPolicy>::value");
@@ -347,7 +346,7 @@ void test_reduce_by_key_async(
         //
         Tval sum = 0;
         for (int i = 0; i < numkeys && keysize < HPX_REDUCE_BY_KEY_TEST_SIZE;
-             ++i)
+            ++i)
         {
             Tval value = static_cast<Tval>(distr(eng));
             keys.push_back(key);
@@ -485,6 +484,97 @@ void test_reduce_by_key1()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// Edge-case tests for hpx::experimental::reduce_by_key
+//
+// The main test suite only exercises large (1<<18) random inputs.
+// The following tests cover boundary conditions that stress the internal
+// merge / scan stages when key groups are degenerate.
+
+// Edge 1: empty input - result iterators must equal the begin of output
+void test_reduce_by_key_empty()
+{
+    using namespace hpx::execution;
+
+    std::vector<int> keys, values;
+    std::vector<int> out_keys(1, -1), out_vals(1, -1);
+
+    // seq
+    {
+        auto r = hpx::experimental::reduce_by_key(seq, keys.begin(), keys.end(),
+            values.begin(), out_keys.begin(), out_vals.begin());
+        // Nothing written - result iterators must equal the output begin
+        HPX_TEST(r.in == out_keys.begin());
+        HPX_TEST(r.out == out_vals.begin());
+    }
+
+    // par
+    {
+        auto r = hpx::experimental::reduce_by_key(par, keys.begin(), keys.end(),
+            values.begin(), out_keys.begin(), out_vals.begin());
+        HPX_TEST(r.in == out_keys.begin());
+        HPX_TEST(r.out == out_vals.begin());
+    }
+}
+
+// Edge 2: all keys identical - single output group, value == sum of all inputs
+void test_reduce_by_key_single_group()
+{
+    using namespace hpx::execution;
+
+    std::vector<int> keys = {5, 5, 5, 5, 5};
+    std::vector<int> values = {10, 20, 30, 40, 50};    // sum = 150
+    std::vector<int> out_k(5, 0), out_v(5, 0);
+
+    // Run under par and verify correctness
+    auto r = hpx::experimental::reduce_by_key(par, keys.begin(), keys.end(),
+        values.begin(), out_k.begin(), out_v.begin(), std::equal_to<int>());
+
+    // Exactly one output group
+    auto n_groups = std::distance(out_v.begin(), r.out);
+    HPX_TEST_EQ(n_groups, std::ptrdiff_t(1));
+    HPX_TEST_EQ(out_k[0], 5);
+    HPX_TEST_EQ(out_v[0], 150);
+
+    // Verify seq produces the same result
+    std::vector<int> out_k2(5, 0), out_v2(5, 0);
+    auto r2 = hpx::experimental::reduce_by_key(seq, keys.begin(), keys.end(),
+        values.begin(), out_k2.begin(), out_v2.begin(), std::equal_to<int>());
+    HPX_TEST_EQ(std::distance(out_v2.begin(), r2.out), n_groups);
+    HPX_TEST_EQ(out_k2[0], out_k[0]);
+    HPX_TEST_EQ(out_v2[0], out_v[0]);
+}
+
+// Edge 3: all keys unique - N output groups, each value equals its input
+void test_reduce_by_key_all_unique()
+{
+    using namespace hpx::execution;
+
+    std::vector<int> keys = {1, 2, 3, 4, 5};
+    std::vector<int> values = {10, 20, 30, 40, 50};
+    std::vector<int> out_k(5, 0), out_v(5, 0);
+
+    auto r = hpx::experimental::reduce_by_key(par, keys.begin(), keys.end(),
+        values.begin(), out_k.begin(), out_v.begin(), std::equal_to<int>());
+
+    // All 5 groups must be emitted
+    auto n_groups = std::distance(out_v.begin(), r.out);
+    HPX_TEST_EQ(n_groups, std::ptrdiff_t(5));
+    // Each output value must equal the corresponding input value
+    bool vals_match =
+        std::equal(values.begin(), values.end(), out_v.begin(), almost_equal());
+    HPX_TEST(vals_match);
+    bool keys_match = std::equal(keys.begin(), keys.end(), out_k.begin());
+    HPX_TEST(keys_match);
+}
+
+void reduce_by_key_edge_case_test()
+{
+    test_reduce_by_key_empty();
+    test_reduce_by_key_single_group();
+    test_reduce_by_key_all_unique();
+}
+
+////////////////////////////////////////////////////////////////////////////////
 int hpx_main(hpx::program_options::variables_map& vm)
 {
     unsigned int seed = (unsigned int) std::time(nullptr);
@@ -495,6 +585,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
     gen.seed(seed);
 
     test_reduce_by_key1();
+    reduce_by_key_edge_case_test();
     //    test_reduce_by_key2();
     return hpx::local::finalize();
 }

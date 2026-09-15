@@ -1,4 +1,4 @@
-//  Copyright (c) 2019-2023 Hartmut Kaiser
+//  Copyright (c) 2019-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,18 +6,16 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/functional/deferred_call.hpp>
 #include <hpx/futures/detail/execute_thread.hpp>
 #include <hpx/futures/future.hpp>
 #include <hpx/futures/futures_factory.hpp>
-#include <hpx/threading_base/detail/switch_status.hpp>
-#include <hpx/threading_base/register_thread.hpp>
-#include <hpx/threading_base/set_thread_state.hpp>
-#include <hpx/threading_base/thread_data.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/threading_base/thread_num_tss.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -91,7 +89,7 @@ namespace hpx::threads::detail {
         bool reschedule = false;
 
         // don't directly run any threads that have started running 'normally'
-        // and were suspended afterwards
+        // and were suspended afterward
         if (thrdptr->runs_as_child())
         {
             LTM_(error).format(
@@ -131,34 +129,38 @@ namespace hpx::threads::detail {
                 return false;
             }
 
-            // check again, making sure the state has not changed in the mean
-            // time
+            // check again, making sure the state has not changed in the
+            // meantime
             if (thrdptr->runs_as_child())
             {
-#if defined(HPX_HAVE_APEX)
-                // get the APEX data pointer, in case we are resuming the thread
+                // get the tracing data, in case we are resuming the thread
                 // and have to restore any leaf timers from direct actions, etc.
-                util::external_timer::scoped_timer profiler(
+                hpx::tracing::scoped_task_timer profiler(
                     thrdptr->get_timer_data());
 
-                thrd_stat = handle_execute_thread(thrd.noref());
-
-                thread_schedule_state s = thrd_stat.get_previous();
-                if (s == thread_schedule_state::terminated ||
-                    s == thread_schedule_state::deleted)
-                {
-                    profiler.stop();
-
-                    // just in case, clean up the now dead pointer.
-                    thrdptr->set_timer_data(nullptr);
-                }
-                else
-                {
-                    profiler.yield();
-                }
+#if defined(HPX_HAVE_THREADS_GET_STACK_POINTER)
+                bool const recurse_asynchronously =
+                    !this_thread::has_sufficient_stack_space();
 #else
-                thrd_stat = handle_execute_thread(thrd.noref());
+                bool const recurse_asynchronously =
+                    (threads::get_continuation_recursion_count() + 1) >
+                    HPX_CONTINUATION_MAX_RECURSION_DEPTH;
 #endif
+                if (!recurse_asynchronously)
+                {
+                    hpx::tracing::task_executing(thrdptr);
+                }
+
+                thrd_stat = handle_execute_thread(thrd.noref());
+
+                auto prev_state = thrd_stat.get_previous();
+                auto on_exit = hpx::experimental::scope_exit([&] {
+                    if (prev_state == thread_schedule_state::terminated)
+                    {
+                        hpx::tracing::task_completed(thrdptr);
+                    }
+                });
+                profiler.handle_post_execution(thrdptr, prev_state);
             }
             else
             {
@@ -205,7 +207,10 @@ namespace hpx::threads::detail {
             auto const hint = thread_schedule_hint(static_cast<std::int16_t>(
                 thrdptr->get_last_worker_thread_num()));
             scheduler->schedule_thread_last(HPX_MOVE(thrd), hint);
-            scheduler->do_some_work(hint.hint);
+            scheduler->do_some_work(
+                hint.mode == hpx::threads::thread_schedule_hint_mode::numa ?
+                    static_cast<std::size_t>(-1) :
+                    hint.hint);
         }
 
         HPX_ASSERT(state_val != thread_schedule_state::terminated);

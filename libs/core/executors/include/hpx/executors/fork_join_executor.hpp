@@ -1,5 +1,5 @@
 //  Copyright (c) 2020 ETH Zurich
-//  Copyright (c) 2022-2023 Hartmut Kaiser
+//  Copyright (c) 2022-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,35 +11,33 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/concurrency/cache_line_data.hpp>
-#include <hpx/concurrency/detail/contiguous_index_queue.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/execution/detail/async_launch_policy_dispatch.hpp>
-#include <hpx/execution/executors/default_parameters.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/functional/detail/runtime_get.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/functional/invoke_fused.hpp>
+#include <hpx/executors/executor_scheduler.hpp>
+#include <hpx/executors/parallel_executor.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/concurrency.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/hardware.hpp>
-#include <hpx/modules/itt_notify.hpp>
+#include <hpx/modules/tracing.hpp>
+
+#include <hpx/modules/resource_partitioner.hpp>
+#include <hpx/modules/synchronization.hpp>
+#include <hpx/modules/threading.hpp>
+#include <hpx/modules/threading_base.hpp>
 #include <hpx/modules/topology.hpp>
-#include <hpx/resource_partitioner/detail/partitioner.hpp>
-#include <hpx/synchronization/spinlock.hpp>
-#include <hpx/threading/thread.hpp>
-#include <hpx/threading_base/annotated_function.hpp>
 
 #include <atomic>
 #include <chrono>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <iosfwd>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -64,14 +62,14 @@ namespace hpx::execution::experimental {
     /// worker threads is a slow operation the executor should be reused
     /// whenever possible for multiple adjacent parallel algorithms or
     /// invocations of bulk_(a)sync_execute.
-    class fork_join_executor
+    HPX_CXX_CORE_EXPORT class fork_join_executor
     {
     public:
         /// Type of loop schedule for use with the fork_join_executor.
         /// loop_schedule::static_ implies no work-stealing;
         /// loop_schedule::dynamic allows stealing when a worker has finished
         /// its local work.
-        enum class loop_schedule
+        enum class loop_schedule : std::uint8_t
         {
             static_,
             dynamic,
@@ -89,7 +87,7 @@ namespace hpx::execution::experimental {
         struct shared_data
         {
             // Type definitions.
-            enum class thread_state
+            enum class thread_state : std::uint8_t
             {
                 starting = 0,
                 idle = 1,
@@ -124,6 +122,7 @@ namespace hpx::execution::experimental {
                 void const* shape_;
                 void* argument_pack_;
                 void* results_;
+                hpx::latch* sync_with_main_thread_;
             };
 
             // Can't apply 'using' here as the type needs to be forward
@@ -152,6 +151,9 @@ namespace hpx::execution::experimental {
             hpx::spinlock exception_mutex_;
             std::exception_ptr exception_;
 
+            threads::thread_priority main_priority_ =
+                threads::thread_priority::default_;
+
             // Data for each parallel region.
             region_data_type region_data_;
 
@@ -164,32 +166,44 @@ namespace hpx::execution::experimental {
             template <typename Op>
             static thread_state wait_state_this_thread_while(
                 std::atomic<thread_state> const& tstate, thread_state state,
-                std::uint64_t yield_delay, Op&& op)
+                std::uint64_t const yield_delay, Op&& op, bool allow_yielding)
             {
+                auto const context = hpx::execution_base::this_thread::agent();
+
                 auto current = tstate.load(std::memory_order_acquire);
                 if (HPX_UNLIKELY(op(current, state)))
                 {
                     HPX_SMT_PAUSE;
 
-                    std::uint64_t const base_time = util::hardware::timestamp();
+                    std::uint64_t base_time = util::hardware::timestamp();
                     current = tstate.load(std::memory_order_acquire);
                     while (HPX_LIKELY(op(current, state)))
                     {
-                        for (int i = 0; i < 128; ++i)
+                        bool continue_outer = false;
+                        for (int i = 0; i < 256; ++i)
                         {
                             HPX_SMT_PAUSE;
 
-                            current = tstate.load(std::memory_order_acquire);
-                            if (HPX_UNLIKELY(!op(current, state)))
+                            // Use atomic acquire only after atomic relaxed
+                            // suggests that we should stop iterating.
+                            if (HPX_UNLIKELY(
+                                    !op(tstate.load(std::memory_order_relaxed),
+                                        state)))
                             {
-                                return current;
+                                continue_outer = true;
+                                break;
                             }
                         }
 
-                        if (HPX_UNLIKELY((util::hardware::timestamp() -
-                                             base_time) > yield_delay))
+                        if (allow_yielding && HPX_UNLIKELY(!continue_outer))
                         {
-                            hpx::this_thread::yield();
+                            std::uint64_t const base_time2 =
+                                util::hardware::timestamp();
+                            if ((base_time2 - base_time) > yield_delay)
+                            {
+                                base_time = base_time2;
+                                context.yield();
+                            }
                         }
 
                         current = tstate.load(std::memory_order_acquire);
@@ -199,10 +213,22 @@ namespace hpx::execution::experimental {
             }
 
             std::string generate_annotation(
-                std::size_t index, char const* default_name) const
+                std::size_t const index, char const* default_name) const
             {
                 return hpx::util::format("{}: thread ({})",
                     annotation_ ? annotation_ : default_name, index);
+            }
+
+            static std::uint32_t get_first_core(
+                hpx::threads::mask_cref_type mask)
+            {
+                auto const size = hpx::threads::mask_size(mask);
+                for (std::uint32_t i = 0; i != size; ++i)
+                {
+                    if (hpx::threads::test(mask, i))
+                        return i;
+                }
+                return 0;
             }
 
             // Entry point for each worker HPX thread. Holds references to the
@@ -221,56 +247,70 @@ namespace hpx::execution::experimental {
                 region_data_type& region_data_;
                 queues_type& queues_;
 
-                void set_state_this_thread(thread_state state) const noexcept
+                // The threads are bound to the current core.
+                bool const priority_bound_;
+                bool const allow_yielding_;
+
+                static void set_state_this_thread(
+                    region_data& data, thread_state const state) noexcept
                 {
-                    region_data_[thread_index_].data_.state_.store(
-                        state, std::memory_order_release);
+                    data.state_.store(state, std::memory_order_release);
                 }
 
-                thread_state get_state_this_thread() const noexcept
+                [[nodiscard]] static thread_state get_state_this_thread(
+                    region_data const& data) noexcept
                 {
-                    return region_data_[thread_index_].data_.state_.load(
-                        std::memory_order_relaxed);
+                    return data.state_.load(std::memory_order_relaxed);
                 }
 
                 void operator()() const noexcept
                 {
-                    HPX_ASSERT(
-                        get_state_this_thread() == thread_state::starting);
-                    set_state_this_thread(thread_state::idle);
+                    region_data& data = region_data_[thread_index_].data_;
 
-                    region_data const& data = region_data_[thread_index_].data_;
+                    HPX_ASSERT(
+                        get_state_this_thread(data) == thread_state::starting);
+                    set_state_this_thread(data, thread_state::idle);
 
                     // wait as long the state is 'idle'
                     auto state = shared_data::wait_state_this_thread_while(
                         data.state_, thread_state::idle, yield_delay_,
-                        std::equal_to<>());
+                        std::equal_to<>(), allow_yielding_);
 
+                    HPX_ASSERT(!priority_bound_ ||
+                        thread_index_ == hpx::get_worker_thread_num());
                     while (HPX_LIKELY(state != thread_state::stopping))
                     {
-                        data.thread_function_helper_(region_data_,
-                            thread_index_, num_threads_, queues_,
-                            exception_mutex_, exception_);
+                        {
+                            HPX_TRACING_MARK_EVENT(
+                                "fork_join_executor::invoke_work");
+
+                            data.thread_function_helper_(region_data_,
+                                thread_index_, num_threads_, queues_,
+                                exception_mutex_, exception_);
+                        }
 
                         // wait as long the state is 'idle'
                         state = shared_data::wait_state_this_thread_while(
                             data.state_, thread_state::idle, yield_delay_,
-                            std::equal_to<>());
+                            std::equal_to<>(), allow_yielding_);
+
+                        HPX_ASSERT(!priority_bound_ ||
+                            thread_index_ == hpx::get_worker_thread_num());
                     }
 
                     HPX_ASSERT(
-                        get_state_this_thread() == thread_state::stopping);
-                    set_state_this_thread(thread_state::stopped);
+                        get_state_this_thread(data) == thread_state::stopping);
+                    set_state_this_thread(data, thread_state::stopped);
                 }
             };
 
-            void set_state_main_thread(thread_state state) noexcept
+            void set_state_main_thread(thread_state const state) noexcept
             {
                 region_data_[main_thread_].data_.state_.store(
                     state, std::memory_order_relaxed);
             }
 
-            void set_state_all(thread_state state) noexcept
+            void set_state_all(thread_state const state) noexcept
             {
                 for (std::size_t t = 0; t != num_threads_; ++t)
                 {
@@ -280,16 +320,18 @@ namespace hpx::execution::experimental {
                 }
             }
 
-            void wait_state_all(thread_state state) const noexcept
+            void wait_state_all(thread_state const state) const noexcept
             {
-                for (std::size_t t = 0; t != num_threads_; ++t)
+                bool const allow_yielding =
+                    stacksize_ != threads::thread_stacksize::nostack;
+                for (std::size_t t = 0; t != region_data_.size(); ++t)
                 {
                     if (t != main_thread_)
                     {
                         // wait for thread-state to be equal to 'state'
                         wait_state_this_thread_while(
                             region_data_[t].data_.state_, state, yield_delay_,
-                            std::not_equal_to<>());
+                            std::not_equal_to<>(), allow_yielding);
                     }
                     else
                     {
@@ -301,14 +343,58 @@ namespace hpx::execution::experimental {
                 }
             }
 
+            void reschedule_with_new_priority(
+                threads::thread_priority const priority) const
+            {
+                // Make sure the main thread runs with the required priority
+                // as well. Yield with the intent to be resumed with the
+                // required settings.
+                hpx::this_thread::set_affinity(
+                    static_cast<std::int16_t>(main_thread_), priority);
+            }
+
             void init_threads()
             {
+                auto const& rp = hpx::resource::get_partitioner();
+                bool priority_bound = false;
+
                 // The current thread could be either part of the PU-mask for
                 // this executor or not. If it is part of the PU-mask, then it
                 // will be associated with the corresponding PU. If the current
                 // thread is not part of the PU-mask, then it will be associated
                 // with the first queue.
+
+                // Note the current thread could also be the main thread, in
+                // which case its number will be equal to the number of worker
+                // threads.
                 main_thread_ = hpx::get_worker_thread_num();
+
+                if (rp.get_affinity_data().affinities_disabled() ||
+                    priority_ != threads::thread_priority::bound)
+                {
+                    main_priority_ = priority_;
+                }
+                else
+                {
+                    auto const* thread_data = threads::get_self_id_data();
+                    main_priority_ =
+                        thread_data ? thread_data->get_priority() : priority_;
+                    if (main_priority_ != priority_)
+                    {
+                        // Make sure the main thread runs with the required
+                        // priority as well. Yield with the intent to be resumed
+                        // with the required settings.
+                        reschedule_with_new_priority(priority_);
+
+                        // The main thread should still run on the core it was
+                        // running on before the priority change.
+                        HPX_ASSERT(
+                            main_thread_ == hpx::get_worker_thread_num());
+                        HPX_ASSERT(priority_ ==
+                            threads::get_self_id_data()->get_priority());
+                    }
+                    priority_bound = true;
+                }
 
                 // the array of queues is needed only if work-stealing was
                 // enabled
@@ -322,8 +408,15 @@ namespace hpx::execution::experimental {
                 std::size_t t = 0;
                 bool main_thread_ok = false;
 
-                auto const& rp = hpx::resource::get_partitioner();
-                std::size_t main_pu_num = rp.get_pu_num(main_thread_);
+                bool const main_thread_is_waiting =
+                    main_thread_ >= num_threads_;
+                std::size_t main_pu_num = get_first_core(pu_mask_);
+                if (main_thread_ != static_cast<std::size_t>(-1) &&
+                    !main_thread_is_waiting)
+                {
+                    main_pu_num = rp.get_pu_num(main_thread_);
+                }
+
                 if (!hpx::threads::test(pu_mask_, main_pu_num) ||
                     num_threads_ == 1)
                 {
@@ -333,12 +426,18 @@ namespace hpx::execution::experimental {
                     set_state_main_thread(thread_state::idle);
                 }
 
+                // explicitly make the main thread ready, if needed
+                if (main_thread_is_waiting)
+                {
+                    set_state_main_thread(thread_state::idle);
+                }
+
                 if (num_threads_ > 1)
                 {
                     std::size_t const num_pus = pool_->get_os_thread_count();
 
                     for (std::size_t pu = 0; t != num_threads_ && pu != num_pus;
-                         ++pu)
+                        ++pu)
                     {
                         std::size_t const pu_num = rp.get_pu_num(pu);
                         if (!main_thread_ok && pu == main_thread_)
@@ -377,18 +476,26 @@ namespace hpx::execution::experimental {
 
                         hpx::threads::thread_description desc(
                             generate_annotation(pu_num, "fork_join_executor"));
-                        hpx::detail::async_launch_policy_dispatch<
+                        hpx::detail::post_policy_dispatch<
                             launch::async_policy>::call(policy, desc, pool_,
-                            thread_function{num_threads_, t, schedule_,
-                                exception_mutex_, exception_, yield_delay_,
-                                region_data_, queues_});
+                            thread_function{.num_threads_ = num_threads_,
+                                .thread_index_ = t,
+                                .schedule_ = schedule_,
+                                .exception_mutex_ = exception_mutex_,
+                                .exception_ = exception_,
+                                .yield_delay_ = yield_delay_,
+                                .region_data_ = region_data_,
+                                .queues_ = queues_,
+                                .priority_bound_ = priority_bound,
+                                .allow_yielding_ = stacksize_ !=
+                                    threads::thread_stacksize::nostack});
 
                         ++t;
                     }
                 }
 
                 // the main thread should have been associated with a queue
-                HPX_ASSERT(main_thread_ok);
+                HPX_ASSERT(main_thread_ok || main_thread_ >= num_threads_);
 
                 // there have to be as many HPX threads as there are set bits in
                 // the PU-mask
@@ -398,17 +505,27 @@ namespace hpx::execution::experimental {
             }
 
             static constexpr void init_local_work_queue(queue_type& queue,
-                std::size_t thread_index, std::size_t num_threads,
-                std::size_t size) noexcept
+                std::size_t const thread_index, std::size_t const num_threads,
+                std::size_t const size) noexcept
             {
-                auto const part_begin = static_cast<std::uint32_t>(
-                    (thread_index * size) / num_threads);
-                auto const part_end = static_cast<std::uint32_t>(
-                    ((thread_index + 1) * size) / num_threads);
-                queue.reset(part_begin, part_end);
+                auto const part_begin = (thread_index * size) / num_threads;
+                auto const part_end = ((thread_index + 1) * size) / num_threads;
+
+                // Guard:the static scheduling also uses
+                //  contiguous_index_queue internally.
+
+                HPX_ASSERT_MSG(
+                    size <= static_cast<std::size_t>(
+                                (std::numeric_limits<std::uint32_t>::max)()),
+                    "fork_join_executor: ranges larger than"
+                    " UINT32_MAX are not supported");
+
+                queue.reset(static_cast<std::uint32_t>(part_begin),
+                    static_cast<std::uint32_t>(part_end));
             }
 
-            static hpx::threads::mask_type full_mask(std::size_t num_threads)
+            static hpx::threads::mask_type full_mask(
+                std::size_t const num_threads)
             {
                 auto const& rp = hpx::resource::get_partitioner();
 
@@ -421,46 +538,60 @@ namespace hpx::execution::experimental {
                 return mask;
             }
 
+            static std::size_t get_region_data_size(
+                std::size_t const num_threads,
+                threads::thread_pool_base const* pool)
+            {
+                return hpx::get_worker_thread_num() ==
+                        pool->get_os_thread_count() ?
+                    num_threads + 1 :
+                    num_threads;
+            }
+
         public:
             /// \cond NOINTERNAL
-            explicit shared_data(threads::thread_priority priority,
-                threads::thread_stacksize stacksize, loop_schedule schedule,
-                std::chrono::nanoseconds yield_delay)
-              : pool_(this_thread::get_pool())
+            explicit shared_data(threads::thread_priority const priority,
+                threads::thread_stacksize const stacksize,
+                loop_schedule const sched,
+                std::chrono::nanoseconds const yield_delay)
+              : pool_(threads::detail::get_self_or_default_pool())
               , priority_(priority)
               , stacksize_(stacksize)
-              , schedule_(schedule)
+              , schedule_(sched)
               , yield_delay_(static_cast<std::uint64_t>(
-                    yield_delay.count() / pool_->timestamp_scale()))
+                    static_cast<double>(yield_delay.count()) /
+                    pool_->timestamp_scale()))
               , num_threads_(pool_->get_os_thread_count())
               , pu_mask_(full_mask(num_threads_))
-              , region_data_(num_threads_)
+              , region_data_(get_region_data_size(num_threads_, pool_))
             {
                 HPX_ASSERT(pool_);
 
                 init_threads();
             }
 
-            explicit shared_data(threads::thread_priority priority,
-                threads::thread_stacksize stacksize, loop_schedule schedule,
-                std::chrono::nanoseconds yield_delay,
+            explicit shared_data(threads::thread_priority const priority,
+                threads::thread_stacksize const stacksize,
+                loop_schedule const sched,
+                std::chrono::nanoseconds const yield_delay,
                 hpx::threads::mask_cref_type pu_mask)
-              : pool_(this_thread::get_pool())
+              : pool_(threads::detail::get_self_or_default_pool())
               , priority_(priority)
               , stacksize_(stacksize)
-              , schedule_(schedule)
+              , schedule_(sched)
               , yield_delay_(static_cast<std::uint64_t>(
-                    yield_delay.count() / pool_->timestamp_scale()))
+                    static_cast<double>(yield_delay.count()) /
+                    pool_->timestamp_scale()))
               , num_threads_(hpx::threads::count(pu_mask))
               , pu_mask_(pu_mask)
-              , region_data_(num_threads_)
+              , region_data_(get_region_data_size(num_threads_, pool_))
             {
                 HPX_ASSERT(pool_);
-                if (pool_ == nullptr ||
+                if (pool_ == nullptr || num_threads_ == 0 ||
                     num_threads_ > pool_->get_os_thread_count())
                 {
                     HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
-                        "for_join_executor::shared_data::shared_data",
+                        "fork_join_executor::shared_data::shared_data",
                         "unexpected number of PUs in given mask: {}, available "
                         "threads: {}",
                         pu_mask, pool_ ? pool_->get_os_thread_count() : -1);
@@ -479,6 +610,15 @@ namespace hpx::execution::experimental {
                 set_state_all(thread_state::stopping);
                 set_state_main_thread(thread_state::stopped);
                 wait_state_all(thread_state::stopped);
+
+                // Make sure the main thread's priority is reset, if needed.
+                // Yield with the intent to be resumed with the required
+                // settings.
+                if (priority_ == threads::thread_priority::bound &&
+                    main_priority_ != priority_)
+                {
+                    reschedule_with_new_priority(main_priority_);
+                }
             }
 
             bool operator==(shared_data const& rhs) const noexcept
@@ -513,12 +653,14 @@ namespace hpx::execution::experimental {
                 static constexpr decltype(auto) invoke_helper(
                     hpx::util::index_pack<Is_...>, F_&& f, A_&& a, Tuple_&& t)
                 {
+                    // NOLINTBEGIN(bugprone-use-after-move)
                     return HPX_INVOKE(HPX_FORWARD(F_, f), HPX_FORWARD(A_, a),
                         hpx::get<Is_>(HPX_FORWARD(Tuple_, t))...);
+                    // NOLINTEND(bugprone-use-after-move)
                 }
 
                 static void set_state(std::atomic<thread_state>& tstate,
-                    thread_state state) noexcept
+                    thread_state const state) noexcept
                 {
                     tstate.store(state, std::memory_order_release);
                 }
@@ -526,8 +668,9 @@ namespace hpx::execution::experimental {
                 // Main entry point for a single parallel region (static
                 // scheduling).
                 static void call_static(region_data_type& rdata,
-                    std::size_t thread_index, std::size_t num_threads,
-                    queues_type&, hpx::spinlock& exception_mutex,
+                    std::size_t const thread_index,
+                    std::size_t const num_threads, queues_type&,
+                    hpx::spinlock& exception_mutex,
                     std::exception_ptr& exception) noexcept
                 {
                     region_data& data = rdata[thread_index].data_;
@@ -544,14 +687,16 @@ namespace hpx::execution::experimental {
                             // Set up the local queues and state.
                             std::size_t const size = hpx::util::size(shape);
 
-                            auto part_begin = static_cast<std::uint32_t>(
-                                (thread_index * size) / num_threads);
-                            auto const part_end = static_cast<std::uint32_t>(
-                                ((thread_index + 1) * size) / num_threads);
+                            auto part_begin =
+                                (thread_index * size) / num_threads;
+                            auto const part_end =
+                                ((thread_index + 1) * size) / num_threads;
 
                             set_state(data.state_, thread_state::active);
 
                             // Process local items.
+                            HPX_TRACING_MARK_EVENT(
+                                "fork_join_executor::call_static");
                             for (; part_begin != part_end; ++part_begin)
                             {
                                 auto it = std::next(
@@ -581,13 +726,18 @@ namespace hpx::execution::experimental {
                         });
 
                     set_state(data.state_, thread_state::idle);
+                    if (data.sync_with_main_thread_)
+                    {
+                        data.sync_with_main_thread_->count_down(1);
+                    }
                 }
 
                 // Main entry point for a single parallel region (dynamic
                 // scheduling).
                 static void call_dynamic(region_data_type& rdata,
-                    std::size_t thread_index, std::size_t num_threads,
-                    queues_type& queues, hpx::spinlock& exception_mutex,
+                    std::size_t const thread_index,
+                    std::size_t const num_threads, queues_type& queues,
+                    hpx::spinlock& exception_mutex,
                     std::exception_ptr& exception) noexcept
                 {
                     region_data& data = rdata[thread_index].data_;
@@ -611,6 +761,8 @@ namespace hpx::execution::experimental {
                             set_state(data.state_, thread_state::active);
 
                             // Process local items first.
+                            HPX_TRACING_MARK_EVENT(
+                                "fork_join_executor::call_dynamic");
                             hpx::optional<std::uint32_t> index;
                             while ((index = local_queue.pop_left()))
                             {
@@ -634,7 +786,7 @@ namespace hpx::execution::experimental {
                             // As loop schedule is dynamic, steal from neighboring
                             // threads.
                             for (std::size_t offset = 1; offset < num_threads;
-                                 ++offset)
+                                ++offset)
                             {
                                 std::size_t const neighbor_index =
                                     (thread_index + offset) % num_threads;
@@ -681,6 +833,10 @@ namespace hpx::execution::experimental {
                         });
 
                     set_state(data.state_, thread_state::idle);
+                    if (data.sync_with_main_thread_)
+                    {
+                        data.sync_with_main_thread_->count_down(1);
+                    }
                 }
             };
 
@@ -693,15 +849,15 @@ namespace hpx::execution::experimental {
                 static constexpr std::uint32_t Size = hpx::tuple_size_v<Fs>;
 
                 static void set_state(std::atomic<thread_state>& tstate,
-                    thread_state state) noexcept
+                    thread_state const state) noexcept
                 {
                     tstate.store(state, std::memory_order_release);
                 }
 
                 // Main entry point for a single parallel invoke region
                 static void call(region_data_type& rdata,
-                    std::size_t thread_index, std::size_t num_threads,
-                    queues_type&, hpx::spinlock& exception_mutex,
+                    std::size_t const thread_index, std::size_t, queues_type&,
+                    hpx::spinlock& exception_mutex,
                     std::exception_ptr& exception) noexcept
                 {
                     region_data& data = rdata[thread_index].data_;
@@ -714,14 +870,8 @@ namespace hpx::execution::experimental {
                             auto& args =
                                 *static_cast<Args*>(data.argument_pack_);
 
-                            auto part_begin =
-                                static_cast<std::uint32_t>(hpx::get<0>(args) +
-                                    (thread_index * hpx::get<1>(args)) /
-                                        num_threads);
-                            auto const part_end =
-                                static_cast<std::uint32_t>(hpx::get<0>(args) +
-                                    ((thread_index + 1) * hpx::get<1>(args)) /
-                                        num_threads);
+                            auto part_begin = hpx::get<0>(args);
+                            auto const part_end = hpx::get<1>(args);
 
                             set_state(data.state_, thread_state::active);
 
@@ -742,13 +892,17 @@ namespace hpx::execution::experimental {
                         });
 
                     set_state(data.state_, thread_state::idle);
+                    if (data.sync_with_main_thread_)
+                    {
+                        data.sync_with_main_thread_->count_down(1);
+                    }
                 }
             };
 
             template <typename Result, typename F, typename S, typename Args>
             thread_function_helper_type* set_all_states_and_region_data(
-                void* results, thread_state state, F& f, S const& shape,
-                Args& argument_pack) noexcept
+                void* results, thread_state const state, F& f, S const& shape,
+                Args& argument_pack, hpx::latch* sync_with_main_thread) noexcept
             {
                 thread_function_helper_type* func;
                 if (schedule_ == loop_schedule::static_ || num_threads_ == 1)
@@ -766,11 +920,14 @@ namespace hpx::execution::experimental {
                 {
                     region_data& data = region_data_[t].data_;
 
+                    // NOLINTBEGIN(bugprone-multi-level-implicit-pointer-conversion)
                     data.element_function_ = &f;
                     data.shape_ = &shape;
                     data.argument_pack_ = &argument_pack;
                     data.thread_function_helper_ = func;
                     data.results_ = results;
+                    data.sync_with_main_thread_ = sync_with_main_thread;
+                    // NOLINTEND(bugprone-multi-level-implicit-pointer-conversion)
 
                     data.state_.store(state, std::memory_order_release);
                 }
@@ -778,25 +935,38 @@ namespace hpx::execution::experimental {
             }
 
             template <typename Fs, typename Args>
-            thread_function_helper_type* set_all_states_and_region_data_invoke(
-                thread_state state, Fs& function_pack, Args& args) noexcept
+            std::size_t set_all_states_and_region_data_invoke(
+                thread_state const state, Fs& function_pack, Args& args,
+                hpx::latch* sync_with_main_thread) noexcept
             {
                 constexpr thread_function_helper_type* func =
                     &thread_function_helper_invoke<Fs, Args>::call;
 
                 for (std::size_t t = 0; t != num_threads_; ++t)
                 {
+                    if (t == main_thread_)
+                    {
+                        continue;    // don't run sync task on main thread
+                    }
+
                     region_data& data = region_data_[t].data_;
+                    if (data.state_.load(std::memory_order_acquire) ==
+                        thread_state::idle)
+                    {
+                        // NOLINTBEGIN(bugprone-multi-level-implicit-pointer-conversion)
+                        data.element_function_ = &function_pack;
+                        data.shape_ = nullptr;
+                        data.argument_pack_ = &args;
+                        data.thread_function_helper_ = func;
+                        data.sync_with_main_thread_ = sync_with_main_thread;
+                        // NOLINTEND(bugprone-multi-level-implicit-pointer-conversion)
 
-                    data.element_function_ = &function_pack;
-                    data.shape_ = nullptr;
-                    data.argument_pack_ = &args;
-                    data.thread_function_helper_ = func;
-
-                    data.state_.store(state, std::memory_order_release);
+                        data.state_.store(state, std::memory_order_release);
+                        return t;
+                    }
                 }
 
-                return func;
+                return static_cast<std::size_t>(-1);
             }
 
             template <typename F>
@@ -821,6 +991,8 @@ namespace hpx::execution::experimental {
             template <typename F, typename S, typename... Ts>
             decltype(auto) bulk_sync_execute(F&& f, S const& shape, Ts&&... ts)
             {
+                HPX_TRACING_MARK_EVENT("fork_join_executor::bulk_sync_execute");
+
                 // protect against nested use of this executor instance
                 if (region_data_[main_thread_].data_.state_.load(
                         std::memory_order_relaxed) != thread_state::idle)
@@ -845,29 +1017,58 @@ namespace hpx::execution::experimental {
                     hpx::parallel::execution::detail::bulk_execute_result_t<F,
                         S, Ts...>;
 
+                // do things differently if the main thread is not participating
+                hpx::latch* sync_with_main_thread = nullptr;
+                auto on_exit = hpx::experimental::scope_exit(
+                    [&] { delete sync_with_main_thread; });
+
+                if (main_thread_ >= num_threads_)
+                {
+                    sync_with_main_thread = new hpx::latch(
+                        static_cast<std::ptrdiff_t>(num_threads_ + 1));
+                }
+
                 if constexpr (std::is_void_v<result_type>)
                 {
-                    // Signal all worker threads to start partitioning work for
-                    // themselves, and then starting the actual work.
+                    // Signal all worker threads to start partitioning work
+                    // for themselves, and then starting the actual work.
                     thread_function_helper_type* func =
                         set_all_states_and_region_data<void>(nullptr,
                             thread_state::partitioning_work, f, shape,
-                            argument_pack);
+                            argument_pack, sync_with_main_thread);
 
-                    invoke_work(func);
+                    if (sync_with_main_thread == nullptr)
+                    {
+                        invoke_work(func);
+                    }
+                    else
+                    {
+                        // the main thread must be put to sleep to avoid
+                        // over-subscription of the cores
+                        sync_with_main_thread->arrive_and_wait();
+                    }
                 }
                 else
                 {
                     result_type results(hpx::util::size(shape));
 
-                    // Signal all worker threads to start partitioning work for
-                    // themselves, and then starting the actual work.
+                    // Signal all worker threads to start partitioning work
+                    // for themselves, and then starting the actual work.
                     thread_function_helper_type* func =
                         set_all_states_and_region_data<result_type>(&results,
                             thread_state::partitioning_work, f, shape,
-                            argument_pack);
+                            argument_pack, sync_with_main_thread);
 
-                    invoke_work(func);
+                    if (sync_with_main_thread == nullptr)
+                    {
+                        invoke_work(func);
+                    }
+                    else
+                    {
+                        // the main thread must be put to sleep to avoid
+                        // over-subscription of the cores
+                        sync_with_main_thread->arrive_and_wait();
+                    }
 
                     return results;
                 }
@@ -876,6 +1077,9 @@ namespace hpx::execution::experimental {
             template <typename F, typename S, typename... Ts>
             decltype(auto) bulk_async_execute(F&& f, S const& shape, Ts&&... ts)
             {
+                HPX_TRACING_MARK_EVENT(
+                    "fork_join_executor::bulk_async_execute");
+
                 using result_type =
                     hpx::parallel::execution::detail::bulk_execute_result_t<F,
                         S, Ts...>;
@@ -928,19 +1132,47 @@ namespace hpx::execution::experimental {
 
                 auto args = hpx::make_tuple(first, size);
 
-                // Signal all worker threads to start partitioning work for
-                // themselves, and then starting the actual work.
-                thread_function_helper_type* func =
+                // do things differently if the main thread is not participating
+                hpx::latch* sync_with_main_thread = nullptr;
+                if (main_thread_ >= num_threads_)
+                {
+                    sync_with_main_thread =
+                        new hpx::latch(static_cast<std::ptrdiff_t>(2));
+                }
+
+                // Find a worker thread and signal it to start partitioning work
+                // for itself, and then start the actual work.
+                std::size_t const worker_thread =
                     set_all_states_and_region_data_invoke(
-                        thread_state::partitioning_work, function_pack, args);
+                        thread_state::partitioning_work, function_pack, args,
+                        sync_with_main_thread);
 
-                // Start work on the main thread.
-                func(region_data_, main_thread_, num_threads_, queues_,
-                    exception_mutex_, exception_);
+                if (worker_thread == static_cast<std::size_t>(-1))
+                {
+                    delete sync_with_main_thread;
 
-                // Wait for all threads to finish their work assigned to
-                // them in this parallel region.
-                wait_state_all(thread_state::idle);
+                    HPX_THROW_EXCEPTION(error::bad_request,
+                        "sync_invoke_helper",
+                        "no available worker threads, is this instance of "
+                        "fork_join_executor being used in nested ways?");
+                }
+
+                if (sync_with_main_thread == nullptr)
+                {
+                    // Wait for the thread to finish their work assigned to
+                    // them in this parallel region.
+                    wait_state_this_thread_while(
+                        region_data_[worker_thread].data_.state_,
+                        thread_state::idle, yield_delay_, std::not_equal_to<>(),
+                        stacksize_ != threads::thread_stacksize::nostack);
+                }
+                else
+                {
+                    // the main thread must be put to sleep to avoid
+                    // over-subscription of the cores
+                    sync_with_main_thread->arrive_and_wait();
+                    delete sync_with_main_thread;
+                }
 
                 // rethrow exception, if any
                 if (exception_)
@@ -983,63 +1215,49 @@ namespace hpx::execution::experimental {
             shared_data_->sync_invoke_helper(function_pack, first, size);
         }
 
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_sync_execute(
+            F&& f, S const& shape, Ts&&... ts) const
+        {
+            return shared_data_->bulk_sync_execute(
+                HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
+        }
+
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_async_execute(
+            F&& f, S const& shape, Ts&&... ts) const
+        {
+            return shared_data_->bulk_async_execute(
+                HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
+        }
+
+    public:
+        template <typename F, typename... Fs>
+            requires(std::invocable<F> && (std::invocable<Fs> && ...))
+        decltype(auto) async_invoke(F&& f, Fs&&... fs) const
+        {
+            return shared_data_->async_invoke(
+                HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
+        }
+
+        template <typename F, typename... Fs>
+            requires(std::invocable<F> && (std::invocable<Fs> && ...))
+        decltype(auto) sync_invoke(F&& f, Fs&&... fs) const
+        {
+            return shared_data_->sync_invoke(
+                HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
+        }
+
     private:
         std::shared_ptr<shared_data> shared_data_ = nullptr;
 
-        // clang-format off
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(
-                !std::is_integral_v<S>
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_sync_execute_t,
-            fork_join_executor const& exec, F&& f, S const& shape, Ts&&... ts)
+        template <typename F, typename... Ts>
+        void post(F&& f, Ts&&... ts) const
         {
-            return exec.shared_data_->bulk_sync_execute(
-                HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
-        }
-
-        // clang-format off
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(
-                !std::is_integral_v<S>
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_async_execute_t,
-            fork_join_executor const& exec, F&& f, S const& shape, Ts&&... ts)
-        {
-            return exec.shared_data_->bulk_async_execute(
-                HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
-        }
-
-        // clang-format off
-        template <typename F, typename... Fs,
-            HPX_CONCEPT_REQUIRES_(
-                std::is_invocable_v<F> && (std::is_invocable_v<Fs> && ...)
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_invoke_t,
-            fork_join_executor const& exec, F&& f, Fs&&... fs)
-        {
-            return exec.shared_data_->async_invoke(
-                HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
-        }
-
-        // clang-format off
-        template <typename F, typename... Fs,
-            HPX_CONCEPT_REQUIRES_(
-                std::is_invocable_v<F> && (std::is_invocable_v<Fs> && ...)
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::sync_invoke_t,
-            fork_join_executor const& exec, F&& f, Fs&&... fs)
-        {
-            return exec.shared_data_->sync_invoke(
-                HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
+            shared_data_->async_invoke(
+                hpx::bind_back(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...));
         }
 
     public:
@@ -1053,7 +1271,7 @@ namespace hpx::execution::experimental {
             return !(*this == rhs);
         }
 
-        fork_join_executor const& context() const noexcept
+        [[nodiscard]] fork_join_executor const& context() const noexcept
         {
             return *this;
         }
@@ -1061,127 +1279,202 @@ namespace hpx::execution::experimental {
 
         /// \brief Construct a fork_join_executor.
         ///
-        /// \param priority The priority of the worker threads.
-        /// \param stacksize The stacksize of the worker threads. Must not be
-        ///                  nostack.
-        /// \param schedule The loop schedule of the parallel regions.
+        /// \param priority  The priority of the worker threads.
+        /// \param stacksize The stacksize of the worker threads.
+        /// \param sched     The loop schedule of the parallel regions.
         /// \param yield_delay The time after which the executor yields to other
         ///        work if it has not received any new work for execution.
         explicit fork_join_executor(
             threads::thread_priority priority = threads::thread_priority::bound,
             threads::thread_stacksize stacksize =
                 threads::thread_stacksize::small_,
-            loop_schedule schedule = loop_schedule::static_,
-            std::chrono::nanoseconds yield_delay = std::chrono::milliseconds(1))
+            loop_schedule sched = loop_schedule::dynamic,
+            std::chrono::nanoseconds yield_delay = std::chrono::microseconds(
+                300))
         {
-            if (stacksize == threads::thread_stacksize::nostack)
-            {
-                HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
-                    "fork_join_executor::fork_join_executor",
-                    "The fork_join_executor does not support using "
-                    "thread_stacksize::nostack as the stacksize (stackful "
-                    "threads are required to yield correctly when idle)");
-            }
-
             shared_data_ = std::make_shared<shared_data>(
-                priority, stacksize, schedule, yield_delay);
+                priority, stacksize, sched, yield_delay);
         }
 
         /// \brief Construct a fork_join_executor.
         ///
-        /// \param pu_mask The PU-mask to use for placing the created threads
-        /// \param priority The priority of the worker threads.
-        /// \param stacksize The stacksize of the worker threads. Must not be
-        ///                  nostack.
-        /// \param schedule The loop schedule of the parallel regions.
+        /// \param pu_mask   The PU-mask to use for placing the created threads
+        /// \param priority  The priority of the worker threads.
+        /// \param stacksize The stacksize of the worker threads.
+        /// \param sched     The loop schedule of the parallel regions.
         /// \param yield_delay The time after which the executor yields to other
         ///        work if it has not received any new work for execution.
         explicit fork_join_executor(hpx::threads::mask_cref_type pu_mask,
             threads::thread_priority priority = threads::thread_priority::bound,
             threads::thread_stacksize stacksize =
                 threads::thread_stacksize::small_,
-            loop_schedule schedule = loop_schedule::static_,
-            std::chrono::nanoseconds yield_delay = std::chrono::milliseconds(1))
+            loop_schedule sched = loop_schedule::dynamic,
+            std::chrono::nanoseconds yield_delay = std::chrono::microseconds(
+                300))
         {
-            if (stacksize == threads::thread_stacksize::nostack)
-            {
-                HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
-                    "fork_join_executor::fork_join_executor",
-                    "The fork_join_executor does not support using "
-                    "thread_stacksize::nostack as the stacksize (stackful "
-                    "threads are required to yield correctly when idle)");
-            }
-
             shared_data_ = std::make_shared<shared_data>(
-                priority, stacksize, schedule, yield_delay, pu_mask);
+                priority, stacksize, sched, yield_delay, pu_mask);
         }
 
-        friend fork_join_executor tag_invoke(
-            hpx::execution::experimental::with_annotation_t,
-            fork_join_executor const& exec, char const* annotation) noexcept
+        [[nodiscard]] fork_join_executor query(experimental::with_annotation_t,
+            char const* annotation) const noexcept
         {
-            auto exec_with_annotation = exec;
+            auto exec_with_annotation = *this;
             exec_with_annotation.shared_data_->annotation_ = annotation;
             return exec_with_annotation;
         }
 
-        friend fork_join_executor tag_invoke(
-            hpx::execution::experimental::with_annotation_t,
-            fork_join_executor const& exec, std::string annotation)
+        [[nodiscard]] fork_join_executor query(
+            experimental::with_annotation_t, std::string annotation) const
         {
-            auto exec_with_annotation = exec;
+            auto exec_with_annotation = *this;
             exec_with_annotation.shared_data_->annotation_ =
                 hpx::detail::store_function_annotation(HPX_MOVE(annotation));
             return exec_with_annotation;
         }
 
-        friend char const* tag_invoke(
-            hpx::execution::experimental::get_annotation_t,
-            fork_join_executor const& exec) noexcept
+        [[nodiscard]] char const* query(
+            experimental::get_annotation_t) const noexcept
         {
-            return exec.shared_data_->annotation_;
+            return shared_data_->annotation_;
         }
 
-        friend auto tag_invoke(
-            hpx::execution::experimental::get_processing_units_mask_t,
-            fork_join_executor const& exec) noexcept
+        [[nodiscard]] auto query(
+            experimental::get_processing_units_mask_t) const noexcept
         {
-            return exec.shared_data_->pu_mask_;
+            return shared_data_->pu_mask_;
         }
 
-        friend auto tag_invoke(hpx::execution::experimental::get_cores_mask_t,
-            fork_join_executor const& exec) noexcept
+        [[nodiscard]] auto query(experimental::get_cores_mask_t) const noexcept
         {
-            return exec.shared_data_->pu_mask_;
+            return shared_data_->pu_mask_;
+        }
+
+        [[nodiscard]] std::size_t query(
+            experimental::get_first_core_t) const noexcept
+        {
+            return shared_data::get_first_core(shared_data_->pu_mask_);
+        }
+
+        template <typename Parameters>
+            requires(hpx::executor_parameters<Parameters>)
+        [[nodiscard]] std::size_t query(experimental::processing_units_count_t,
+            Parameters&& params,
+            hpx::chrono::steady_duration const& iter_dur =
+                hpx::chrono::null_duration,
+            std::size_t num_tasks = 0) const
+        {
+            using exec_type = std::decay_t<decltype(*this)>;
+            if constexpr (requires(std::decay_t<Parameters> const& p,
+                              exec_type const& e,
+                              hpx::chrono::steady_duration const& d) {
+                              p.processing_units_count(e, d, std::size_t{});
+                          })
+            {
+                return HPX_FORWARD(Parameters, params)
+                    .processing_units_count(*this, iter_dur, num_tasks);
+            }
+            else
+            {
+                return shared_data_->num_threads_;
+            }
         }
 
         /// \cond NOINTERNAL
-        enum class init_mode
+        enum class init_mode : std::uint8_t
         {
             no_init
         };
 
         explicit fork_join_executor(init_mode) {}
+
+    public:
+        /// P2300 get_scheduler bridge
+        hpx::execution::experimental::executor_scheduler<fork_join_executor>
+        query(hpx::execution::experimental::get_scheduler_t) const noexcept
+        {
+            return hpx::execution::experimental::executor_scheduler<
+                fork_join_executor>(*this);
+        }
         /// \endcond
     };
 
-    HPX_CORE_EXPORT std::ostream& operator<<(
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT std::ostream& operator<<(
         std::ostream& os, fork_join_executor::loop_schedule schedule);
-}    // namespace hpx::execution::experimental
-
-namespace hpx::parallel::execution {
 
     /// \cond NOINTERNAL
+
     template <>
-    struct is_bulk_one_way_executor<
-        hpx::execution::experimental::fork_join_executor> : std::true_type
+    struct is_never_blocking_one_way_executor<fork_join_executor>
+      : std::true_type
     {
     };
 
     template <>
-    struct is_bulk_two_way_executor<
-        hpx::execution::experimental::fork_join_executor> : std::true_type
+    struct is_bulk_one_way_executor<fork_join_executor> : std::true_type
+    {
+    };
+
+    template <>
+    struct is_bulk_two_way_executor<fork_join_executor> : std::true_type
     {
     };
     /// \endcond
-}    // namespace hpx::parallel::execution
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Create a fork_join_executor from another executor
+    namespace detail {
+
+        template <typename Executor>
+        decltype(auto) fork_join_executor_from(Executor&& exec)
+        {
+            hpx::threads::mask_type const pu_mask =
+                get_processing_units_mask(exec);
+
+            hpx::launch const policy = exec.policy();
+            hpx::threads::thread_priority const priority =
+                policy.get_priority();
+            hpx::threads::thread_stacksize const stacksize =
+                policy.get_stacksize();
+
+            fork_join_executor result(pu_mask, priority, stacksize);
+
+            char const* annotation = get_annotation(exec);
+            if (annotation == nullptr)
+                return result;
+
+            return with_annotation(result, annotation);
+        }
+    }    // namespace detail
+
+    HPX_CXX_CORE_EXPORT template <typename Policy, bool HierarchicalSpawning>
+    decltype(auto) fork_join_executor_from(
+        hpx::execution::parallel_policy_executor<Policy, HierarchicalSpawning>&
+            exec)
+    {
+        return detail::fork_join_executor_from(exec);
+    }
+
+    HPX_CXX_CORE_EXPORT template <typename Policy, bool HierarchicalSpawning>
+    decltype(auto) fork_join_executor_from(
+        hpx::execution::parallel_policy_executor<Policy,
+            HierarchicalSpawning> const& exec)
+    {
+        return detail::fork_join_executor_from(exec);
+    }
+
+    HPX_CXX_CORE_EXPORT template <typename Policy, bool HierarchicalSpawning>
+    decltype(auto) fork_join_executor_from(
+        hpx::execution::parallel_policy_executor<Policy, HierarchicalSpawning>&&
+            exec)
+    {
+        return detail::fork_join_executor_from(HPX_MOVE(exec));
+    }
+
+    // fallback for everything but parallel_executor
+    HPX_CXX_CORE_EXPORT template <typename Executor>
+    decltype(auto) fork_join_executor_from(Executor&& exec)
+    {
+        return HPX_FORWARD(Executor, exec);
+    }
+}    // namespace hpx::execution::experimental

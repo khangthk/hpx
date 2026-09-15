@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2011-2015 Thomas Heller
 //  Copyright (c) 2007 Richard D Guidry Jr
 //  Copyright (c) 2011 Bryce Lelbach
@@ -14,18 +14,17 @@
 
 #if defined(HPX_HAVE_NETWORKING)
 #include <hpx/assert.hpp>
+#include <hpx/modules/actions_base.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/logging.hpp>
+#include <hpx/modules/naming.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 #include <hpx/modules/runtime_local.hpp>
 #include <hpx/modules/serialization.hpp>
 #include <hpx/modules/timing.hpp>
 
-#include <hpx/actions_base/basic_action.hpp>
-#include <hpx/naming/detail/preprocess_gid_types.hpp>
-#include <hpx/naming/split_gid.hpp>
 #include <hpx/parcelset/parcel.hpp>
 #include <hpx/parcelset/parcelset_fwd.hpp>
-#include <hpx/parcelset_base/parcelport.hpp>
 
 #if ASIO_HAS_BOOST_THROW_EXCEPTION != 0
 #include <boost/exception/exception.hpp>
@@ -39,6 +38,8 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::parcelset {
 
@@ -111,8 +112,12 @@ namespace hpx::parcelset {
             std::size_t index = 0;
             for (serialization::serialization_chunk& c : buffer.chunks_)
             {
-                if (c.type_ == serialization::chunk_type::chunk_type_pointer)
+                if (c.type_ == serialization::chunk_type::chunk_type_pointer ||
+                    c.type_ ==
+                        serialization::chunk_type::chunk_type_const_pointer)
+                {
                     chunks.push_back(transmission_chunk_type(index, c.size_));
+                }
                 ++index;
             }
 
@@ -123,12 +128,12 @@ namespace hpx::parcelset {
 #if defined(HPX_HAVE_PARCELPORT_COUNTERS)
             data.num_zchunks_ += chunks.size();
             data.num_zchunks_per_msg_max_ =
-                (std::max)(data.num_zchunks_per_msg_max_,
+                (std::max) (data.num_zchunks_per_msg_max_,
                     static_cast<std::int64_t>(chunks.size()));
             for (auto& chunk : chunks)
             {
                 data.size_zchunks_total_ += chunk.second;
-                data.size_zchunks_max_ = (std::max)(data.size_zchunks_max_,
+                data.size_zchunks_max_ = (std::max) (data.size_zchunks_max_,
                     static_cast<std::int64_t>(chunk.second));
             }
 #endif
@@ -148,7 +153,7 @@ namespace hpx::parcelset {
         }
     }    // namespace detail
 
-    template <typename Buffer>
+    HPX_CXX_EXPORT template <typename Buffer>
     std::size_t encode_parcels(parcelport& pp, parcel const* ps,
         std::size_t num_parcels, Buffer& buffer, int archive_flags_,
         std::uint64_t max_outbound_size)
@@ -201,7 +206,7 @@ namespace hpx::parcelset {
 #endif
                 {
                     // Serialize the data
-                    if (filter.get() != nullptr)
+                    if (filter)
                     {
                         filter->set_max_length(buffer.data_.capacity());
                     }
@@ -300,5 +305,7 @@ namespace hpx::parcelset {
         return parcels_sent;
     }
 }    // namespace hpx::parcelset
+
+#include <hpx/config/warnings_suffix.hpp>
 
 #endif

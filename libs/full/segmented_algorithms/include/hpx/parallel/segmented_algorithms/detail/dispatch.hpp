@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2021 Giannis Gonidelis
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,26 +8,20 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/plain_action.hpp>
-#include <hpx/algorithms/traits/segmented_iterator_traits.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/distribution_policies/colocating_distribution_policy.hpp>
-#include <hpx/naming_base/id_type.hpp>
-
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/parallel/algorithms/detail/dispatch.hpp>
-#include <hpx/parallel/util/detail/algorithm_result.hpp>
-#include <hpx/parallel/util/detail/handle_remote_exceptions.hpp>
-#include <hpx/parallel/util/result_types.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/algorithms.hpp>
+#include <hpx/modules/distribution_policies.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <exception>
 #include <list>
 #include <type_traits>
 #include <utility>
 
-namespace hpx { namespace parallel { namespace detail {
+namespace hpx::parallel::detail {
 
     ///////////////////////////////////////////////////////////////////////////
     template <typename T, typename Enable = void>
@@ -87,7 +81,7 @@ namespace hpx { namespace parallel { namespace detail {
     struct algorithm_result_helper<util::min_max_result<Iterator>,
         std::enable_if_t<hpx::traits::is_segmented_local_iterator_v<Iterator>>>
     {
-        typedef hpx::traits::segmented_local_iterator_traits<Iterator> traits1;
+        using traits1 = hpx::traits::segmented_local_iterator_traits<Iterator>;
 
         static HPX_FORCEINLINE
             util::min_max_result<typename traits1::local_iterator>
@@ -296,26 +290,25 @@ namespace hpx { namespace parallel { namespace detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Algo, typename ExPolicy, typename IsSeq,
+    HPX_CXX_EXPORT template <typename Algo, typename ExPolicy, typename IsSeq,
         typename... Args>
     HPX_FORCEINLINE future<typename std::decay_t<Algo>::result_type>
     dispatch_async(
         id_type const& id, Algo&& algo, ExPolicy policy, IsSeq, Args&&... args)
     {
         using algo_type = std::decay_t<Algo>;
-        using result_type =
-            typename parallel::util::detail::algorithm_result<ExPolicy,
-                typename algo_type::result_type>::type;
+        using result_type = parallel::util::detail::algorithm_result_t<ExPolicy,
+            typename algo_type::result_type>;
 
         algorithm_invoker_action<algo_type, ExPolicy, typename IsSeq::type,
-            result_type(std::decay_t<Args>...)>
+            result_type(hpx::util::decay_unwrap_t<Args>...)>
             act;
 
         return hpx::async(act, hpx::colocated(id), HPX_FORWARD(Algo, algo),
             HPX_MOVE(policy), HPX_FORWARD(Args, args)...);
     }
 
-    template <typename Algo, typename ExPolicy, typename IsSeq,
+    HPX_CXX_EXPORT template <typename Algo, typename ExPolicy, typename IsSeq,
         typename... Args>
     HPX_FORCEINLINE typename std::decay_t<Algo>::result_type dispatch(
         id_type const& id, Algo&& algo, ExPolicy policy, IsSeq is_seq,
@@ -341,4 +334,4 @@ namespace hpx { namespace parallel { namespace detail {
         }
         return f.get();
     }
-}}}    // namespace hpx::parallel::detail
+}    // namespace hpx::parallel::detail

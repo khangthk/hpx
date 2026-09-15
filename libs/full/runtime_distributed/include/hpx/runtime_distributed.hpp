@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,22 +8,21 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/agas/addressing_service.hpp>
-#include <hpx/components_base/generate_unique_ids.hpp>
-#include <hpx/io_service/io_service_pool_fwd.hpp>
-#include <hpx/parcelset/message_handler_fwd.hpp>
-#include <hpx/parcelset/parcelhandler.hpp>
-#include <hpx/parcelset_base/locality.hpp>
-#include <hpx/parcelset_base/parcelport.hpp>
-#include <hpx/performance_counters/query_counters.hpp>
-#include <hpx/performance_counters/registry.hpp>
-#include <hpx/runtime_components/server/console_error_sink_singleton.hpp>
+#include <hpx/modules/agas.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/io_service.hpp>
+#include <hpx/modules/parcelset.hpp>
+#include <hpx/modules/parcelset_base.hpp>
+#include <hpx/modules/performance_counters.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/supervision.hpp>
+#include <hpx/modules/threading_base.hpp>
+
 #include <hpx/runtime_distributed/applier.hpp>
 #include <hpx/runtime_distributed/find_localities.hpp>
 #include <hpx/runtime_distributed/runtime_fwd.hpp>
 #include <hpx/runtime_distributed/server/runtime_support.hpp>
-#include <hpx/runtime_local/runtime_local.hpp>
-#include <hpx/threading_base/callback_notifier.hpp>
 
 #include <condition_variable>
 #include <cstddef>
@@ -43,13 +42,16 @@ namespace hpx {
     /// The \a runtime class encapsulates the HPX runtime system in a simple to
     /// use way. It makes sure all required parts of the HPX runtime system are
     /// properly initialized.
-    class HPX_EXPORT runtime_distributed : public runtime
+    HPX_CXX_EXPORT class HPX_EXPORT runtime_distributed : public runtime
     {
     public:
         /// Construct a new HPX runtime instance
         ///
-        /// \param locality_mode  [in] This is the mode the given runtime
-        ///                       instance should be executed in.
+        /// \param rtcfg        Runtime configuration for this instance
+        /// \param pre_main     Function to be called before running the
+        ///                     main action of this instance
+        /// \param post_main    Function to be called after running the
+        ///                     main action of this instance
         explicit runtime_distributed(util::runtime_configuration& rtcfg,
             int (*pre_main)(runtime_mode) = nullptr,
             void (*post_main)() = nullptr);
@@ -122,6 +124,9 @@ namespace hpx {
         ///                   return immediately. Use a second call to stop
         ///                   with this parameter set to \a true to wait for
         ///                   all internal work to be completed.
+        /// \param cond       Condition used to update all thread when done
+        /// \param mtx        Mutex used by this function to sync all threads
+
         void stop_helper(
             bool blocking, std::condition_variable& cond, std::mutex& mtx);
 
@@ -230,8 +235,11 @@ namespace hpx {
         ///////////////////////////////////////////////////////////////////////
         /// \brief Allow access to the AGAS client instance used by the HPX
         ///        runtime.
-        naming::resolver_client& get_agas_client();
+        agas::addressing_service& get_agas_client();
 
+#if defined(HPX_HAVE_SUPERVISION)
+        supervision::supervision_manager& get_supervision_manager();
+#endif
 #if defined(HPX_HAVE_NETWORKING)
         /// \brief Allow access to the parcel handler instance used by the HPX
         ///        runtime.
@@ -398,9 +406,12 @@ namespace hpx {
         notification_policy_type parcel_handler_notifier_;
         parcelset::parcelhandler parcel_handler_;
 #endif
-        naming::resolver_client agas_client_;
+        agas::addressing_service agas_client_;
         applier::applier applier_;
 
+#if defined(HPX_HAVE_SUPERVISION)
+        supervision::supervision_manager supervision_manager_;
+#endif
         // locality basename -> used cores
         using used_cores_map_type = std::map<std::string, std::uint32_t>;
         used_cores_map_type used_cores_map_;

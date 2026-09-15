@@ -9,12 +9,15 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR_EVE)
+
+#include <hpx/execution/traits/detail/eve/vector_pack_simd.hpp>
+
 #include <eve/eve.hpp>
 
 namespace hpx::parallel::traits {
 
     ////////////////////////////////////////////////////////////////////
-    template <typename T, typename Abi>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Abi>
     HPX_HOST_DEVICE HPX_FORCEINLINE eve::wide<T, Abi> choose(
         eve::logical<eve::wide<T, Abi>> const& msk,
         eve::wide<T, Abi> const& v_true,
@@ -24,7 +27,7 @@ namespace hpx::parallel::traits {
     }
 
     ////////////////////////////////////////////////////////////////////
-    template <typename T, typename Abi>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Abi>
     HPX_HOST_DEVICE HPX_FORCEINLINE void mask_assign(
         eve::logical<eve::wide<T, Abi>> const& msk, eve::wide<T, Abi>& v,
         eve::wide<T, Abi> const& val) noexcept

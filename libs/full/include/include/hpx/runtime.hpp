@@ -6,6 +6,6 @@
 
 #pragma once
 
-#include <hpx/runtime_distributed/runtime_fwd.hpp>
-#include <hpx/runtime_local/runtime_local_fwd.hpp>
-#include <hpx/runtime_local/service_executors.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/runtime_distributed.hpp>
+#include <hpx/modules/runtime_local.hpp>

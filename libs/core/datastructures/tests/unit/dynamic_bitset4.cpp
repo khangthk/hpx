@@ -1,4 +1,4 @@
-//  Copyright (c) 2022 Hartmut Kaiser
+//  Copyright (c) 2022-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0 Distributed under the Boost Software
 //  License, Version 1.0. (See accompanying file LICENSE_1_0.txt or copy at
@@ -11,7 +11,8 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/datastructures/detail/dynamic_bitset.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/filesystem.hpp>
 
 #include <cstddef>    // for std::size_t
 #include <fstream>
@@ -71,10 +72,10 @@ void run_test_cases()
         {
             for (std::size_t si = 0; si < num_strings; ++si)
             {
-                std::streamsize slen = (std::streamsize)(strings[si].length());
+                std::streamsize slen = (std::streamsize) (strings[si].length());
 
                 HPX_ASSERT((std::numeric_limits<std::streamsize>::max)() >=
-                    (std::streamsize)(1 + slen * 2));
+                    (std::streamsize) (1 + slen * 2));
 
                 for (std::size_t ci = 0; ci < num_chars; ++ci)
                 {
@@ -99,6 +100,7 @@ void run_test_cases()
                             {
                                 not_good_stream.exceptions(masks[mi]);
                             }
+                            // NOLINTNEXTLINE(bugprone-empty-catch)
                             catch (...)
                             {
                             }
@@ -112,25 +114,28 @@ void run_test_cases()
                             scoped_temp_file stf;
                             bitset_type b(strings[si]);
                             std::ofstream file(
-                                stf.path().string().c_str(), std::ios::trunc);
+                                hpx::filesystem::to_string(stf.path()).c_str(),
+                                std::ios::trunc);
                             file.width(w);
                             file.fill(fill_chars[ci]);
                             file.exceptions(masks[mi]);
-                            Tests::stream_inserter(
-                                b, file, stf.path().string().c_str());
+                            Tests::stream_inserter(b, file,
+                                hpx::filesystem::to_string(stf.path()).c_str());
                         }
                         {
                             //NOTE: there are NO string stream tests
-                        } {
+                        }
+                        {
                             // test 1b - wide file stream
                             scoped_temp_file stf;
                             bitset_type b(strings[si]);
-                            std::wofstream file(stf.path().string().c_str());
+                            std::wofstream file(
+                                hpx::filesystem::to_string(stf.path()).c_str());
                             file.width(w);
                             file.fill(fill_chars[ci]);
                             file.exceptions(masks[mi]);
-                            Tests::stream_inserter(
-                                b, file, stf.path().string().c_str());
+                            Tests::stream_inserter(b, file,
+                                hpx::filesystem::to_string(stf.path()).c_str());
                         }
 #endif
                     }
@@ -197,9 +202,9 @@ void run_test_cases()
             for (std::size_t si = 0; si < num_strings; ++si)
             {
                 std::streamsize const slen =
-                    (std::streamsize)(strings[si].length());
+                    (std::streamsize) (strings[si].length());
                 HPX_ASSERT((std::numeric_limits<std::streamsize>::max)() >=
-                    (std::streamsize)(1 + slen * 2));
+                    (std::streamsize) (1 + slen * 2));
 
                 std::streamsize widths[] = {
                     -1, 0, slen / 2, slen, 1 + slen * 2};
@@ -220,6 +225,7 @@ void run_test_cases()
                         {
                             not_good_stream.exceptions(masks[mi]);
                         }
+                        // NOLINTNEXTLINE(bugprone-empty-catch)
                         catch (...)
                         {
                         }
@@ -232,11 +238,13 @@ void run_test_cases()
                         scoped_temp_file stf;
                         bitset_type b(1, 255ul);
                         {
-                            std::ofstream f(stf.path().string().c_str());
+                            std::ofstream f(
+                                hpx::filesystem::to_string(stf.path()).c_str());
                             f << strings[si];
                         }
 
-                        std::ifstream f(stf.path().string().c_str());
+                        std::ifstream f(
+                            hpx::filesystem::to_string(stf.path()).c_str());
                         f.width(w);
                         f.exceptions(masks[mi]);
                         Tests::stream_extractor(b, f, strings[si]);
@@ -257,12 +265,12 @@ void run_test_cases()
                         bitset_type b(1, 255ul);
                         {
                             std::basic_ofstream<wchar_t> of(
-                                stf.path().string().c_str());
+                                hpx::filesystem::to_string(stf.path()).c_str());
                             of << wstr;
                         }
 
                         std::basic_ifstream<wchar_t> f(
-                            stf.path().string().c_str());
+                            hpx::filesystem::to_string(stf.path()).c_str());
                         f.width(w);
                         f.exceptions(masks[mi]);
                         Tests::stream_extractor(b, f, wstr);

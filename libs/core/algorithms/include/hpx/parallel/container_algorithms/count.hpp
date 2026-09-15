@@ -66,7 +66,7 @@ namespace hpx { namespace ranges {
     template <typename ExPolicy, typename Rng,
     typename Proj = hpx::identity,
     typename T = typename hpx::parallel::traits::projected<
-        hpx::traits::range_iterator_t<Rng>, Proj>::value_type>
+        std::ranges::iterator_t<Rng>, Proj>::value_type>
     typename hpx::parallel::util::detail::algorithm_result<ExPolicy,
     typename std::iterator_traits<typename hpx::traits::range_traits<
         Rng>::iterator_type>::difference_type>::type
@@ -158,7 +158,7 @@ namespace hpx { namespace ranges {
     template <typename Rng,
         typename Proj = hpx::identity,
         typename T = typename hpx::parallel::traits::projected<
-            hpx::traits::range_iterator_t<Rng>, Proj>::value_type>
+            std::ranges::iterator_t<Rng>, Proj>::value_type>
     typename std::iterator_traits<typename hpx::traits::range_traits<
         Rng>::iterator_type>::difference_type
     count(Rng&& rng, T const& value, Proj&& proj = Proj());
@@ -443,12 +443,14 @@ namespace hpx { namespace ranges {
 
 #include <hpx/config.hpp>
 #include <hpx/algorithms/traits/projected_range.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/iterator_support/range.hpp>
-#include <hpx/iterator_support/traits/is_range.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/count.hpp>
-#include <hpx/type_support/identity.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 
+#include <iterator>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
@@ -456,31 +458,31 @@ namespace hpx::ranges {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::ranges::count
-    inline constexpr struct count_t final
-      : hpx::detail::tag_parallel_algorithm<count_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct count_t final
+      : hpx::detail::tag_dispatch<count_t,
+            hpx::detail::tag_parallel_algorithm<count_t>>
     {
-    private:
-        // clang-format off
         template <typename ExPolicy, typename Rng,
             typename Proj = hpx::identity,
             typename T = typename hpx::parallel::traits::projected<
-                hpx::traits::range_iterator_t<Rng>, Proj>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+                std::ranges::iterator_t<Rng>, Proj>::value_type>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
-                hpx::traits::is_range_v<Rng>
-            )>
+                std::ranges::range<Rng>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
             typename std::iterator_traits<typename hpx::traits::range_traits<
                 Rng>::iterator_type>::difference_type>
-        tag_fallback_invoke(count_t, ExPolicy&& policy, Rng&& rng,
-            T const& value, Proj proj = Proj())
+        invoke_default(
+            ExPolicy&& policy, Rng&& rng, T const& value, Proj proj = Proj())
         {
             using iterator_type =
                 typename hpx::traits::range_traits<Rng>::iterator_type;
 
-            static_assert(hpx::traits::is_forward_iterator_v<iterator_type>,
+            static_assert(std::forward_iterator<iterator_type>,
                 "Required at least forward iterator.");
 
             using difference_type =
@@ -491,22 +493,22 @@ namespace hpx::ranges {
                 hpx::util::end(rng), value, HPX_MOVE(proj));
         }
 
-        // clang-format off
         template <typename ExPolicy, typename Iter, typename Sent,
             typename Proj = hpx::identity,
             typename T = typename hpx::parallel::traits::projected<Iter,
-                Proj>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+                Proj>::value_type>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_sentinel_for_v<Sent, Iter>
-            )>
+                std::sentinel_for<Sent, Iter>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
             typename std::iterator_traits<Iter>::difference_type>
-        tag_fallback_invoke(count_t, ExPolicy&& policy, Iter first, Sent last,
-            T const& value, Proj proj = Proj())
+        invoke_default(ExPolicy&& policy, Iter first, Sent last, T const& value,
+            Proj proj = Proj())
         {
-            static_assert(hpx::traits::is_forward_iterator_v<Iter>,
+            static_assert(std::forward_iterator<Iter>,
                 "Required at least forward iterator.");
 
             using difference_type =
@@ -517,25 +519,23 @@ namespace hpx::ranges {
                 HPX_MOVE(proj));
         }
 
-        // clang-format off
-        template <typename Rng,
-            typename Proj = hpx::identity,
+        template <typename Rng, typename Proj = hpx::identity,
             typename T = typename hpx::parallel::traits::projected<
-                hpx::traits::range_iterator_t<Rng>, Proj>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+                std::ranges::iterator_t<Rng>, Proj>::value_type>
+        // clang-format off
+            requires (
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
-                hpx::traits::is_range_v<Rng>
-            )>
+                std::ranges::range<Rng>
+            )
         // clang-format on
-        friend typename std::iterator_traits<typename hpx::traits::range_traits<
+        static typename std::iterator_traits<typename hpx::traits::range_traits<
             Rng>::iterator_type>::difference_type
-        tag_fallback_invoke(
-            count_t, Rng&& rng, T const& value, Proj proj = Proj())
+        invoke_default(Rng&& rng, T const& value, Proj proj = Proj())
         {
             using iterator_type =
                 typename hpx::traits::range_traits<Rng>::iterator_type;
 
-            static_assert(hpx::traits::is_input_iterator_v<iterator_type>,
+            static_assert(std::input_iterator<iterator_type>,
                 "Required at least input iterator.");
 
             using difference_type =
@@ -546,21 +546,20 @@ namespace hpx::ranges {
                 value, HPX_MOVE(proj));
         }
 
-        // clang-format off
-        template <typename Iter, typename Sent,
-            typename Proj = hpx::identity,
+        template <typename Iter, typename Sent, typename Proj = hpx::identity,
             typename T = typename hpx::parallel::traits::projected<Iter,
-                Proj>::value_type,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_sentinel_for_v<Sent, Iter>
-            )>
+                Proj>::value_type>
+        // clang-format off
+            requires (
+                std::sentinel_for<Sent, Iter>
+            )
         // clang-format on
-        friend typename std::iterator_traits<Iter>::difference_type
-        tag_fallback_invoke(
-            count_t, Iter first, Sent last, T const& value, Proj proj = Proj())
+        static typename std::iterator_traits<Iter>::difference_type
+        invoke_default(
+            Iter first, Sent last, T const& value, Proj proj = Proj())
         {
-            static_assert(hpx::traits::is_input_iterator_v<Iter>,
-                "Required at least input iterator.");
+            static_assert(
+                std::input_iterator<Iter>, "Required at least input iterator.");
 
             using difference_type =
                 typename std::iterator_traits<Iter>::difference_type;
@@ -572,32 +571,31 @@ namespace hpx::ranges {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::ranges::count_if
-    inline constexpr struct count_if_t final
-      : hpx::detail::tag_parallel_algorithm<count_if_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct count_if_t final
+      : hpx::detail::tag_dispatch<count_if_t,
+            hpx::detail::tag_parallel_algorithm<count_if_t>>
     {
-    private:
-        // clang-format off
         template <typename ExPolicy, typename Rng, typename F,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_range_v<Rng> &&
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<ExPolicy, F,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
             typename std::iterator_traits<typename hpx::traits::range_traits<
                 Rng>::iterator_type>::difference_type>
-        tag_fallback_invoke(
-            count_if_t, ExPolicy&& policy, Rng&& rng, F f, Proj proj = Proj())
+        invoke_default(ExPolicy&& policy, Rng&& rng, F f, Proj proj = Proj())
         {
             using iterator_type =
                 typename hpx::traits::range_traits<Rng>::iterator_type;
 
-            static_assert(hpx::traits::is_forward_iterator_v<iterator_type>,
+            static_assert(std::forward_iterator<iterator_type>,
                 "Required at least forward iterator.");
 
             using difference_type =
@@ -608,24 +606,24 @@ namespace hpx::ranges {
                 hpx::util::end(rng), HPX_MOVE(f), HPX_MOVE(proj));
         }
 
-        // clang-format off
         template <typename ExPolicy, typename Iter, typename Sent, typename F,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_sentinel_for_v<Sent, Iter> &&
+                std::sentinel_for<Sent, Iter> &&
                 hpx::parallel::traits::is_projected_v<Proj, Iter> &&
                 hpx::parallel::traits::is_indirect_callable_v<ExPolicy, F,
                     hpx::parallel::traits::projected<Proj, Iter>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
             typename std::iterator_traits<Iter>::difference_type>
-        tag_fallback_invoke(count_if_t, ExPolicy&& policy, Iter first,
-            Sent last, F f, Proj proj = Proj())
+        invoke_default(
+            ExPolicy&& policy, Iter first, Sent last, F f, Proj proj = Proj())
         {
-            static_assert(hpx::traits::is_forward_iterator_v<Iter>,
+            static_assert(std::forward_iterator<Iter>,
                 "Required at least forward iterator.");
 
             using difference_type =
@@ -636,26 +634,25 @@ namespace hpx::ranges {
                 HPX_MOVE(proj));
         }
 
+        template <typename Rng, typename F, typename Proj = hpx::identity>
         // clang-format off
-        template <typename Rng, typename F,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_range_v<Rng> &&
+            requires (
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, F,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend typename std::iterator_traits<typename hpx::traits::range_traits<
+        static typename std::iterator_traits<typename hpx::traits::range_traits<
             Rng>::iterator_type>::difference_type
-        tag_fallback_invoke(count_if_t, Rng&& rng, F f, Proj proj = Proj())
+        invoke_default(Rng&& rng, F f, Proj proj = Proj())
         {
             using iterator_type =
                 typename hpx::traits::range_traits<Rng>::iterator_type;
 
-            static_assert(hpx::traits::is_forward_iterator_v<iterator_type>,
+            static_assert(std::forward_iterator<iterator_type>,
                 "Required at least forward iterator.");
 
             using difference_type =
@@ -666,23 +663,22 @@ namespace hpx::ranges {
                 HPX_MOVE(f), HPX_MOVE(proj));
         }
 
-        // clang-format off
         template <typename Iter, typename Sent, typename F,
-            typename Proj = hpx::identity,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_sentinel_for_v<Sent, Iter> &&
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires (
+                std::sentinel_for<Sent, Iter> &&
                 hpx::parallel::traits::is_projected_v<Proj, Iter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, F,
                     hpx::parallel::traits::projected<Proj, Iter>
                 >
-            )>
+            )
         // clang-format on
-        friend typename std::iterator_traits<Iter>::difference_type
-        tag_fallback_invoke(
-            count_if_t, Iter first, Sent last, F f, Proj proj = Proj())
+        static typename std::iterator_traits<Iter>::difference_type
+        invoke_default(Iter first, Sent last, F f, Proj proj = Proj())
         {
-            static_assert(hpx::traits::is_forward_iterator_v<Iter>,
+            static_assert(std::forward_iterator<Iter>,
                 "Required at least forward iterator.");
 
             using difference_type =

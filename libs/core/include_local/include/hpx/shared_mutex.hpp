@@ -6,5 +6,5 @@
 
 #pragma once
 
-#include <hpx/synchronization/lock_types.hpp>
-#include <hpx/synchronization/shared_mutex.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/synchronization.hpp>

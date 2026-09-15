@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Thomas Heller
-//  Copyright (c) 2013-2022 Hartmut Kaiser
+//  Copyright (c) 2013-2025 Hartmut Kaiser
 //  Copyright (c) 2014-2015 Agustin Berge
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -17,7 +17,7 @@
 #include <hpx/functional/detail/function_registration.hpp>
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
-#include <hpx/functional/traits/is_invocable.hpp>
+#include <hpx/modules/tracing.hpp>
 
 #include <cstddef>
 #include <type_traits>
@@ -44,7 +44,7 @@ namespace hpx {
     /// specifier (if any) are added to its operator(). hpx::move_only_function
     /// satisfies the requirements of MoveConstructible and MoveAssignable, but
     /// does not satisfy CopyConstructible or CopyAssignable.
-    template <typename Sig, bool Serializable = false>
+    HPX_CXX_CORE_EXPORT template <typename Sig, bool Serializable = false>
     class move_only_function;
 
     template <typename R, typename... Ts, bool Serializable>
@@ -100,24 +100,10 @@ namespace hpx {
 
         // serializable move_only_function is equivalent to
         // hpx::distributed::move_only_function
-        template <typename Sig>
+        HPX_CXX_CORE_EXPORT template <typename Sig>
         using move_only_function = hpx::move_only_function<Sig, true>;
     }    // namespace distributed
 }    // namespace hpx
-
-namespace hpx::util {
-
-    template <typename Sig, bool Serializable = true>
-    using unique_function HPX_DEPRECATED_V(1, 8,
-        "hpx::util::unique_function is deprecated. Please use "
-        "hpx::move_only_function instead.") =
-        hpx::move_only_function<Sig, Serializable>;
-
-    template <typename Sig>
-    using unique_function_nonser HPX_DEPRECATED_V(1, 8,
-        "hpx::util::unique_function_nonser is deprecated. Please use "
-        "hpx::move_only_function instead.") = hpx::move_only_function<Sig>;
-}    // namespace hpx::util
 
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
 ///////////////////////////////////////////////////////////////////////////////
@@ -143,26 +129,15 @@ namespace hpx::traits {
         }
     };
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
     template <typename Sig, bool Serializable>
-    struct get_function_annotation_itt<
+    struct get_function_annotation_tracing<
         hpx::move_only_function<Sig, Serializable>>
     {
-        [[nodiscard]] static util::itt::string_handle call(
+        [[nodiscard]] static hpx::tracing::annotation_handle call(
             hpx::move_only_function<Sig, Serializable> const& f) noexcept
         {
-            return f.get_function_annotation_itt();
+            return f.get_function_annotation_tracing();
         }
     };
-#endif
 }    // namespace hpx::traits
 #endif
-
-////////////////////////////////////////////////////////////////////////////////
-#define HPX_UTIL_REGISTER_UNIQUE_FUNCTION_DECLARATION(Sig, F, Name)            \
-    HPX_DECLARE_GET_FUNCTION_NAME(unique_function_vtable<Sig>, F, Name)        \
-    /**/
-
-#define HPX_UTIL_REGISTER_UNIQUE_FUNCTION(Sig, F, Name)                        \
-    HPX_DEFINE_GET_FUNCTION_NAME(unique_function_vtable<Sig>, F, Name)         \
-    /**/

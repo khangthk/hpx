@@ -1,4 +1,5 @@
 //  Copyright (c) 2017-2018 John Biddiscombe
+//  Copyright (c) 2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,11 +7,11 @@
 
 #define GUIDED_EXECUTOR_DEBUG 1
 
-#include <hpx/debugging/demangle_helper.hpp>
 #include <hpx/execution.hpp>
 #include <hpx/functional.hpp>
 #include <hpx/future.hpp>
 #include <hpx/init.hpp>
+#include <hpx/modules/debugging.hpp>
 #include <hpx/modules/pack_traversal.hpp>
 #include <hpx/modules/resource_partitioner.hpp>
 #include <hpx/modules/testing.hpp>
@@ -63,7 +64,7 @@ struct test_async_executor
     struct future_extract_value
     {
         template <typename T, template <typename> class Future>
-        const T& operator()(const Future<T>& el) const
+        T const& operator()(Future<T> const& el) const
         {
             using shared_state_ptr =
                 traits::detail::shared_state_ptr_for_t<Future<T>>;
@@ -73,15 +74,14 @@ struct test_async_executor
         }
     };
 
-private:
+public:
     // --------------------------------------------------------------------
     // async execute specialized for simple arguments typical
     // of a normal async call with arbitrary arguments
     // --------------------------------------------------------------------
     template <typename F, typename... Ts>
-    friend future<util::invoke_result_t<F, Ts...>> tag_invoke(
-        hpx::parallel::execution::async_execute_t,
-        test_async_executor const& exec, F&& f, Ts&&... ts)
+    future<util::invoke_result_t<F, Ts...>> async_execute(
+        F&& f, Ts&&... ts) const
     {
         using result_type = util::detail::invoke_deferred_result_t<F, Ts...>;
 
@@ -94,7 +94,7 @@ private:
                   << print_type<result_type>() << "\n";
 
         // forward the task execution on to the real internal executor
-        return hpx::parallel::execution::async_execute(exec.executor_,
+        return hpx::parallel::execution::async_execute(executor_,
             hpx::annotated_function(std::forward<F>(f), "custom"),
             std::forward<Ts>(ts)...);
     }
@@ -106,9 +106,7 @@ private:
     template <typename F, typename Future, typename... Ts,
         typename = std::enable_if_t<
             traits::is_future_v<std::remove_reference_t<Future>>>>
-    friend auto tag_invoke(hpx::parallel::execution::then_execute_t,
-        test_async_executor const& exec, F&& f, Future&& predecessor,
-        Ts&&... ts)
+    auto then_execute(F&& f, Future&& predecessor, Ts&&... ts) const
         -> future<util::detail::invoke_deferred_result_t<F, Future, Ts...>>
     {
         using result_type =
@@ -128,7 +126,7 @@ private:
         std::cout << "then_execute : Result       : "
                   << print_type<result_type>() << "\n";
 
-        return hpx::parallel::execution::then_execute(exec.executor_,
+        return hpx::parallel::execution::then_execute(executor_,
             std::forward<F>(f), std::forward<Future>(predecessor),
             std::forward<Ts>(ts)...);
     }
@@ -137,17 +135,19 @@ private:
     // .then() execute specialized for a when_all dispatch for any future types
     // future< tuple< is_future<a>::type, is_future<b>::type, ...> >
     // --------------------------------------------------------------------
+    // clang-format off
     template <typename F, template <typename> class OuterFuture,
         typename... InnerFutures, typename... Ts,
         typename = std::enable_if_t<is_future_of_tuple_of_futures<
             OuterFuture<hpx::tuple<InnerFutures...>>>::value>,
         typename = std::enable_if_t<
             is_tuple_of_futures<hpx::tuple<InnerFutures...>>::value>>
-    friend auto tag_invoke(hpx::parallel::execution::then_execute_t,
-        test_async_executor const& exec, F&& f,
-        OuterFuture<hpx::tuple<InnerFutures...>>&& predecessor, Ts&&... ts)
-        -> future<util::detail::invoke_deferred_result_t<F,
-            OuterFuture<hpx::tuple<InnerFutures...>>, Ts...>>
+    auto then_execute(
+        F&& f,
+        OuterFuture<hpx::tuple<InnerFutures...>>&& predecessor, Ts&&... ts) const
+            -> future<util::detail::invoke_deferred_result_t<F,
+                        OuterFuture<hpx::tuple<InnerFutures...>>, Ts...>>
+    // clang-format on
     {
         using result_type = util::detail::invoke_deferred_result_t<F,
             OuterFuture<hpx::tuple<InnerFutures...>>, Ts...>;
@@ -172,13 +172,13 @@ private:
         // that we can access them
         std::cout << "when_all(fut) : tuple       : ";
         hpx::invoke_fused(
-            [](const auto&... ts) {
+            [](auto const&... ts) {
                 std::cout << print_type<decltype(ts)...>(" | ") << "\n";
             },
             unwrapped_futures_tuple);
 
         // forward the task execution on to the real internal executor
-        return hpx::parallel::execution::then_execute(exec.executor_,
+        return hpx::parallel::execution::then_execute(executor_,
             hpx::annotated_function(std::forward<F>(f), "custom then"),
             std::forward<OuterFuture<hpx::tuple<InnerFutures...>>>(predecessor),
             std::forward<Ts>(ts)...);
@@ -192,9 +192,7 @@ private:
     template <typename F, typename... InnerFutures,
         typename = std::enable_if_t<
             traits::is_future_tuple_v<hpx::tuple<InnerFutures...>>>>
-    friend auto tag_invoke(hpx::parallel::execution::async_execute_t,
-        test_async_executor const& exec, F&& f,
-        hpx::tuple<InnerFutures...>&& predecessor)
+    auto async_execute(F&& f, hpx::tuple<InnerFutures...>&& predecessor) const
         -> future<util::detail::invoke_deferred_result_t<F,
             hpx::tuple<InnerFutures...>>>
     {
@@ -217,13 +215,13 @@ private:
         // that we can access them
         std::cout << "dataflow      : tuple       : ";
         hpx::invoke_fused(
-            [](const auto&... ts) {
+            [](auto const&... ts) {
                 std::cout << print_type<decltype(ts)...>(" | ") << "\n";
             },
             unwrapped_futures_tuple);
 
         // forward the task execution on to the real internal executor
-        return hpx::parallel::execution::async_execute(exec.executor_,
+        return hpx::parallel::execution::async_execute(executor_,
             hpx::annotated_function(std::forward<F>(f), "custom async"),
             std::forward<hpx::tuple<InnerFutures...>>(predecessor));
     }
@@ -235,12 +233,13 @@ private:
 // --------------------------------------------------------------------
 // set traits for executor to say it is an async executor
 // --------------------------------------------------------------------
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct is_two_way_executor<test_async_executor> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 template <typename T>
 T dummy_task(T val)
@@ -253,7 +252,7 @@ T dummy_task(T val)
 // test various execution modes
 // --------------------------------------------------------------------
 template <typename Executor>
-int test(const std::string& message, Executor& exec)
+int test(std::string const& message, Executor& exec)
 {
     // test 1
     std::cout << "============================" << std::endl;
@@ -262,7 +261,7 @@ int test(const std::string& message, Executor& exec)
     std::cout << "Test 1 : async()" << std::endl;
     hpx::future<char const*> fa = async(
         exec,
-        [](int a, double b, const char* c) {
+        [](int a, double b, char const* c) {
             std::cout << "Inside async " << c << std::endl;
             HPX_TEST_EQ(a == 1 && b == 2.2 && std::string(c) == "Hello", true);
             return "async";
@@ -426,7 +425,8 @@ struct dummy_tag
 {
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct pool_numa_hint<dummy_tag>
     {
@@ -435,40 +435,40 @@ namespace hpx::parallel::execution {
             std::cout << "Hint 0 \n";
             return 0;
         }
-        int operator()(const int, const double, const char*) const
+        int operator()(int const, double const, char const*) const
         {
             std::cout << "Hint 1 \n";
             return 1;
         }
-        int operator()(const int) const
+        int operator()(int const) const
         {
             std::cout << "Hint 2 \n";
             return 2;
         }
-        int operator()(const hpx::tuple<future<int>, future<double>>&) const
+        int operator()(hpx::tuple<future<int>, future<double>> const&) const
         {
             std::cout << "Hint 3(a) \n";
             return 3;
         }
         int operator()(
-            const hpx::tuple<future<std::uint64_t>, shared_future<float>>&)
+            hpx::tuple<future<std::uint64_t>, shared_future<float>> const&)
             const
         {
             std::cout << "Hint 3(b) \n";
             return 3;
         }
-        int operator()(const std::uint16_t, const double) const
+        int operator()(std::uint16_t const, double const) const
         {
             std::cout << "Hint 4(a) \n";
             return 4;
         }
-        int operator()(const std::uint32_t, const double&) const
+        int operator()(std::uint32_t const, double const&) const
         {
             std::cout << "Hint 4(b) \n";
             return 4;
         }
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 int hpx_main()
 {
@@ -482,10 +482,10 @@ int hpx_main()
         std::cout << "Exception " << e.what() << std::endl;
     }
 
-    typedef hpx::parallel::execution::pool_numa_hint<dummy_tag> dummy_hint;
+    typedef hpx::execution::experimental::pool_numa_hint<dummy_tag> dummy_hint;
     try
     {
-        hpx::parallel::execution::guided_pool_executor<dummy_hint> exec2(
+        hpx::execution::experimental::guided_pool_executor<dummy_hint> exec2(
             &hpx::resource::get_thread_pool("default"));
         test("Testing guided_pool_executor<dummy_hint>", exec2);
     }
@@ -496,8 +496,8 @@ int hpx_main()
 
     try
     {
-        hpx::parallel::execution::guided_pool_executor_shim<dummy_hint> exec3(
-            true, &hpx::resource::get_thread_pool("default"));
+        hpx::execution::experimental::guided_pool_executor_shim<dummy_hint>
+            exec3(true, &hpx::resource::get_thread_pool("default"));
         test("Testing guided_pool_executor_shim<dummy_hint>", exec3);
     }
     catch (std::exception& e)

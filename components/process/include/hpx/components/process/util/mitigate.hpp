@@ -3,7 +3,7 @@
 // Copyright (c) 2009 Boris Schaeling
 // Copyright (c) 2010 Felipe Tanus, Boris Schaeling
 // Copyright (c) 2011, 2012 Jeff Flinn, Boris Schaeling
-// Copyright (c) 2016 Hartmut Kaiser
+// Copyright (c) 2016-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,37 +11,37 @@
 
 #pragma once
 
+#include <hpx/config.hpp>
+
 #if defined(HPX_WINDOWS)
 #include <asio/windows/stream_handle.hpp>
 #else
 #include <asio/posix/stream_descriptor.hpp>
 #endif
 
-namespace hpx { namespace components { namespace process  { namespace util {
+namespace hpx::components::process::util {
 
 #if defined(HPX_WINDOWS)
-typedef asio::windows::stream_handle pipe_end;
+    using pipe_end = ::asio::windows::stream_handle;
 #else
-typedef asio::posix::stream_descriptor pipe_end;
+    using pipe_end = ::asio::posix::stream_descriptor;
 #endif
 
-inline const char *zero_device()
-{
+    inline const char* zero_device()
+    {
 #if defined(HPX_WINDOWS)
-    return "NUL";
+        return "NUL";
 #else
-    return "/dev/zero";
+        return "/dev/zero";
 #endif
-}
+    }
 
-inline const char *null_device()
-{
+    inline char const* null_device()
+    {
 #if defined(HPX_WINDOWS)
-    return "NUL";
+        return "NUL";
 #else
-    return "/dev/null";
+        return "/dev/null";
 #endif
-}
-
-}}}}
-
+    }
+}    // namespace hpx::components::process::util

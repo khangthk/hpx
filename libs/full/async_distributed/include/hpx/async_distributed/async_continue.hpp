@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,35 +9,31 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/actions_base_support.hpp>
-#include <hpx/actions_base/traits/extract_action.hpp>
-#include <hpx/actions_base/traits/is_distribution_policy.hpp>
 #include <hpx/async_distributed/async_continue_fwd.hpp>
 #include <hpx/async_distributed/promise.hpp>
-#include <hpx/async_local/async_fwd.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/promise_local_result.hpp>
-#include <hpx/futures/traits/promise_remote_result.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_local.hpp>
+#include <hpx/modules/futures.hpp>
 
 #include <type_traits>
 #include <utility>
 
 namespace hpx {
+
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
-        template <typename Action, typename RemoteResult, typename Cont,
-            typename Target, typename... Ts>
+
+        HPX_CXX_EXPORT template <typename Action, typename RemoteResult,
+            typename Cont, typename Target, typename... Ts>
         hpx::future<typename traits::promise_local_result<
             typename result_of_async_continue<Action, Cont>::type>::type>
         async_continue_r(Cont&& cont, Target const& target, Ts&&... vs)
         {
-            typedef typename traits::promise_local_result<
-                typename result_of_async_continue<Action, Cont>::type>::type
-                result_type;
+            using result_type = traits::promise_local_result<
+                typename result_of_async_continue<Action, Cont>::type>::type;
 
-            typedef
-                typename hpx::traits::extract_action<Action>::remote_result_type
-                    continuation_result_type;
+            using continuation_result_type =
+                hpx::traits::extract_action<Action>::remote_result_type;
 
             hpx::distributed::promise<result_type, RemoteResult> p;
             auto f = p.get_future();
@@ -52,21 +48,20 @@ namespace hpx {
     }    // namespace detail
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action, typename Cont, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Cont, typename... Ts>
     hpx::future<typename traits::promise_local_result<
         typename detail::result_of_async_continue<Action, Cont>::type>::type>
     async_continue(Cont&& cont, hpx::id_type const& gid, Ts&&... vs)
     {
-        typedef typename traits::promise_remote_result<
-            typename detail::result_of_async_continue<Action, Cont>::type>::type
-            result_type;
+        using result_type = traits::promise_remote_result<typename detail::
+                result_of_async_continue<Action, Cont>::type>::type;
 
         return detail::async_continue_r<Action, result_type>(
             HPX_FORWARD(Cont, cont), gid, HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Component, typename Signature, typename Derived,
-        typename Cont, typename... Ts>
+    HPX_CXX_EXPORT template <typename Component, typename Signature,
+        typename Derived, typename Cont, typename... Ts>
     hpx::future<typename traits::promise_local_result<
         typename detail::result_of_async_continue<Derived, Cont>::type>::type>
     async_continue(hpx::actions::basic_action<Component, Signature, Derived>,
@@ -77,26 +72,25 @@ namespace hpx {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action, typename Cont, typename DistPolicy,
-        typename... Ts>
-    std::enable_if_t<traits::is_distribution_policy_v<DistPolicy>,
-        hpx::future<typename traits::promise_local_result<typename detail::
-                result_of_async_continue<Action, Cont>::type>::type>>
+    HPX_CXX_EXPORT template <typename Action, typename Cont,
+        typename DistPolicy, typename... Ts>
+        requires(traits::is_distribution_policy_v<DistPolicy>)
+    hpx::future<typename traits::promise_local_result<
+        typename detail::result_of_async_continue<Action, Cont>::type>::type>
     async_continue(Cont&& cont, DistPolicy const& policy, Ts&&... vs)
     {
-        typedef typename traits::promise_remote_result<
-            typename detail::result_of_async_continue<Action, Cont>::type>::type
-            result_type;
+        using result_type = traits::promise_remote_result<typename detail::
+                result_of_async_continue<Action, Cont>::type>::type;
 
         return detail::async_continue_r<Action, result_type>(
             HPX_FORWARD(Cont, cont), policy, HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Component, typename Signature, typename Derived,
-        typename Cont, typename DistPolicy, typename... Ts>
-    std::enable_if_t<traits::is_distribution_policy_v<DistPolicy>,
-        hpx::future<typename traits::promise_local_result<typename detail::
-                result_of_async_continue<Derived, Cont>::type>::type>>
+    HPX_CXX_EXPORT template <typename Component, typename Signature,
+        typename Derived, typename Cont, typename DistPolicy, typename... Ts>
+        requires(traits::is_distribution_policy_v<DistPolicy>)
+    hpx::future<typename traits::promise_local_result<
+        typename detail::result_of_async_continue<Derived, Cont>::type>::type>
     async_continue(hpx::actions::basic_action<Component, Signature, Derived>,
         Cont&& cont, DistPolicy const& policy, Ts&&... vs)
     {
@@ -104,3 +98,54 @@ namespace hpx {
             HPX_FORWARD(Cont, cont), policy, HPX_FORWARD(Ts, vs)...);
     }
 }    // namespace hpx
+
+#if defined(HPX_HAVE_CXX26_REFLECTION)
+
+namespace hpx {
+
+    /// \brief Reflection-based async_continue overload targeting a gid.
+    ///
+    /// \tparam F        A std::meta::info reflection of a free function.
+    /// \tparam Cont     Continuation type.
+    /// \tparam Ts       Additional arguments forwarded to the action.
+    /// \param cont      The continuation to invoke on completion.
+    /// \param gid       The target locality id.
+    /// \param ts        Additional arguments forwarded to the action.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Cont,
+        typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F))
+    auto async_continue(Cont&& cont,
+        hpx::id_type const& gid, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::async_continue<hpx::actions::reflect_action<F>>(
+            HPX_FORWARD(Cont, cont), gid, HPX_FORWARD(Ts, ts)...);
+    }
+
+    /// \brief Reflection-based async_continue overload targeting a distribution policy.
+    ///
+    /// \tparam F          A std::meta::info reflection of a free function.
+    /// \tparam Cont       Continuation type.
+    /// \tparam DistPolicy Distribution policy type.
+    /// \tparam Ts         Additional arguments forwarded to the action.
+    /// \param cont        The continuation to invoke on completion.
+    /// \param policy      The distribution policy.
+    /// \param ts          Additional arguments forwarded to the action.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Cont,
+        typename DistPolicy, typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F) &&
+            traits::is_distribution_policy_v<DistPolicy>)
+    auto async_continue(
+        Cont&& cont, DistPolicy const& policy, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::async_continue<hpx::actions::reflect_action<F>>(
+            HPX_FORWARD(Cont, cont), policy, HPX_FORWARD(Ts, ts)...);
+    }
+
+}    // namespace hpx
+#endif    // HPX_HAVE_CXX26_REFLECTION

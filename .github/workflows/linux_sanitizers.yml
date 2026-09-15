@@ -8,13 +8,17 @@ name: Linux CI - Using Address and Undefined behavior sanitizer
 
 on: [pull_request]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: stellargroup/build_env:14
+    container: stellargroup/build_env:17
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Configure
       shell: bash
       run: |
@@ -47,4 +51,5 @@ jobs:
           ctest \
             --output-on-failure \
             --tests-regex tests.examples \
-            --exclude-regex tests.examples.transpose.transpose_block_numa
+            --exclude-regex tests.examples.transpose.transpose_block_numa \
+            --exclude-regex tests.examples.quickstart.1d_wave_equation

@@ -1,5 +1,5 @@
 //  Copyright (c) 2015 Thomas Heller
-//  Copyright (c) 2015-2022 Hartmut Kaiser
+//  Copyright (c) 2015-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -17,14 +17,17 @@
 #define BOOST_NO_CXX11_ALLOCATOR
 #endif
 
+#include <hpx/config.hpp>
+
 #include <hpx/algorithm.hpp>
 #include <hpx/execution.hpp>
 #include <hpx/format.hpp>
 #include <hpx/init.hpp>
 #include <hpx/modules/compute.hpp>
 #include <hpx/modules/compute_local.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/thread.hpp>
-#include <hpx/type_support/unused.hpp>
 #include <hpx/version.hpp>
 
 #include <cstddef>
@@ -51,12 +54,13 @@ hpx::threads::topology& retrieve_topology()
 ///////////////////////////////////////////////////////////////////////////////
 double mysecond()
 {
-    return hpx::chrono::high_resolution_clock::now() * 1e-9;
+    return static_cast<double>(hpx::chrono::high_resolution_clock::now()) *
+        1e-9;
 }
 
 int checktick()
 {
-    static const std::size_t M = 20;
+    static std::size_t const M = 20;
     double timesfound[M];
 
     // Collect a sequence of M unique time values from the system.
@@ -76,7 +80,7 @@ int checktick()
     for (std::size_t i = 1; i < M; i++)
     {
         int Delta = (int) (1.0E6 * (timesfound[i] - timesfound[i - 1]));
-        minDelta = (std::min)(minDelta, (std::max)(Delta, 0));
+        minDelta = (std::min) (minDelta, (std::max) (Delta, 0));
     }
 
     return (minDelta);
@@ -496,9 +500,11 @@ int hpx_main(hpx::program_options::variables_map& vm)
             << "Array size = " << vector_size << " (elements), "
                "Offset = " << offset << " (elements)\n"
             << "Memory per array = "
-                << sizeof(STREAM_TYPE) * (vector_size / 1024. / 1024.) << " MiB "
+                << sizeof(STREAM_TYPE) *
+                    (static_cast<double>(vector_size) / 1024. / 1024.) << " MiB "
             << "(= "
-                <<  sizeof(STREAM_TYPE) * (vector_size / 1024. / 1024. / 1024.)
+                <<  sizeof(STREAM_TYPE) *
+                    (static_cast<double>(vector_size) / 1024. / 1024. / 1024.)
                 << " GiB).\n"
             << "Each kernel will be executed " << iterations << " times.\n"
             << " The *best* time for each kernel (excluding the first iteration)\n"
@@ -597,10 +603,28 @@ int hpx_main(hpx::program_options::variables_map& vm)
             timing = run_benchmark<>(warmup_iterations, iterations, vector_size,
                 std::move(alloc), std::move(policy));
         }
+        else if (executor == 6)
+        {
+            // parallel_scheduler natively.
+            // Using it via scheduler_executor for parallel algorithms.
+            using executor_type =
+                hpx::execution::experimental::scheduler_executor<
+                    hpx::execution::experimental::parallel_scheduler>;
+
+            executor_type exec(
+                hpx::execution::experimental::get_parallel_scheduler());
+            auto policy = hpx::execution::par.on(exec);
+            hpx::compute::host::detail::policy_allocator<STREAM_TYPE,
+                decltype(policy)>
+                alloc(policy);
+
+            timing = run_benchmark<>(warmup_iterations, iterations, vector_size,
+                std::move(alloc), std::move(policy));
+        }
         else
         {
             HPX_THROW_EXCEPTION(hpx::error::commandline_option_error,
-                "hpx_main", "Invalid executor id given (0-4 allowed");
+                "hpx_main", "Invalid executor id given (0-6 allowed");
         }
     }
     time_total = mysecond() - time_total;
@@ -616,7 +640,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
     };
     // clang-format on
 
-    const double bytes[num_stream_tests] = {
+    double const bytes[num_stream_tests] = {
         2 * sizeof(STREAM_TYPE) * static_cast<double>(vector_size),
         2 * sizeof(STREAM_TYPE) * static_cast<double>(vector_size),
         3 * sizeof(STREAM_TYPE) * static_cast<double>(vector_size),
@@ -639,8 +663,8 @@ int hpx_main(hpx::program_options::variables_map& vm)
         for (std::size_t j = 0; j < num_stream_tests; j++)
         {
             avgtime[j] = avgtime[j] + timing[j][iteration];
-            mintime[j] = (std::min)(mintime[j], timing[j][iteration]);
-            maxtime[j] = (std::max)(maxtime[j], timing[j][iteration]);
+            mintime[j] = (std::min) (mintime[j], timing[j][iteration]);
+            maxtime[j] = (std::max) (maxtime[j], timing[j][iteration]);
         }
     }
 
@@ -654,10 +678,10 @@ int hpx_main(hpx::program_options::variables_map& vm)
                 "max,add_bytes,add_bw,add_avg,add_min,add_max,triad_bytes,"
                 "triad_bw,triad_avg,triad_min,triad_max\n");
         }
-        std::size_t const num_executors = 6;
-        const char* executors[num_executors] = {"parallel-serial", "block",
+        std::size_t const num_executors = 7;
+        char const* executors[num_executors] = {"parallel-serial", "block",
             "parallel-parallel", "fork_join_executor", "scheduler_executor",
-            "block_fork_join_executor"};
+            "block_fork_join_executor", "parallel_scheduler"};
         hpx::util::format_to(std::cout, "{},{},{},", executors[executor],
             hpx::get_os_thread_count(), vector_size);
     }
@@ -688,8 +712,8 @@ int hpx_main(hpx::program_options::variables_map& vm)
 
     if (!csv)
     {
-        std::cout << "\nTotal time: " << time_total
-                  << " (per iteration: " << time_total / iterations << ")\n";
+        std::cout << "\nTotal time: " << time_total << " (per iteration: "
+                  << time_total / static_cast<double>(iterations) << ")\n";
     }
 
     if (!csv)

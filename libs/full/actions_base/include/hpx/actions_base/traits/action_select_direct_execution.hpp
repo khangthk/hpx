@@ -1,4 +1,4 @@
-//  Copyright (c) 2018-2024 Hartmut Kaiser
+//  Copyright (c) 2018-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,9 +6,10 @@
 
 #pragma once
 
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/naming_base/naming_base.hpp>
-#include <hpx/type_support/detail/wrap_int.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/type_support.hpp>
 
 namespace hpx::traits {
 
@@ -39,7 +40,7 @@ namespace hpx::traits {
         };
     }    // namespace detail
 
-    template <typename Action, typename Enable = void>
+    HPX_CXX_EXPORT template <typename Action, typename Enable = void>
     struct action_select_direct_execution
     {
         static constexpr launch call(launch policy, naming::address_type lva)

@@ -21,7 +21,7 @@
 #include "test_utils.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
-int seed = std::random_device{}();
+unsigned int seed = std::random_device{}();
 std::mt19937 gen(seed);
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -40,9 +40,10 @@ void test_includes1_sender(
     using scheduler_t = ex::thread_pool_policy_scheduler<LnPolicy>;
 
     std::vector<std::size_t> c1(10007);
-    std::uniform_int_distribution<> dis(0, c1.size() - 1);
+    std::uniform_int_distribution<> dis(0, static_cast<int>(c1.size() - 1));
     std::size_t start = dis(gen);
-    std::uniform_int_distribution<> dist(0, c1.size() - start - 1);
+    std::uniform_int_distribution<> dist(
+        0, static_cast<int>(c1.size() - start - 1));
     std::size_t end = start + dist(gen);
 
     std::size_t first_value = gen();    //-V101
@@ -50,8 +51,10 @@ void test_includes1_sender(
 
     HPX_TEST_LTE(start, end);
 
-    base_iterator start_it = std::next(std::begin(c1), start);
-    base_iterator end_it = std::next(std::begin(c1), end);
+    base_iterator start_it =
+        std::next(std::begin(c1), static_cast<std::ptrdiff_t>(start));
+    base_iterator end_it =
+        std::next(std::begin(c1), static_cast<std::ptrdiff_t>(end));
 
     {
         auto exec = ex::explicit_scheduler_executor(scheduler_t(ln_policy));
@@ -61,7 +64,7 @@ void test_includes1_sender(
                               iterator(std::end(c1)), start_it, end_it) |
                 hpx::includes(ex_policy.on(exec)));
 
-        bool result = hpx::get<0>(*snd_result);
+        bool result = hpx::get<0>(snd_result.value());
 
         bool expected =
             std::includes(std::begin(c1), std::end(c1), start_it, end_it);
@@ -81,7 +84,8 @@ void test_includes1_sender(
 
         if (!c2.empty())
         {
-            std::uniform_int_distribution<> dis(0, c2.size() - 1);
+            std::uniform_int_distribution<> dis(
+                0, static_cast<int>(c2.size() - 1));
             ++c2[dis(gen)];    //-V104
 
             auto exec = ex::explicit_scheduler_executor(scheduler_t(ln_policy));
@@ -91,7 +95,7 @@ void test_includes1_sender(
                     std::begin(c2), std::end(c2)) |
                 hpx::includes(ex_policy.on(exec)));
 
-            bool result = hpx::get<0>(*snd_result);
+            bool result = hpx::get<0>(snd_result.value());
 
             bool expected = std::includes(
                 std::begin(c1), std::end(c1), std::begin(c2), std::end(c2));
@@ -120,15 +124,18 @@ void test_includes2_sender(
     std::size_t first_value = gen();    //-V101
     std::iota(std::begin(c1), std::end(c1), first_value);
 
-    std::uniform_int_distribution<> dis(0, c1.size() - 1);
+    std::uniform_int_distribution<> dis(0, static_cast<int>(c1.size() - 1));
     std::size_t start = dis(gen);
-    std::uniform_int_distribution<> dist(0, c1.size() - start - 1);
+    std::uniform_int_distribution<> dist(
+        0, static_cast<int>(c1.size() - start - 1));
     std::size_t end = start + dist(gen);
 
     HPX_TEST_LTE(start, end);
 
-    base_iterator start_it = std::next(std::begin(c1), start);
-    base_iterator end_it = std::next(std::begin(c1), end);
+    base_iterator start_it =
+        std::next(std::begin(c1), static_cast<std::ptrdiff_t>(start));
+    base_iterator end_it =
+        std::next(std::begin(c1), static_cast<std::ptrdiff_t>(end));
 
     {
         auto exec = ex::explicit_scheduler_executor(scheduler_t(ln_policy));
@@ -138,7 +145,7 @@ void test_includes2_sender(
                 end_it, std::less<std::size_t>()) |
             hpx::includes(ex_policy.on(exec)));
 
-        bool result = hpx::get<0>(*snd_result);
+        bool result = hpx::get<0>(snd_result.value());
 
         bool expected = std::includes(std::begin(c1), std::end(c1), start_it,
             end_it, std::less<std::size_t>());
@@ -158,7 +165,8 @@ void test_includes2_sender(
 
         if (!c2.empty())
         {
-            std::uniform_int_distribution<> dis(0, c2.size() - 1);
+            std::uniform_int_distribution<> dis(
+                0, static_cast<int>(c2.size() - 1));
             ++c2[dis(gen)];    //-V104
 
             auto exec = ex::explicit_scheduler_executor(scheduler_t(ln_policy));
@@ -168,7 +176,7 @@ void test_includes2_sender(
                     std::begin(c2), std::end(c2), std::less<std::size_t>()) |
                 hpx::includes(ex_policy.on(exec)));
 
-            bool result = hpx::get<0>(*snd_result);
+            bool result = hpx::get<0>(snd_result.value());
 
             bool expected = std::includes(std::begin(c1), std::end(c1),
                 std::begin(c2), std::end(c2), std::less<std::size_t>());
@@ -206,7 +214,7 @@ void test_includes_edge_cases_sender(
                 std::begin(c), std::end(c), std::less<std::size_t>{}) |
             hpx::includes(ex_policy.on(exec)));
 
-        bool result = hpx::get<0>(*snd_result);
+        bool result = hpx::get<0>(snd_result.value());
 
         bool expected = std::includes(std::begin(c), std::begin(c),
             std::begin(c), std::end(c), std::less<std::size_t>{});
@@ -223,7 +231,7 @@ void test_includes_edge_cases_sender(
                 std::begin(c), std::begin(c), std::less<std::size_t>{}) |
             hpx::includes(ex_policy.on(exec)));
 
-        bool result = hpx::get<0>(*snd_result);
+        bool result = hpx::get<0>(snd_result.value());
 
         bool expected = std::includes(std::begin(c), std::end(c), std::begin(c),
             std::begin(c), std::less<std::size_t>{});
@@ -240,7 +248,7 @@ void test_includes_edge_cases_sender(
                 std::begin(c), std::begin(c), std::less<std::size_t>{}) |
             hpx::includes(ex_policy.on(exec)));
 
-        bool result = hpx::get<0>(*snd_result);
+        bool result = hpx::get<0>(snd_result.value());
 
         bool expected = std::includes(std::begin(c), std::begin(c),
             std::begin(c), std::begin(c), std::less<std::size_t>{});
@@ -294,7 +302,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
         seed = vm["seed"].as<unsigned int>();
 
     std::cout << "using seed: " << seed << std::endl;
-    std::srand(seed);
+    gen.seed(seed);
 
     includes_sender_test1<std::forward_iterator_tag>();
     includes_sender_test1<std::random_access_iterator_tag>();

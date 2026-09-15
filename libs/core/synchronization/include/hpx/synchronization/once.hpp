@@ -15,7 +15,7 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/functional/detail/invoke.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/synchronization/event.hpp>
 
 #include <atomic>
@@ -28,10 +28,13 @@ namespace hpx {
     ///        \c hpx::call_once allows those calls to coordinate with each other such
     ///        that only one of the calls will actually run to completion.
     ///        \c hpx::once_flag is neither copyable nor movable.
-    struct once_flag
+    HPX_CXX_CORE_EXPORT struct once_flag
     {
     public:
-        HPX_NON_COPYABLE(once_flag);
+        once_flag(once_flag const&) = delete;
+        once_flag(once_flag&&) = delete;
+        once_flag& operator=(once_flag const&) = delete;
+        once_flag& operator=(once_flag&&) = delete;
 
     public:
         /// \brief Constructs an \a once_flag object. The internal state is set to indicate
@@ -48,8 +51,6 @@ namespace hpx {
         template <typename F, typename... Args>
         friend void call_once(once_flag& flag, F&& f, Args&&... args);
     };
-
-#define HPX_ONCE_INIT ::hpx::once_flag()
 
     ///////////////////////////////////////////////////////////////////////////
     /// \brief   Executes the Callable object \a f exactly once, even if called
@@ -98,7 +99,7 @@ namespace hpx {
     ///       be more efficient than the equivalent code using \c
     ///       hpx::call_once. The POSIX equivalent of this function is \a
     ///       pthread_once.
-    template <typename F, typename... Args>
+    HPX_CXX_CORE_EXPORT template <typename F, typename... Args>
     void call_once(once_flag& flag, F&& f, Args&&... args)
     {
         // Try for a quick win: if the procedure has already been called
@@ -144,20 +145,3 @@ namespace hpx {
         }
     }
 }    // namespace hpx
-
-namespace hpx::lcos::local {
-
-    using once_flag HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::once_flag is deprecated, use hpx::once_flag "
-        "instead") = hpx::once_flag;
-
-    template <typename F, typename... Args>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::call_once is deprecated, use hpx::call_once "
-        "instead")
-    void call_once(hpx::once_flag& flag, F&& f, Args&&... args)
-    {
-        return hpx::call_once(
-            flag, HPX_FORWARD(F, f), HPX_FORWARD(Args, args)...);
-    }
-}    // namespace hpx::lcos::local

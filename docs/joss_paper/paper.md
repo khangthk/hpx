@@ -1,4 +1,4 @@
-﻿---
+---
 title: 'HPX - The C++ Standard Library for Parallelism and Concurrency'
 tags:
  - concurrency
@@ -20,7 +20,7 @@ authors:
  - name: Parsa Amini
    orcid: 0000-0002-6439-8404
    affiliation: "1"
- - name: Agustín Berge
+ - name: Agust�n Berge
    affiliation: "6"
  - name: John Biddiscombe
    orcid: 0000-0002-6552-2833
@@ -278,7 +278,7 @@ HPX is utilized in a diverse set of applications:
    Array Processing Toolkit.
 
 For a updated list of applications, we refer to the
-corresponding [HPX website](https://hpx.stellar-group.org/hpx-users/).
+corresponding [HPX website](https://hpx.dev/hpx-users/).
 
 # Example code
 
@@ -363,7 +363,7 @@ int main()
 ```
 
 Please report any bugs or feature requests on the
-[HPX GitHub page](https://github.com/STEllAR-GROUP/hpx).
+[HPX GitHub page](https://github.com/TheHPXProject/hpx).
 
 # Acknowledgments
 
@@ -403,6 +403,6 @@ grants:
 
 
 For a updated list of previous and current funding, we refer to the
-corresponding [HPX website](http://hpx.stellar-group.org/funding-acknowledgements/).
+corresponding [HPX website](http://hpx.dev/funding-acknowledgements/).
 
 # References

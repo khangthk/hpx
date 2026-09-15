@@ -1,5 +1,5 @@
 //  Copyright (c) 2017 Shoshana Jakobovits
-//  Copyright (c) 2017-2024 Hartmut Kaiser
+//  Copyright (c) 2017-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,19 +7,17 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/functional/function.hpp>
-#include <hpx/ini/ini.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/ini.hpp>
+#include <hpx/modules/thread_pools.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/topology.hpp>
+#include <hpx/modules/type_support.hpp>
+#include <hpx/modules/util.hpp>
 #include <hpx/resource_partitioner/detail/partitioner.hpp>
 #include <hpx/resource_partitioner/partitioner.hpp>
-#include <hpx/thread_pools/scheduled_thread_pool.hpp>
-#include <hpx/threading_base/scheduler_mode.hpp>
-#include <hpx/threading_base/thread_pool_base.hpp>
-#include <hpx/topology/topology.hpp>
-#include <hpx/type_support/static.hpp>
-#include <hpx/util/from_string.hpp>
-#include <hpx/util/get_entry_as.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -32,16 +30,124 @@
 #include <utility>
 #include <vector>
 
+namespace hpx::resource {
+
+    char const* get_scheduler_name(scheduling_policy const policy)
+    {
+        switch (policy)
+        {
+        case resource::scheduling_policy::unspecified:
+            return "unspecified";
+        case resource::scheduling_policy::user_defined:
+            return "user supplied";
+        case resource::scheduling_policy::local:
+            return "local";
+        case resource::scheduling_policy::local_priority_fifo:
+            return "local_priority_fifo";
+        case resource::scheduling_policy::local_priority_fifo_double:
+            return "local_priority_fifo_double";
+        case resource::scheduling_policy::local_priority_lifo:
+            return "local_priority_lifo";
+#if defined(HPX_HAVE_WORK_REQUESTING_SCHEDULERS)
+        case resource::scheduling_policy::local_workrequesting_fifo:
+            return "local_workrequesting_fifo";
+        case resource::scheduling_policy::local_workrequesting_lifo:
+            return "local_workrequesting_lifo";
+        case resource::scheduling_policy::local_workrequesting_mc:
+            return "local_workrequesting_mc";
+#else
+        case resource::scheduling_policy::local_workrequesting_fifo:
+        case resource::scheduling_policy::local_workrequesting_lifo:
+        case resource::scheduling_policy::local_workrequesting_mc:
+            return "unknown";
+#endif
+        case resource::scheduling_policy::static_:
+            return "static";
+        case resource::scheduling_policy::static_priority:
+            return "static_priority";
+        case resource::scheduling_policy::abp_priority_fifo:
+            return "abp_priority_fifo";
+        case resource::scheduling_policy::abp_priority_lifo:
+            return "abp_priority_lifo";
+        case resource::scheduling_policy::shared_priority:
+            return "shared_priority";
+        default:
+            break;
+        }
+        return "unknown";
+    }
+
+    scheduling_policy get_scheduling_policy(char const* scheduler_name)
+    {
+        if (scheduler_name == nullptr || *scheduler_name == '\0')
+        {
+            return scheduling_policy::unspecified;
+        }
+
+        if (0 == std::string("local").find(scheduler_name))
+        {
+            return scheduling_policy::local;
+        }
+        if (0 == std::string("local-priority-fifo").find(scheduler_name))
+        {
+            return scheduling_policy::local_priority_fifo;
+        }
+        if (0 == std::string("local-priority-fifo-double").find(scheduler_name))
+        {
+            return scheduling_policy::local_priority_fifo_double;
+        }
+        if (0 == std::string("local-priority-lifo").find(scheduler_name))
+        {
+            return scheduling_policy::local_priority_lifo;
+        }
+#if defined(HPX_HAVE_WORK_REQUESTING_SCHEDULERS)
+        if (0 == std::string("local-workrequesting-fifo").find(scheduler_name))
+        {
+            return scheduling_policy::local_workrequesting_fifo;
+        }
+        if (0 == std::string("local-workrequesting-lifo").find(scheduler_name))
+        {
+            return scheduling_policy::local_workrequesting_lifo;
+        }
+        if (0 == std::string("local-workrequesting-mc").find(scheduler_name))
+        {
+            return scheduling_policy::local_workrequesting_mc;
+        }
+#endif
+        if (0 == std::string("static").find(scheduler_name))
+        {
+            return scheduling_policy::static_;
+        }
+        if (0 == std::string("static-priority").find(scheduler_name))
+        {
+            return scheduling_policy::static_priority;
+        }
+        if (0 == std::string("abp-priority-fifo").find(scheduler_name))
+        {
+            return scheduling_policy::abp_priority_fifo;
+        }
+        if (0 == std::string("abp-priority-lifo").find(scheduler_name))
+        {
+            return scheduling_policy::abp_priority_lifo;
+        }
+        if (0 == std::string("shared-priority").find(scheduler_name))
+        {
+            return scheduling_policy::shared_priority;
+        }
+        return scheduling_policy::unspecified;
+    }
+}    // namespace hpx::resource
+
 namespace hpx::resource::detail {
 
     ///////////////////////////////////////////////////////////////////////////
-    [[noreturn]] void throw_runtime_error(
+    [[noreturn]] static void throw_runtime_error(
         std::string const& func, std::string const& message)
     {
         HPX_THROW_EXCEPTION(hpx::error::invalid_status, func, message);
     }
 
-    [[noreturn]] void throw_invalid_argument(
+    [[noreturn]] static void throw_invalid_argument(
         std::string const& func, std::string const& message)
     {
         HPX_THROW_EXCEPTION(hpx::error::bad_parameter, func, message);
@@ -122,55 +228,9 @@ namespace hpx::resource::detail {
 
     void init_pool_data::print_pool(std::ostream& os) const
     {
-        os << "[pool \"" << pool_name_ << "\"] with scheduler ";
-
-        std::string sched;
-        switch (scheduling_policy_)
-        {
-        case resource::scheduling_policy::unspecified:
-            sched = "unspecified";
-            break;
-        case resource::scheduling_policy::user_defined:
-            sched = "user supplied";
-            break;
-        case resource::scheduling_policy::local:
-            sched = "local";
-            break;
-        case resource::scheduling_policy::local_priority_fifo:
-            sched = "local_priority_fifo";
-            break;
-        case resource::scheduling_policy::local_priority_lifo:
-            sched = "local_priority_lifo";
-            break;
-#if defined(HPX_HAVE_WORK_REQUESTING_SCHEDULERS)
-        case resource::scheduling_policy::local_workrequesting_fifo:
-            sched = "local_workrequesting_fifo";
-            break;
-        case resource::scheduling_policy::local_workrequesting_lifo:
-            sched = "local_workrequesting_lifo";
-            break;
-        case resource::scheduling_policy::local_workrequesting_mc:
-            sched = "local_workrequesting_mc";
-            break;
-#endif
-        case resource::scheduling_policy::static_:
-            sched = "static";
-            break;
-        case resource::scheduling_policy::static_priority:
-            sched = "static_priority";
-            break;
-        case resource::scheduling_policy::abp_priority_fifo:
-            sched = "abp_priority_fifo";
-            break;
-        case resource::scheduling_policy::abp_priority_lifo:
-            sched = "abp_priority_lifo";
-            break;
-        case resource::scheduling_policy::shared_priority:
-            sched = "shared_priority";
-            break;
-        }
-
-        os << "\"" << sched << "\" is running on PUs : \n";
+        os << "[pool \"" << pool_name_ << "\"] with scheduler \""
+           << get_scheduler_name(scheduling_policy_)
+           << "\" is running on PUs : \n";
 
         for (threads::mask_cref_type assigned_pu : assigned_pus_)
         {
@@ -226,10 +286,25 @@ namespace hpx::resource::detail {
         }
     }
 
+    hpx::threads::mask_type init_pool_data::get_pu_mask() const
+    {
+        threads::mask_type pu_mask = threads::mask_type();
+        threads::resize(
+            pu_mask, static_cast<std::size_t>(threads::hardware_concurrency()));
+
+        for (std::size_t i = 0; i != num_threads_; ++i)
+        {
+            pu_mask |= assigned_pus_[i];
+        }
+
+        return pu_mask;
+    }
+
     ////////////////////////////////////////////////////////////////////////
     partitioner::partitioner()
       : first_core_(static_cast<std::size_t>(-1))
       , pus_needed_(static_cast<std::size_t>(-1))
+      , mtx_("resource_partitioner")
       , mode_(partitioner_mode::default_)
       , topo_(threads::create_topology())
       , default_scheduler_mode_(threads::policies::scheduler_mode::default_)
@@ -468,72 +543,17 @@ namespace hpx::resource::detail {
     void partitioner::setup_schedulers()
     {
         // select the default scheduler
-        scheduling_policy default_scheduler;
-
         std::string const default_scheduler_str =
             rtcfg_.get_entry("hpx.scheduler", std::string());
 
-        if (0 == std::string("local").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::local;
-        }
-        else if (0 ==
-            std::string("local-priority-fifo").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::local_priority_fifo;
-        }
-        else if (0 ==
-            std::string("local-priority-lifo").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::local_priority_lifo;
-        }
-#if defined(HPX_HAVE_WORK_REQUESTING_SCHEDULERS)
-        else if (0 ==
-            std::string("local-workrequesting-fifo")
-                .find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::local_workrequesting_fifo;
-        }
-        else if (0 ==
-            std::string("local-workrequesting-lifo")
-                .find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::local_workrequesting_lifo;
-        }
-        else if (0 ==
-            std::string("local-workrequesting-mc").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::local_workrequesting_mc;
-        }
-#endif
-        else if (0 == std::string("static").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::static_;
-        }
-        else if (0 ==
-            std::string("static-priority").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::static_priority;
-        }
-        else if (0 ==
-            std::string("abp-priority-fifo").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::abp_priority_fifo;
-        }
-        else if (0 ==
-            std::string("abp-priority-lifo").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::abp_priority_lifo;
-        }
-        else if (0 ==
-            std::string("shared-priority").find(default_scheduler_str))
-        {
-            default_scheduler = scheduling_policy::shared_priority;
-        }
-        else
+        scheduling_policy default_scheduler =
+            get_scheduling_policy(default_scheduler_str.c_str());
+        if (default_scheduler == scheduling_policy::unspecified)
         {
             throw hpx::detail::command_line_error(
-                "Bad value for command line option --hpx:queuing");
+                std::string(
+                    "Bad value for command line option --hpx:queuing: ") +
+                default_scheduler_str);
         }
 
         // set this scheduler on the pools that do not have a specified scheduler yet
@@ -971,6 +991,13 @@ namespace hpx::resource::detail {
         return mask;
     }
 
+    threads::mask_type partitioner::get_pool_pus_mask(
+        std::string const& pool_name) const
+    {
+        std::unique_lock<mutex_type> l(mtx_);
+        return get_pool_data(l, pool_name).get_pu_mask();
+    }
+
     void partitioner::init(resource::partitioner_mode rpmode,
         hpx::util::section const& rtcfg,
         hpx::threads::policies::detail::affinity_data const& affinity_data)
@@ -1008,9 +1035,12 @@ namespace hpx::resource::detail {
     void partitioner::unassign_pu(
         std::string const& pool_name, std::size_t virt_core)
     {
-        std::unique_lock<mutex_type> l(mtx_);
-        detail::init_pool_data& data = get_pool_data(l, pool_name);
-        data.unassign_pu(virt_core);
+        std::unique_lock<mutex_type> l(mtx_, std::defer_lock);
+        if (l.try_lock())
+        {
+            detail::init_pool_data& data = get_pool_data(l, pool_name);
+            data.unassign_pu(virt_core);
+        }
     }
 
     std::size_t partitioner::shrink_pool(std::string const& pool_name,
@@ -1185,7 +1215,7 @@ namespace hpx::resource::detail {
            << static_cast<std::uint64_t>(initial_thread_pools_.size())
            << " pool(s) : \n";    // -V128
 
-        for (auto itp : initial_thread_pools_)
+        for (auto const& itp : initial_thread_pools_)
         {
             itp.print_pool(os);
         }

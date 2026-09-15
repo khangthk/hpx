@@ -12,16 +12,15 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/datastructures/member_pack.hpp>
 #include <hpx/functional/invoke.hpp>
-#include <hpx/functional/invoke_result.hpp>
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
 #include <hpx/functional/traits/is_action.hpp>
 #include <hpx/functional/traits/is_bind_expression.hpp>
 #include <hpx/functional/traits/is_placeholder.hpp>
-#include <hpx/type_support/decay.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <type_traits>
@@ -32,7 +31,7 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
 
-        template <std::size_t I>
+        HPX_CXX_CORE_EXPORT template <std::size_t I>
         struct placeholder
         {
             static constexpr std::size_t value = I;
@@ -59,15 +58,15 @@ namespace hpx {
     /// std::integral_constant<int, N>.
     namespace placeholders {
 
-        inline constexpr detail::placeholder<1> _1 = {};
-        inline constexpr detail::placeholder<2> _2 = {};
-        inline constexpr detail::placeholder<3> _3 = {};
-        inline constexpr detail::placeholder<4> _4 = {};    //-V112
-        inline constexpr detail::placeholder<5> _5 = {};
-        inline constexpr detail::placeholder<6> _6 = {};
-        inline constexpr detail::placeholder<7> _7 = {};
-        inline constexpr detail::placeholder<8> _8 = {};
-        inline constexpr detail::placeholder<9> _9 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<1> _1 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<2> _2 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<3> _3 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<4> _4 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<5> _5 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<6> _6 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<7> _7 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<8> _8 = {};
+        HPX_CXX_CORE_EXPORT inline constexpr detail::placeholder<9> _9 = {};
     }    // namespace placeholders
 
     ///////////////////////////////////////////////////////////////////////////
@@ -86,8 +85,8 @@ namespace hpx {
             }
         };
 
-        template <typename T, std::size_t NumUs, typename TD = std::decay_t<T>,
-            typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename T, std::size_t NumUs,
+            typename TD = std::decay_t<T>, typename Enable = void>
         struct bind_eval
         {
             template <typename... Us>
@@ -119,7 +118,7 @@ namespace hpx {
         };
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename F, typename Ts, typename... Us>
+        HPX_CXX_CORE_EXPORT template <typename F, typename Ts, typename... Us>
         struct invoke_bound_result;
 
         template <typename F, typename... Ts, typename... Us>
@@ -130,12 +129,12 @@ namespace hpx {
         {
         };
 
-        template <typename F, typename Ts, typename... Us>
+        HPX_CXX_CORE_EXPORT template <typename F, typename Ts, typename... Us>
         using invoke_bound_result_t =
             typename invoke_bound_result<F, Ts, Us...>::type;
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename F, typename Is, typename... Ts>
+        HPX_CXX_CORE_EXPORT template <typename F, typename Is, typename... Ts>
         class bound;
 
         template <typename F, std::size_t... Is, typename... Ts>
@@ -179,6 +178,7 @@ namespace hpx {
 #pragma warning(disable : 26800)    //  Use of a moved from object: '(*<vs_0>)'
 #endif
 
+            // NOLINTBEGIN(bugprone-use-after-move)
             template <typename... Us>
             constexpr HPX_HOST_DEVICE
                 invoke_bound_result_t<F&, util::pack<Ts&...>, Us&&...>
@@ -220,6 +220,7 @@ namespace hpx {
                         HPX_MOVE(_args).template get<Is>(),
                         HPX_FORWARD(Us, vs)...)...);
             }
+            // NOLINTEND(bugprone-use-after-move)
 
 #if defined(HPX_MSVC)
 #pragma warning(pop)
@@ -250,18 +251,17 @@ namespace hpx {
 #endif
             }
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-            [[nodiscard]] util::itt::string_handle get_function_annotation_itt()
-                const
+            [[nodiscard]] hpx::tracing::annotation_handle
+            get_function_annotation_tracing() const
             {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-                return traits::get_function_annotation_itt<F>::call(_f);
+                return traits::get_function_annotation_tracing<F>::call(_f);
 #else
-                static util::itt::string_handle sh("bound");
+                static auto sh =
+                    hpx::tracing::create_annotation_handle("bound");
                 return sh;
 #endif
             }
-#endif
 
         private:
             F _f;
@@ -281,9 +281,8 @@ namespace hpx {
     ///             by the placeholders _1, _2, _3... of namespace \a hpx::placeholders
     /// \returns    A function object of unspecified type \a T, for which
     ///             \code hpx::is_bind_expression<T>::value == true. \endcode
-    template <typename F, typename... Ts,
-        typename Enable =
-            std::enable_if_t<!traits::is_action_v<std::decay_t<F>>>>
+    HPX_CXX_CORE_EXPORT template <typename F, typename... Ts>
+        requires(!traits::is_action_v<std::decay_t<F>>)
     constexpr detail::bound<std::decay_t<F>,
         util::make_index_pack_t<sizeof...(Ts)>, util::decay_unwrap_t<Ts>...>
     bind(F&& f, Ts&&... vs)
@@ -295,57 +294,6 @@ namespace hpx {
         return result_type(HPX_FORWARD(F, f), HPX_FORWARD(Ts, vs)...);
     }
 }    // namespace hpx
-
-namespace hpx::util {
-
-    template <typename F, typename... Ts>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::util::bind is deprecated, use hpx::bind instead")
-    constexpr decltype(auto) bind(F&& f, Ts&&... ts)
-    {
-        return hpx::bind(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
-    }
-
-    namespace placeholders {
-
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_1 is deprecated, use hpx::placeholders::_1 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<1> _1 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_2 is deprecated, use hpx::placeholders::_2 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<2> _2 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_3 is deprecated, use hpx::placeholders::_3 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<3> _3 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_4 is deprecated, use hpx::placeholders::_4 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<4> _4 = {};    //-V112
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_5 is deprecated, use hpx::placeholders::_5 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<5> _5 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_6 is deprecated, use hpx::placeholders::_6 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<6> _6 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_7 is deprecated, use hpx::placeholders::_7 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<7> _7 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_8 is deprecated, use hpx::placeholders::_8 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<8> _8 = {};
-        HPX_DEPRECATED_V(1, 8,
-            "hpx::placeholders::_9 is deprecated, use hpx::placeholders::_9 "
-            "instead")
-        inline constexpr hpx::detail::placeholder<9> _9 = {};
-    }    // namespace placeholders
-}    // namespace hpx::util
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx {
@@ -389,17 +337,15 @@ namespace hpx::traits {
         }
     };
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
     template <typename F, typename... Ts>
-    struct get_function_annotation_itt<hpx::detail::bound<F, Ts...>>
+    struct get_function_annotation_tracing<hpx::detail::bound<F, Ts...>>
     {
-        [[nodiscard]] static util::itt::string_handle call(
+        [[nodiscard]] static hpx::tracing::annotation_handle call(
             hpx::detail::bound<F, Ts...> const& f) noexcept
         {
-            return f.get_function_annotation_itt();
+            return f.get_function_annotation_tracing();
         }
     };
-#endif
 }    // namespace hpx::traits
 #endif
 
@@ -407,7 +353,7 @@ namespace hpx::traits {
 namespace hpx::serialization {
 
     // serialization of the bound object
-    template <typename Archive, typename F, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename Archive, typename F, typename... Ts>
     void serialize(Archive& ar, ::hpx::detail::bound<F, Ts...>& bound,
         unsigned int const version = 0)
     {
@@ -415,7 +361,7 @@ namespace hpx::serialization {
     }
 
     // serialization of placeholders is trivial, just provide empty functions
-    template <typename Archive, std::size_t I>
+    HPX_CXX_CORE_EXPORT template <typename Archive, std::size_t I>
     constexpr void serialize(Archive& /* ar */,
         ::hpx::detail::placeholder<I>& /*placeholder*/,
         unsigned int const /*version*/ = 0) noexcept

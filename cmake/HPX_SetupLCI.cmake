@@ -51,35 +51,33 @@ macro(hpx_setup_lci)
       fetchcontent_getproperties(lci)
       if(NOT lci_POPULATED)
         fetchcontent_populate(lci)
-        if(NOT LCI_WITH_EXAMPLES)
-          set(LCI_WITH_EXAMPLES
-              OFF
+        if(NOT LCT_PMI_BACKEND_ENABLE_MPI AND HPX_WITH_LCI_BOOTSTRAP_MPI)
+          # Configure LCI with MPI bootstrap support
+          set(LCT_PMI_BACKEND_ENABLE_MPI
+              ON
+              CACHE INTERNAL ""
+          )
+          # Set MPI as the first PMI backend to try
+          set(LCI_PMI_BACKEND_DEFAULT
+              "mpi;pmix;pmi2;pmi1;file;local"
               CACHE INTERNAL ""
           )
         endif()
-        if(NOT LCI_WITH_TESTS)
-          set(LCI_WITH_TESTS
-              OFF
-              CACHE INTERNAL ""
-          )
-        endif()
-        if(NOT LCI_WITH_BENCHMARKS)
-          set(LCI_WITH_BENCHMARKS
-              OFF
-              CACHE INTERNAL ""
-          )
-        endif()
-        if(NOT LCI_WITH_DOC)
-          set(LCI_WITH_DOC
-              OFF
-              CACHE INTERNAL ""
-          )
-        endif()
+        set(LCI_FETCHCONTENT_INSTALL
+            OFF
+            CACHE INTERNAL ""
+        )
         enable_language(C)
         add_subdirectory(${lci_SOURCE_DIR} ${lci_BINARY_DIR})
+
+        if(NOT LCI_VERSION OR LCI_VERSION VERSION_LESS 2.0.0)
+          message(
+            FATAL_ERROR
+              "LCI version ${LCI_VERSION} found, but version 2.0.0 or higher is required"
+          )
+        endif()
         # Move LCI target into its own FOLDER
         set_target_properties(LCI PROPERTIES FOLDER "Core/Dependencies")
-        add_library(LCI::LCI ALIAS LCI)
         set(HPX_CMAKE_ADDITIONAL_MODULE_PATH_BUILD
             "${lci_SOURCE_DIR}/cmake_modules"
             CACHE INTERNAL ""
@@ -87,7 +85,7 @@ macro(hpx_setup_lci)
       endif()
 
       install(
-        TARGETS LCI LCT lci-ucx
+        TARGETS LCI LCT
         EXPORT HPXLCITarget
         COMPONENT core
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -95,7 +93,7 @@ macro(hpx_setup_lci)
       )
 
       install(
-        DIRECTORY ${lci_SOURCE_DIR}/lci/api/ ${lci_BINARY_DIR}/lci/api/
+        DIRECTORY ${lci_SOURCE_DIR}/lci/src/api/ ${lci_BINARY_DIR}/lci/src/api/
                   ${lci_SOURCE_DIR}/lct/api/ ${lci_BINARY_DIR}/lct/api/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         COMPONENT core
@@ -104,7 +102,7 @@ macro(hpx_setup_lci)
       )
 
       export(
-        TARGETS LCI LCT lci-ucx
+        TARGETS LCI LCT
         NAMESPACE LCI::
         FILE "${CMAKE_CURRENT_BINARY_DIR}/lib/cmake/${HPX_PACKAGE_NAME}/HPXLCITarget.cmake"
       )

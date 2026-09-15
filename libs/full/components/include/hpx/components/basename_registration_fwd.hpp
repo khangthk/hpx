@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,9 +11,10 @@
 #include <hpx/config.hpp>
 #include <hpx/components/components_fwd.hpp>
 #include <hpx/components/make_client.hpp>
-#include <hpx/futures/future_fwd.hpp>
+#include <hpx/modules/async_base.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/naming_base/id_type.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
 
 #include <cstddef>
 #include <string>
@@ -24,9 +25,9 @@ namespace hpx {
     /// \cond NOINTERNAL
     namespace detail {
 
-        HPX_EXPORT std::string name_from_basename(
+        HPX_CXX_EXPORT HPX_EXPORT std::string name_from_basename(
             std::string const& basename, std::size_t idx);
-        HPX_EXPORT std::string name_from_basename(
+        HPX_CXX_EXPORT HPX_EXPORT std::string name_from_basename(
             std::string&& basename, std::size_t idx);
     }    // namespace detail
     /// \endcond
@@ -50,8 +51,12 @@ namespace hpx {
     ///         This is important in order to reliably retrieve ids from a
     ///         name, even if the name was already registered.
     ///
-    HPX_EXPORT std::vector<hpx::future<hpx::id_type>> find_all_from_basename(
-        std::string base_name, std::size_t num_ids);
+    HPX_CXX_EXPORT HPX_EXPORT std::vector<hpx::future<hpx::id_type>>
+    find_all_from_basename(std::string base_name, std::size_t num_ids);
+
+    HPX_CXX_EXPORT HPX_EXPORT std::vector<hpx::future<hpx::id_type>>
+    find_all_from_basename(
+        hpx::launch::sync_policy, std::string base_name, std::size_t num_ids);
 
     /// Return registered ids from the given base name and sequence numbers.
     ///
@@ -71,8 +76,13 @@ namespace hpx {
     ///         This is important in order to reliably retrieve ids from a
     ///         name, even if the name was already registered.
     ///
-    HPX_EXPORT std::vector<hpx::future<hpx::id_type>> find_from_basename(
+    HPX_CXX_EXPORT HPX_EXPORT std::vector<hpx::future<hpx::id_type>>
+    find_from_basename(
         std::string base_name, std::vector<std::size_t> const& ids);
+
+    HPX_CXX_EXPORT HPX_EXPORT std::vector<hpx::future<hpx::id_type>>
+    find_from_basename(hpx::launch::sync_policy, std::string base_name,
+        std::vector<std::size_t> const& ids);
 
     /// \brief Return registered id from the given base name and sequence number.
     ///
@@ -92,8 +102,12 @@ namespace hpx {
     ///         This is important in order to reliably retrieve ids from a
     ///         name, even if the name was already registered.
     ///
-    HPX_EXPORT hpx::future<hpx::id_type> find_from_basename(
+    HPX_CXX_EXPORT HPX_EXPORT hpx::future<hpx::id_type> find_from_basename(
         std::string base_name,
+        std::size_t sequence_nr = ~static_cast<std::size_t>(0));
+
+    HPX_CXX_EXPORT HPX_EXPORT hpx::id_type find_from_basename(
+        hpx::launch::sync_policy, std::string base_name,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
 
     ///////////////////////////////////////////////////////////////////////////
@@ -117,12 +131,12 @@ namespace hpx {
     /// \note    The operation will fail if the given sequence number is not
     ///          unique.
     ///
-    HPX_EXPORT hpx::future<bool> register_with_basename(std::string base_name,
-        hpx::id_type const& id,
+    HPX_CXX_EXPORT HPX_EXPORT hpx::future<bool> register_with_basename(
+        std::string base_name, hpx::id_type const& id,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
 
-    HPX_EXPORT bool register_with_basename(hpx::launch::sync_policy,
-        std::string base_name, hpx::id_type const& id,
+    HPX_CXX_EXPORT HPX_EXPORT bool register_with_basename(
+        hpx::launch::sync_policy, std::string base_name, hpx::id_type const& id,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0),
         error_code& ec = throws);
 
@@ -148,8 +162,8 @@ namespace hpx {
     /// \note    The operation will fail if the given sequence number is not
     ///          unique.
     ///
-    HPX_EXPORT hpx::future<bool> register_with_basename(std::string base_name,
-        hpx::future<hpx::id_type> f,
+    HPX_CXX_EXPORT HPX_EXPORT hpx::future<bool> register_with_basename(
+        std::string base_name, hpx::future<hpx::id_type> f,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
 
     /// \brief Unregister the given id using the given base name.
@@ -166,8 +180,8 @@ namespace hpx {
     /// \returns A future representing the result of the un-registration
     ///          operation itself.
     ///
-    HPX_EXPORT hpx::future<hpx::id_type> unregister_with_basename(
-        std::string base_name,
+    HPX_CXX_EXPORT HPX_EXPORT hpx::future<hpx::id_type>
+    unregister_with_basename(std::string base_name,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
 
     ///////////////////////////////////////////////////////////////////////////
@@ -192,8 +206,12 @@ namespace hpx {
     ///         This is important in order to reliably retrieve ids from a
     ///         name, even if the name was already registered.
     ///
-    template <typename Client>
+    HPX_CXX_EXPORT template <typename Client>
     std::vector<Client> find_all_from_basename(
+        std::string base_name, std::size_t num_ids);
+
+    HPX_CXX_EXPORT template <typename Client>
+    std::vector<Client> find_all_from_basename(hpx::launch::sync_policy policy,
         std::string base_name, std::size_t num_ids);
 
     /// Return registered clients from the given base name and sequence numbers.
@@ -217,8 +235,12 @@ namespace hpx {
     ///         This is important in order to reliably retrieve ids from a
     ///         name, even if the name was already registered.
     ///
-    template <typename Client>
+    HPX_CXX_EXPORT template <typename Client>
     std::vector<Client> find_from_basename(
+        std::string base_name, std::vector<std::size_t> const& ids);
+
+    HPX_CXX_EXPORT template <typename Client>
+    std::vector<Client> find_from_basename(hpx::launch::sync_policy policy,
         std::string base_name, std::vector<std::size_t> const& ids);
 
     /// \brief Return registered id from the given base name and sequence number.
@@ -242,8 +264,13 @@ namespace hpx {
     ///         This is important in order to reliably retrieve ids from a
     ///         name, even if the name was already registered.
     ///
-    template <typename Client>
+    HPX_CXX_EXPORT template <typename Client>
     Client find_from_basename(std::string base_name,
+        std::size_t sequence_nr = ~static_cast<std::size_t>(0));
+
+    HPX_CXX_EXPORT template <typename Client>
+    Client find_from_basename(hpx::launch::sync_policy policy,
+        std::string base_name,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
 
     /// Register the id wrapped in the given client using the given base name.
@@ -270,7 +297,7 @@ namespace hpx {
     /// \note    The operation will fail if the given sequence number is not
     ///          unique.
     ///
-    template <typename Client, typename Stub, typename Data>
+    HPX_CXX_EXPORT template <typename Client, typename Stub, typename Data>
     hpx::future<bool> register_with_basename(std::string base_name,
         components::client_base<Client, Stub, Data>& client,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
@@ -291,7 +318,7 @@ namespace hpx {
     /// \returns A future representing the result of the un-registration
     ///          operation itself.
     ///
-    template <typename Client>
+    HPX_CXX_EXPORT template <typename Client>
     Client unregister_with_basename(std::string base_name,
         std::size_t sequence_nr = ~static_cast<std::size_t>(0));
 }    // namespace hpx

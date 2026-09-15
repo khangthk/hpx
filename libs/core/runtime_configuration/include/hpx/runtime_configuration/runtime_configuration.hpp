@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,10 +8,9 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/ini/ini.hpp>
+#include <hpx/modules/coroutines.hpp>
 #include <hpx/modules/filesystem.hpp>
-#include <hpx/modules/plugin.hpp>
+#include <hpx/modules/ini.hpp>
 #include <hpx/runtime_configuration/agas_service_mode.hpp>
 #include <hpx/runtime_configuration/component_registry_base.hpp>
 #include <hpx/runtime_configuration/plugin_registry_base.hpp>
@@ -27,6 +26,8 @@
 #include <string>
 #include <vector>
 
+#include <hpx/config/warnings_prefix.hpp>
+
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx::util {
 
@@ -34,7 +35,7 @@ namespace hpx::util {
     // The runtime_configuration class is a wrapper for the runtime
     // configuration data allowing to extract configuration information in a
     // more convenient way
-    class runtime_configuration : public section
+    HPX_CXX_CORE_EXPORT class runtime_configuration : public section
     {
         std::string hpx_ini_file;
         std::vector<std::string> cmdline_ini_defs;
@@ -89,6 +90,10 @@ namespace hpx::util {
 
         bool get_agas_range_caching_mode() const;
 
+        // Get AGAS RPC timeout in milliseconds
+        std::uint64_t get_agas_rpc_timeout(
+            std::uint64_t dflt = HPX_AGAS_RPC_TIMEOUT) const;
+
         std::size_t get_agas_max_pending_refcnt_requests() const;
 
         // Load application specific configuration and merge it with the
@@ -131,19 +136,45 @@ namespace hpx::util {
         std::ptrdiff_t get_stack_size(
             threads::thread_stacksize stacksize) const;
 
-        // Return the configured sizes of any of the know thread pools
+        // Return the configured sizes of the known thread pools
         std::size_t get_thread_pool_size(char const* poolname) const;
 
         // Return the endianness to be used for out-serialization
         std::string get_endian_out() const;
 
         // Return maximally allowed message sizes
-        std::uint64_t get_max_inbound_message_size() const;
-        std::uint64_t get_max_outbound_message_size() const;
+        std::uint64_t get_max_inbound_message_size(
+            std::string const& type) const;
+        std::uint64_t get_max_outbound_message_size(
+            std::string const& type) const;
 
         std::map<std::string, hpx::util::plugin::dll>& modules()
         {
             return modules_;
+        }
+
+        /// \brief Check whether fault tolerance for node/locality faults is
+        ///        enabled via the "enable_fault_tolerance" configuration
+        ///        entry in the "hpx" section.
+        ///
+        /// \return true if fault tolerance is enabled, false otherwise.
+        bool tolerate_node_faults();
+
+        /// \brief Set whether this runtime instance should tolerate node
+        ///        faults.
+        ///
+        /// This controls whether the runtime is configured to continue
+        /// operating in the presence of locality failures (e.g. forced or
+        /// unexpected disconnection of remote localities) rather than treating
+        /// such failures as fatal errors.
+        ///
+        /// \param value  Set to `true` to enable fault tolerance for node
+        ///               failures, or `false` to require all localities to
+        ///               remain connected for normal operation.
+        void tolerate_node_faults(bool const value) const
+        {
+            tolerate_node_faults_value = value;
+            need_to_initialize_tolerate_node_faults = false;
         }
 
     private:
@@ -191,6 +222,8 @@ namespace hpx::util {
         std::ptrdiff_t large_stacksize;
         std::ptrdiff_t huge_stacksize;
         bool need_to_call_pre_initialize;
+        mutable bool need_to_initialize_tolerate_node_faults;
+        mutable bool tolerate_node_faults_value;
 #if defined(__linux) || defined(linux) || defined(__linux__)
         char const* argv0;
 #endif
@@ -198,3 +231,5 @@ namespace hpx::util {
         std::map<std::string, hpx::util::plugin::dll> modules_;
     };
 }    // namespace hpx::util
+
+#include <hpx/config/warnings_suffix.hpp>

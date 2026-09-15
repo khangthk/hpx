@@ -327,23 +327,26 @@ namespace hpx {
 
 #include <hpx/config.hpp>
 #include <hpx/algorithms/traits/projected.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/iterator_support/range.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/pack_traversal.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/detail/find.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/cancellation_token.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/invoke_projected.hpp>
 #include <hpx/parallel/util/loop.hpp>
 #include <hpx/parallel/util/partitioner.hpp>
-#include <hpx/type_support/identity.hpp>
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -354,7 +357,7 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        struct none_of : public algorithm<none_of, bool>
+        HPX_CXX_CORE_EXPORT struct none_of : public algorithm<none_of, bool>
         {
             constexpr none_of() noexcept
               : algorithm<none_of, bool>("none_of")
@@ -389,8 +392,7 @@ namespace hpx::parallel {
                 }
 
                 using policy_type = std::decay_t<ExPolicy>;
-                using intermediate_result_t =
-                    std::conditional_t<has_scheduler_executor, char, bool>;
+                using intermediate_result_t = std::uint8_t;
 
                 util::cancellation_token<> tok;
                 auto f1 = [op = HPX_FORWARD(F, op), tok,
@@ -429,7 +431,7 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        struct any_of : public algorithm<any_of, bool>
+        HPX_CXX_CORE_EXPORT struct any_of : public algorithm<any_of, bool>
         {
             constexpr any_of() noexcept
               : algorithm<any_of, bool>("any_of")
@@ -464,8 +466,7 @@ namespace hpx::parallel {
                 }
 
                 using policy_type = std::decay_t<ExPolicy>;
-                using intermediate_result_t =
-                    std::conditional_t<has_scheduler_executor, char, bool>;
+                using intermediate_result_t = std::uint8_t;
 
                 util::cancellation_token<> tok;
                 auto f1 = [op = HPX_FORWARD(F, op), tok,
@@ -504,7 +505,7 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        struct all_of : public algorithm<all_of, bool>
+        HPX_CXX_CORE_EXPORT struct all_of : public algorithm<all_of, bool>
         {
             constexpr all_of() noexcept
               : algorithm("all_of")
@@ -538,8 +539,7 @@ namespace hpx::parallel {
                 }
 
                 using policy_type = std::decay_t<ExPolicy>;
-                using intermediate_result_t =
-                    std::conditional_t<has_scheduler_executor, char, bool>;
+                using intermediate_result_t = std::uint8_t;
 
                 util::cancellation_token<> tok;
                 auto f1 = [op = HPX_FORWARD(F, op), tok,
@@ -578,21 +578,21 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::none_of
-    inline constexpr struct none_of_t final
-      : hpx::detail::tag_parallel_algorithm<none_of_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct none_of_t final
+      : hpx::detail::tag_dispatch<none_of_t,
+            hpx::detail::tag_parallel_algorithm<none_of_t>>
     {
-    private:
+        template <typename ExPolicy, typename FwdIter, typename F>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter, typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(
-            none_of_t, ExPolicy&& policy, FwdIter first, FwdIter last, F f)
+        static decltype(auto) invoke_default(
+            ExPolicy&& policy, FwdIter first, FwdIter last, F f)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return hpx::parallel::detail::none_of().call(
@@ -600,16 +600,15 @@ namespace hpx {
                 hpx::identity_v);
         }
 
+        template <typename InIter, typename F>
         // clang-format off
-        template <typename InIter, typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<InIter>
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(
-            none_of_t, InIter first, InIter last, F f)
+        static bool invoke_default(InIter first, InIter last, F f)
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter>,
+            static_assert(std::input_iterator<InIter>,
                 "Required at least input iterator.");
 
             return hpx::parallel::detail::none_of().call(
@@ -619,21 +618,21 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::any_of
-    inline constexpr struct any_of_t final
-      : hpx::detail::tag_parallel_algorithm<any_of_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct any_of_t final
+      : hpx::detail::tag_dispatch<any_of_t,
+            hpx::detail::tag_parallel_algorithm<any_of_t>>
     {
-    private:
+        template <typename ExPolicy, typename FwdIter, typename F>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter, typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(
-            any_of_t, ExPolicy&& policy, FwdIter first, FwdIter last, F f)
+        static decltype(auto) invoke_default(
+            ExPolicy&& policy, FwdIter first, FwdIter last, F f)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return hpx::parallel::detail::any_of().call(
@@ -641,16 +640,15 @@ namespace hpx {
                 hpx::identity_v);
         }
 
+        template <typename InIter, typename F>
         // clang-format off
-        template <typename InIter, typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<InIter>
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(
-            any_of_t, InIter first, InIter last, F f)
+        static bool invoke_default(InIter first, InIter last, F f)
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter>,
+            static_assert(std::input_iterator<InIter>,
                 "Required at least input iterator.");
 
             return hpx::parallel::detail::any_of().call(
@@ -660,21 +658,21 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::all_of
-    inline constexpr struct all_of_t final
-      : hpx::detail::tag_parallel_algorithm<all_of_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct all_of_t final
+      : hpx::detail::tag_dispatch<all_of_t,
+            hpx::detail::tag_parallel_algorithm<all_of_t>>
     {
-    private:
+        template <typename ExPolicy, typename FwdIter, typename F>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter, typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(
-            all_of_t, ExPolicy&& policy, FwdIter first, FwdIter last, F f)
+        static decltype(auto) invoke_default(
+            ExPolicy&& policy, FwdIter first, FwdIter last, F f)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return hpx::parallel::detail::all_of().call(
@@ -682,23 +680,21 @@ namespace hpx {
                 hpx::identity_v);
         }
 
+        template <typename InIter, typename F>
         // clang-format off
-        template <typename InIter, typename F,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<InIter>
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(
-            all_of_t, InIter first, InIter last, F f)
+        static bool invoke_default(InIter first, InIter last, F f)
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter>,
+            static_assert(std::input_iterator<InIter>,
                 "Required at least input iterator.");
 
             return hpx::parallel::detail::all_of().call(
                 hpx::execution::seq, first, last, HPX_MOVE(f), hpx::identity_v);
         }
     } all_of{};
-
 }    // namespace hpx
 
 #endif    // DOXYGEN

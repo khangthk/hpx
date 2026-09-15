@@ -1,28 +1,26 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/logging/config/defines.hpp>
-
 #include <hpx/assert.hpp>
 #include <hpx/command_line_handling_local/command_line_handling_local.hpp>
 #include <hpx/command_line_handling_local/parse_command_line_local.hpp>
-#include <hpx/functional/detail/reset_function.hpp>
 #include <hpx/modules/asio.hpp>
 #include <hpx/modules/debugging.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/logging.hpp>
 #include <hpx/modules/program_options.hpp>
 #include <hpx/modules/runtime_configuration.hpp>
 #include <hpx/modules/string_util.hpp>
 #include <hpx/modules/topology.hpp>
 #include <hpx/modules/util.hpp>
-#include <hpx/util/from_string.hpp>
 #include <hpx/version.hpp>
 #if defined(HPX_HAVE_MAX_CPU_COUNT)
-#include <hpx/preprocessor/stringize.hpp>
+#include <hpx/modules/preprocessor.hpp>
 #endif
 
 #include <algorithm>
@@ -333,7 +331,7 @@ namespace hpx::local::detail {
             // clang-format on
         }
 #endif
-        threads = (std::max)(threads, min_os_threads);
+        threads = (std::max) (threads, min_os_threads);
 
         return threads;
     }
@@ -557,8 +555,18 @@ namespace hpx::local::detail {
             affinity_bind_ = "";
 #else
             ini_config.emplace_back("hpx.bind!=" + affinity_bind_);
+            if (affinity_bind_ != "none")
+            {
+                ini_config.emplace_back("hpx.bind-provided!=1");
+            }
 #endif
         }
+#if !defined(__APPLE__)
+        else if (use_process_mask_)
+        {
+            ini_config.emplace_back("hpx.bind-provided!=1");
+        }
+#endif
 
         pu_step_ = detail::handle_pu_step(cfgmap, vm, 1);
 #if defined(__APPLE__)
@@ -744,7 +752,7 @@ namespace hpx::local::detail {
 
     ///////////////////////////////////////////////////////////////////////////
     void command_line_handling::store_unregistered_options(
-        std::string const& cmd_name,
+        std::string const& cmd_name, int argc, char* argv[],
         std::vector<std::string> const& unregistered_options)
     {
         std::string unregistered_options_cmd_line;
@@ -772,8 +780,7 @@ namespace hpx::local::detail {
 
         ini_config_.emplace_back("hpx.program_name!=" + cmd_name);
         ini_config_.emplace_back("hpx.reconstructed_cmd_line!=" +
-            encode_and_enquote(cmd_name) + " " + reconstruct_command_line(vm_) +
-            " " + unregistered_options_cmd_line);
+            std::string(" ") + reconstruct_command_line(argc, argv));
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -1014,7 +1021,7 @@ namespace hpx::local::detail {
     {
         // store unregistered command line and arguments
         store_command_line(argc, argv);
-        store_unregistered_options(argv[0], unregistered_options);
+        store_unregistered_options(argv[0], argc, argv, unregistered_options);
 
         // add all remaining ini settings to the global configuration
         rtcfg_.reconfigure(ini_config_);

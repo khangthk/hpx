@@ -27,6 +27,7 @@ foreach(example_program ${example_programs})
     SOURCES ${sources}
     COMPONENT_DEPENDENCIES ${example_program} iostreams
     FOLDER "Examples/TupleSpace/${example_program}"
+           ${HPX_WITH_CXX_MODULES_OPTION}
   )
 
   add_hpx_example_target_dependencies("tuplespace" ${example_program}_client)
@@ -37,3 +38,12 @@ foreach(example_program ${example_programs})
     )
   endif()
 endforeach()
+
+if(HPX_WITH_CXX_MODULES
+   AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+   AND (MSVC_VERSION LESS_EQUAL 1952)
+)
+  target_compile_definitions(
+    simple_central_tuplespace_client PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES
+  )
+endif()

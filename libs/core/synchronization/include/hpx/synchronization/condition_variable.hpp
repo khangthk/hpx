@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2022 Bhumit Attarde
 //  Copyright (c) 2013 Agustin Berge
 //
@@ -13,17 +13,17 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/lock_registration/detail/register_locks.hpp>
+#include <hpx/modules/coroutines.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/lock_registration.hpp>
 #include <hpx/modules/memory.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/synchronization/detail/condition_variable.hpp>
 #include <hpx/synchronization/mutex.hpp>
 #include <hpx/synchronization/spinlock.hpp>
 #include <hpx/synchronization/stop_token.hpp>
-#include <hpx/thread_support/unlock_guard.hpp>
-#include <hpx/timing/steady_clock.hpp>
-#include <hpx/type_support/assert_owns_lock.hpp>
 
 #include <mutex>
 #include <utility>
@@ -38,8 +38,7 @@ namespace hpx {
     /// functions of \a hpx::condition_variable and
     /// \a hpx::condition_variable_any.
     ///
-    enum class cv_status
-    {
+    HPX_CXX_CORE_EXPORT enum class cv_status {
         /// The condition variable was awakened with \a notify_all,
         /// \a notify_one, or spuriously
         no_timeout,
@@ -79,7 +78,7 @@ namespace hpx {
     ///          3. When the condition variable is notified, a timeout expires, or
     ///             a spurious wakeup occurs, the thread is awakened, and the
     ///             mutex is atomically reacquired. The thread should then check
-    ///             the condition and resume waiting if the wake up was spurious.
+    ///             the condition and resume waiting if the wake-up was spurious.
     ///          or
     ///          1. use the predicated overload of \a wait, \a wait_for, and
     ///          \a wait_until, which takes care of the three steps above.
@@ -101,7 +100,7 @@ namespace hpx {
     /// \namedrequirement{CopyAssignable}, or
     /// \namedrequirement{MoveAssignable}.
     ///
-    class condition_variable
+    HPX_CXX_CORE_EXPORT class condition_variable
     {
     private:
         using mutex_type =
@@ -344,6 +343,47 @@ namespace hpx {
                 cv_status::no_timeout;
         }
 
+    protected:
+        template <typename Mutex, typename Predicate>
+        cv_status wait_until_pred(std::unique_lock<Mutex>& lock,
+            hpx::chrono::steady_time_point const& abs_time, Predicate wait_cond,
+            error_code& ec = throws)
+        {
+            HPX_ASSERT_OWNS_LOCK(lock);
+
+            auto const data = data_;    // keep data alive
+
+            [[maybe_unused]] util::ignore_all_while_checking const ignore_lock;
+
+            std::unique_lock<mutex_type> l(data->mtx_);
+            unlock_guard<std::unique_lock<Mutex>> unlock(lock);
+
+            // The following ensures that the inner lock will be unlocked
+            // before the outer to avoid deadlock (fixes issue #3608)
+            std::lock_guard<std::unique_lock<mutex_type>> unlock_next(
+                l, std::adopt_lock);
+
+            threads::thread_restart_state const reason = data->cond_.wait_until(
+                l, abs_time,
+                [&, pred = HPX_MOVE(wait_cond)]() {
+                    // re-acquire the outer lock to make sure that the
+                    // user-supplied predicate is protected
+                    relock_guard<std::unique_lock<Mutex>> relock(unlock);
+                    return pred();
+                },
+                "condition_variable::wait_until_pred", ec);
+
+            if (ec)
+                return cv_status::error;
+
+            // if the timer has hit, the waiting period timed out
+            return (reason ==
+                       threads::thread_restart_state::timeout) ?    //-V110
+                cv_status::timeout :
+                cv_status::no_timeout;
+        }
+
+    public:
         ///
         /// \brief \a wait_until causes the current thread to block until the
         /// condition variable is notified, a specific time is reached, or a
@@ -399,8 +439,11 @@ namespace hpx {
 
             while (!pred())
             {
-                if (wait_until(lock, abs_time, ec) == cv_status::timeout)
+                if (wait_until_pred(lock, abs_time, pred, ec) ==
+                    cv_status::timeout)
+                {
                     return pred();
+                }
             }
             return true;
         }
@@ -520,7 +563,7 @@ namespace hpx {
     /// \namedrequirement{CopyAssignable}, or
     /// \namedrequirement{MoveAssignable}.
     ///
-    class condition_variable_any
+    HPX_CXX_CORE_EXPORT class condition_variable_any
     {
     private:
         using mutex_type =
@@ -689,7 +732,7 @@ namespace hpx {
         ///             \namedrequirement{BasicLockable} requirements, which
         ///             must be locked by the current thread
         /// \param ec   Used to hold error code value originated during the
-        ///             operation. Defaults to \a throws -- A special'throw on
+        ///             operation. Defaults to \a throws -- A special 'throw on
         ///             error' \a error_code.
         ///
         /// \returns \a wait returns \a void.
@@ -1180,7 +1223,15 @@ namespace hpx {
                         l, std::adopt_lock);
 
                     threads::thread_restart_state const reason =
-                        data->cond_.wait_until(l, abs_time, ec);
+                        data->cond_.wait_until(
+                            l, abs_time,
+                            [&]() {
+                                // re-acquire the outer lock to make sure that
+                                // the user-supplied predicate is protected
+                                relock_guard<Lock> relock(unlock);
+                                return pred();
+                            },
+                            "condition_variable::wait_until_stoken", ec);
 
                     if (ec)
                         return false;
@@ -1252,14 +1303,3 @@ namespace hpx {
         hpx::util::cache_aligned_data_derived<data_type> data_;
     };
 }    // namespace hpx
-
-namespace hpx::lcos::local {
-
-    using condition_variable HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::condition_variable is deprecated, use "
-        "hpx::condition_variable instead") = hpx::condition_variable;
-
-    using condition_variable_any HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::condition_variable_any is deprecated, use "
-        "hpx::condition_variable_any instead") = hpx::condition_variable_any;
-}    // namespace hpx::lcos::local

@@ -7,30 +7,30 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/traits/action_is_target_valid.hpp>
-#include <hpx/actions_base/traits/action_was_object_migrated.hpp>
-#include <hpx/actions_base/traits/is_continuation.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/detail/post_implementations_fwd.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/components_base/pinned_ptr.hpp>
-#include <hpx/components_base/traits/component_supports_migration.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/naming_base/id_type.hpp>
+
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset_base.hpp>
+
+#include <hpx/async_distributed/detail/locality_disconnected.hpp>
+#include <hpx/async_distributed/detail/post_implementations_fwd.hpp>
 
 #include <type_traits>
 #include <utility>
 
 namespace hpx::detail {
 
-    template <typename Action, typename Continuation, typename... Ts>
-    std::enable_if_t<traits::is_continuation_v<Continuation>, bool> post_impl(
-        Continuation&& c, hpx::id_type const& id, hpx::launch policy,
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename... Ts>
+        requires(traits::is_continuation_v<Continuation>)
+    bool post_impl(Continuation&& c, hpx::id_type const& id, hpx::launch policy,
         Ts&&... vs)
     {
         using action_type = hpx::traits::extract_action_t<Action>;
-        using component_type = typename action_type::component_type;
+        using component_type = action_type::component_type;
 
         if (!traits::action_is_target_valid<action_type>::call(id))
         {
@@ -38,6 +38,11 @@ namespace hpx::detail {
                 "hpx::detail::post_impl",
                 "the target (destination) does not match the action type ({})",
                 hpx::actions::detail::get_action_name<action_type>());
+        }
+
+        if (locality_is_disconnected(id))
+        {
+            throw_locality_disconnected(id);
         }
 
         [[maybe_unused]] std::pair<bool, components::pinned_ptr> r;
@@ -86,10 +91,11 @@ namespace hpx::detail {
 #endif
     }
 
-    template <typename Action, typename Continuation, typename... Ts>
-    std::enable_if_t<traits::is_continuation_v<Continuation>, bool> post_impl(
-        Continuation&& c, hpx::id_type const& id, naming::address&& addr,
-        hpx::launch policy, Ts&&... vs)
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename... Ts>
+        requires(traits::is_continuation_v<Continuation>)
+    bool post_impl(Continuation&& c, hpx::id_type const& id,
+        naming::address&& addr, hpx::launch policy, Ts&&... vs)
     {
         if (!addr)
         {
@@ -98,7 +104,7 @@ namespace hpx::detail {
         }
 
         using action_type = hpx::traits::extract_action_t<Action>;
-        using component_type = typename action_type::component_type;
+        using component_type = action_type::component_type;
 
         // Determine whether the id is local or remote
         if (!traits::action_is_target_valid<action_type>::call(id))
@@ -107,6 +113,11 @@ namespace hpx::detail {
                 "hpx::detail::post_impl",
                 "the target (destination) does not match the action type ({})",
                 hpx::actions::detail::get_action_name<action_type>());
+        }
+
+        if (locality_is_disconnected(id))
+        {
+            throw_locality_disconnected(id);
         }
 
         if (naming::get_locality_id_from_gid(addr.locality_) ==
@@ -118,7 +129,7 @@ namespace hpx::detail {
                 HPX_ASSERT(
                     !traits::action_was_object_migrated<action_type>::call(
                         id, addr.address_)
-                         .first);
+                        .first);
                 HPX_ASSERT(pin_count_is_valid<component_type>(addr.address_));
             }
 
@@ -138,11 +149,11 @@ namespace hpx::detail {
 #endif
     }
 
-    template <typename Action, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename... Ts>
     bool post_impl(hpx::id_type const& id, hpx::launch policy, Ts&&... vs)
     {
         using action_type = hpx::traits::extract_action_t<Action>;
-        using component_type = typename action_type::component_type;
+        using component_type = action_type::component_type;
 
         if (!traits::action_is_target_valid<action_type>::call(id))
         {
@@ -150,6 +161,11 @@ namespace hpx::detail {
                 "hpx::detail::post_impl",
                 "the target (destination) does not match the action type ({})",
                 hpx::actions::detail::get_action_name<action_type>());
+        }
+
+        if (locality_is_disconnected(id))
+        {
+            throw_locality_disconnected(id);
         }
 
         [[maybe_unused]] std::pair<bool, components::pinned_ptr> r;
@@ -196,7 +212,7 @@ namespace hpx::detail {
 #endif
     }
 
-    template <typename Action, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename... Ts>
     bool post_impl(hpx::id_type const& id, naming::address&& addr,
         hpx::launch policy, Ts&&... vs)
     {
@@ -206,7 +222,7 @@ namespace hpx::detail {
         }
 
         using action_type = hpx::traits::extract_action_t<Action>;
-        using component_type = typename action_type::component_type;
+        using component_type = action_type::component_type;
 
         // Determine whether the id is local or remote
         if (!traits::action_is_target_valid<action_type>::call(id))
@@ -215,6 +231,11 @@ namespace hpx::detail {
                 "hpx::detail::post_impl",
                 "the target (destination) does not match the action type ({})",
                 hpx::actions::detail::get_action_name<action_type>());
+        }
+
+        if (locality_is_disconnected(id))
+        {
+            throw_locality_disconnected(id);
         }
 
         if (naming::get_locality_id_from_gid(addr.locality_) ==
@@ -226,7 +247,7 @@ namespace hpx::detail {
                 HPX_ASSERT(
                     !traits::action_was_object_migrated<action_type>::call(
                         id, addr.address_)
-                         .first);
+                        .first);
                 HPX_ASSERT(pin_count_is_valid<component_type>(addr.address_));
             }
 
@@ -245,21 +266,27 @@ namespace hpx::detail {
 #endif
     }
 
-    template <typename Action, typename Continuation, typename Callback,
-        typename... Ts>
-    std::enable_if_t<traits::is_continuation_v<Continuation>, bool>
-    post_cb_impl(Continuation&& c, hpx::id_type const& id, hpx::launch policy,
-        Callback&& cb, Ts&&... vs)
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename Callback, typename... Ts>
+        requires(traits::is_continuation_v<Continuation>)
+    bool post_cb_impl(Continuation&& c, hpx::id_type const& id,
+        hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
         using action_type = hpx::traits::extract_action_t<Action>;
-        using component_type = typename action_type::component_type;
+        using component_type = action_type::component_type;
 
         if (!traits::action_is_target_valid<action_type>::call(id))
         {
-            HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
-                "hpx::detail::post_cb_impl",
-                "the target (destination) does not match the action type ({})",
-                hpx::actions::detail::get_action_name<action_type>());
+            invoke_callback(HPX_FORWARD(Callback, cb),
+                make_system_error_code(hpx::error::bad_parameter));
+            return false;
+        }
+
+        if (locality_is_disconnected(id))
+        {
+            invoke_callback(HPX_FORWARD(Callback, cb),
+                make_system_error_code(hpx::error::locality_was_disconnected));
+            return false;
         }
 
         [[maybe_unused]] std::pair<bool, components::pinned_ptr> r;
@@ -316,19 +343,25 @@ namespace hpx::detail {
 #endif
     }
 
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_cb_impl(
         hpx::id_type const& id, hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
         using action_type = hpx::traits::extract_action_t<Action>;
-        using component_type = typename action_type::component_type;
+        using component_type = action_type::component_type;
 
         if (!traits::action_is_target_valid<action_type>::call(id))
         {
-            HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
-                "hpx::detail::post_cb_impl",
-                "the target (destination) does not match the action type ({})",
-                hpx::actions::detail::get_action_name<action_type>());
+            invoke_callback(HPX_FORWARD(Callback, cb),
+                make_system_error_code(hpx::error::bad_parameter));
+            return false;
+        }
+
+        if (locality_is_disconnected(id))
+        {
+            invoke_callback(HPX_FORWARD(Callback, cb),
+                make_system_error_code(hpx::error::locality_was_disconnected));
+            return false;
         }
 
         [[maybe_unused]] std::pair<bool, components::pinned_ptr> r;

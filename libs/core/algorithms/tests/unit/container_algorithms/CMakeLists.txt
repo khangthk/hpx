@@ -16,6 +16,8 @@ set(tests
     adjacentfind_exception_range
     all_of_range
     any_of_range
+    contains_range
+    contains_subrange_range
     copy_range
     copyn_range
     copyif_range
@@ -38,6 +40,8 @@ set(tests
     find_end_range2
     find_first_of_range
     find_first_of_range2
+    iota_range
+    fold_range
     for_loop_exception_range
     for_loop_induction_range
     for_loop_induction_async_range
@@ -55,6 +59,7 @@ set(tests
     inplace_merge_range
     is_heap_range
     is_heap_until_range
+    is_partitioned_async_range
     is_partitioned_range
     is_partitioned_projection_range
     is_sorted_range
@@ -69,6 +74,8 @@ set(tests
     merge_range
     min_element_range
     minmax_element_range
+    minmax_element_parallel_projection
+    minmax_element_projection
     mismatch_binary_range
     mismatch_range
     move_range
@@ -92,7 +99,7 @@ set(tests
     rotate_range
     rotate_copy_range
     search_range
-    searchn_range
+    search_n_range
     set_difference_range
     set_intersection_range
     set_symmetric_difference_range

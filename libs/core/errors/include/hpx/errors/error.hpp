@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2011      Bryce Lelbach
 //  Copyright (c) 2014      Anuj R. Sharma
 //
@@ -23,8 +23,7 @@ namespace hpx {
     ///
     /// This enumeration lists all possible error conditions which can be
     /// reported from any of the API functions.
-    enum class error : std::int16_t
-    {
+    HPX_CXX_CORE_EXPORT enum class error : std::int16_t {
         success = 0,
         ///< The operation was successful
         no_success = 1,
@@ -141,8 +140,25 @@ namespace hpx {
         migration_needs_retry = 56,    ///< migration failed because of global
                                        ///< race, retry
 
+        stale_state = 57,    ///< The queried state may be stale, e.g. because
+                             ///< no state has been recorded yet or a
+                             ///< preceding notification has not yet been
+                             ///< delivered
+
+        target_fenced = 58,    ///< A dispatch was deliberately and correctly
+                               ///< refused because the target had already
+                               ///< latched a terminal lifecycle event; this
+                               ///< is a final rejection, not a staleness
+                               ///< signal, and should not be retried
+
+        future_wait_timed_out = 59,        ///< future wait timed out
+        locality_was_disconnected = 60,    ///< the requested target locality
+                                           ///< was disconnected
+
+        future_uncompleted = 61,    ///< future was resumed while being empty
+
         /// \cond NOINTERNAL
-        last_error = 57,
+        last_error = 62,
 
         system_error_flag = 0x4000L,
 
@@ -151,47 +167,47 @@ namespace hpx {
         /// \endcond
     };
 
-    inline constexpr bool operator==(int lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator==(int lhs, error rhs) noexcept
     {
         return lhs == static_cast<int>(rhs);
     }
 
-    inline constexpr bool operator==(error lhs, int rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator==(error lhs, int rhs) noexcept
     {
         return static_cast<int>(lhs) == rhs;
     }
 
-    inline constexpr bool operator!=(int lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator!=(int lhs, error rhs) noexcept
     {
         return !(lhs == rhs);
     }
 
-    inline constexpr bool operator!=(error lhs, int rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator!=(error lhs, int rhs) noexcept
     {
         return !(lhs == rhs);
     }
 
-    inline constexpr bool operator<(int lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator<(int lhs, error rhs) noexcept
     {
         return lhs < static_cast<int>(rhs);
     }
 
-    inline constexpr bool operator>=(int lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator>=(int lhs, error rhs) noexcept
     {
         return !(lhs < rhs);
     }
 
-    inline constexpr int operator&(error lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr int operator&(error lhs, error rhs) noexcept
     {
         return static_cast<int>(lhs) & static_cast<int>(rhs);
     }
 
-    inline constexpr int operator&(int lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr int operator&(int lhs, error rhs) noexcept
     {
         return lhs & static_cast<int>(rhs);
     }
 
-    inline constexpr int operator|=(int& lhs, error rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr int operator|=(int& lhs, error rhs) noexcept
     {
         lhs = lhs | static_cast<int>(rhs);
         return lhs;
@@ -329,7 +345,8 @@ namespace hpx {
 #undef HPX_ERROR_UNSCOPED_ENUM_DEPRECATION_MSG
 
     // Return a textual representation of a given error code
-    HPX_CORE_EXPORT char const* get_error_name(error e) noexcept;
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT char const* get_error_name(
+        error e) noexcept;
 
 }    // namespace hpx
 

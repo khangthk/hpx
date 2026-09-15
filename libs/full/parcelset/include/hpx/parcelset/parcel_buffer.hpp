@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2014 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -12,7 +12,7 @@
 #if defined(HPX_HAVE_NETWORKING)
 #include <hpx/modules/serialization.hpp>
 
-#include <hpx/parcelset_base/detail/data_point.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 
 #include <cstdint>
 #include <utility>
@@ -20,7 +20,7 @@
 
 namespace hpx::parcelset {
 
-    template <typename BufferType,
+    HPX_CXX_EXPORT template <typename BufferType = std::vector<char>,
         typename ChunkType = serialization::serialization_chunk>
     struct parcel_buffer
     {

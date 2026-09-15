@@ -1,4 +1,5 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
+//  Copyright (c) 2026 Sai Charan Arvapally
 //  Copyright (c) 2016 Marcin Copik
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -12,37 +13,38 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/async_base/traits/is_launch_policy.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/execution/executors/rebind_executor.hpp>
-#include <hpx/execution/traits/executor_traits.hpp>
-#include <hpx/execution/traits/is_execution_policy.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/execution_base/traits/is_executor_parameters.hpp>
 #include <hpx/executors/execution_policy_fwd.hpp>
 #include <hpx/executors/execution_policy_mappings.hpp>
 #include <hpx/executors/parallel_executor.hpp>
 #include <hpx/executors/sequenced_executor.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/properties.hpp>
-#include <hpx/serialization/serialize.hpp>
+#include <hpx/modules/serialization.hpp>
 
+#include <cstddef>
 #include <memory>
+#include <string>
 #include <type_traits>
 #include <utility>
+
+#include <concepts>
 
 namespace hpx::execution {
 
     namespace detail {
 
         // forward declare only
-        template <template <class, class> typename Derived, typename Executor,
-            typename Parameters = void, typename Category = void>
+        HPX_CXX_CORE_EXPORT template <template <class, class> typename Derived,
+            typename Executor, typename Parameters = void,
+            typename Category = void>
         struct execution_policy;
     }    // namespace detail
 
     ///////////////////////////////////////////////////////////////////////////
-    struct task_policy_tag final : hpx::execution::experimental::to_task_t
+    HPX_CXX_CORE_EXPORT struct task_policy_tag final
+      : hpx::execution::experimental::to_task_t
     {
     private:
         // we don't want to allow using 'task' as a CPO from user code
@@ -53,9 +55,9 @@ namespace hpx::execution {
         friend struct detail::execution_policy;
     };
 
-    inline constexpr task_policy_tag task{};
+    HPX_CXX_CORE_EXPORT inline constexpr task_policy_tag task{};
 
-    struct non_task_policy_tag final
+    HPX_CXX_CORE_EXPORT struct non_task_policy_tag final
       : hpx::execution::experimental::to_non_task_t
     {
     private:
@@ -67,7 +69,7 @@ namespace hpx::execution {
         friend struct detail::execution_policy;
     };
 
-    inline constexpr non_task_policy_tag non_task{};
+    HPX_CXX_CORE_EXPORT inline constexpr non_task_policy_tag non_task{};
 
     namespace experimental {
 
@@ -84,7 +86,7 @@ namespace hpx::execution {
 
     namespace detail {
 
-        template <typename T, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Enable = void>
         struct has_async_execution_policy : std::false_type
         {
         };
@@ -96,14 +98,14 @@ namespace hpx::execution {
         {
         };
 
-        template <typename T>
+        HPX_CXX_CORE_EXPORT template <typename T>
         inline constexpr bool has_async_execution_policy_v =
             has_async_execution_policy<T>::value;
 
         ////////////////////////////////////////////////////////////////////////
         // Base execution policy
-        template <template <class, class> typename Derived, typename Executor,
-            typename Parameters, typename Category>
+        HPX_CXX_CORE_EXPORT template <template <class, class> typename Derived,
+            typename Executor, typename Parameters, typename Category>
         struct execution_policy
         {
         private:
@@ -145,6 +147,9 @@ namespace hpx::execution {
             };
 
             constexpr execution_policy() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~execution_policy() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr execution_policy(Executor_&& exec, Parameters_&& params)
@@ -185,7 +190,7 @@ namespace hpx::execution {
                     hpx::traits::is_executor_any_v<std::decay_t<Executor_>>,
                     "hpx::traits::is_executor_any_v<Executor>");
 
-                return hpx::parallel::execution::create_rebound_policy(
+                return hpx::execution::experimental::create_rebound_policy(
                     derived(), HPX_FORWARD(Executor_, exec), parameters());
             }
 
@@ -206,9 +211,9 @@ namespace hpx::execution {
             template <typename... Parameters_>
             constexpr decltype(auto) with(Parameters_&&... params) const
             {
-                return hpx::parallel::execution::create_rebound_policy(
+                return hpx::execution::experimental::create_rebound_policy(
                     derived(), executor(),
-                    parallel::execution::join_executor_parameters(
+                    hpx::execution::experimental::join_executor_parameters(
                         HPX_FORWARD(Parameters_, params)...));
             }
 
@@ -238,8 +243,136 @@ namespace hpx::execution {
                 return params_;
             }
 
+            // Scheduling property query implementations forward to the
+            // embedded executor and rebound through create_rebound_policy.
+            template <scheduling_property Tag, typename Property>
+                requires(!std::is_same_v<Tag,
+                             hpx::execution::experimental::
+                                 with_processing_units_count_t> &&
+                    std::invocable<Tag, executor_type, Property>)
+            [[nodiscard]] auto query(Tag tag, Property&& prop) const
+            {
+                return hpx::execution::experimental::create_rebound_policy(
+                    derived(), tag(executor(), HPX_FORWARD(Property, prop)),
+                    parameters());
+            }
+
+            template <scheduling_property Tag>
+                requires(std::invocable<Tag, executor_type>)
+            [[nodiscard]] auto query(Tag tag) const
+            {
+                return tag(executor());
+            }
+
+#if defined(HPX_HAVE_THREAD_DESCRIPTION)
+            [[nodiscard]] auto query(
+                hpx::execution::experimental::with_annotation_t,
+                char const* annotation) const
+                requires(std::invocable<
+                    hpx::execution::experimental::with_annotation_t,
+                    executor_type, char const*>)
+            {
+                auto exec = hpx::execution::experimental::with_annotation(
+                    executor(), annotation);
+
+                return hpx::execution::experimental::create_rebound_policy(
+                    derived(), HPX_MOVE(exec), parameters());
+            }
+
+            [[nodiscard]] auto query(
+                hpx::execution::experimental::with_annotation_t,
+                std::string annotation) const
+                requires(std::invocable<
+                    hpx::execution::experimental::with_annotation_t,
+                    executor_type, std::string>)
+            {
+                auto exec = hpx::execution::experimental::with_annotation(
+                    executor(), HPX_MOVE(annotation));
+
+                return hpx::execution::experimental::create_rebound_policy(
+                    derived(), HPX_MOVE(exec), parameters());
+            }
+
+            [[nodiscard]] decltype(auto) query(
+                hpx::execution::experimental::get_annotation_t) const
+                requires(std::invocable<
+                    hpx::execution::experimental::get_annotation_t,
+                    executor_type>)
+            {
+                return hpx::execution::experimental::get_annotation(executor());
+            }
+#endif
+
+            [[nodiscard]] auto query(
+                hpx::execution::experimental::with_processing_units_count_t,
+                std::size_t num_cores) const
+                requires(std::invocable<
+                    hpx::execution::experimental::with_processing_units_count_t,
+                    executor_type, std::size_t>)
+            {
+                using exec_type = executor_type;
+                using updated_exec_type = std::decay_t<decltype(hpx::execution::
+                        experimental::with_processing_units_count(
+                            std::declval<exec_type const&>(), num_cores))>;
+
+                if constexpr (std::is_same_v<updated_exec_type, exec_type>)
+                {
+                    auto exec = hpx::execution::experimental::
+                        with_processing_units_count(executor(), num_cores);
+
+                    return hpx::execution::experimental::create_rebound_policy(
+                        derived(), HPX_MOVE(exec), parameters());
+                }
+                else if constexpr (requires(exec_type e) {
+                                       e.num_cores_;
+                                       e.pool();
+                                   })
+                {
+                    exec_type exec = executor();
+                    if (num_cores == 0)
+                    {
+                        num_cores = exec.pool()->get_active_os_thread_count();
+                    }
+                    exec.num_cores_ = num_cores;
+
+                    return hpx::execution::experimental::create_rebound_policy(
+                        derived(), HPX_MOVE(exec), parameters());
+                }
+                else
+                {
+                    auto exec = hpx::execution::experimental::
+                        with_processing_units_count(executor(), num_cores);
+
+                    return hpx::execution::experimental::create_rebound_policy(
+                        derived(), HPX_MOVE(exec), parameters());
+                }
+            }
+
+            template <executor_parameters Params>
+                requires(std::invocable<hpx::execution::experimental::
+                                            with_processing_units_count_t,
+                             executor_type, std::size_t> &&
+                    std::invocable<
+                        hpx::execution::experimental::processing_units_count_t,
+                        std::decay_t<Params>, executor_type,
+                        hpx::chrono::steady_duration const&, std::size_t>)
+            [[nodiscard]] auto query(
+                hpx::execution::experimental::with_processing_units_count_t,
+                Params&& params) const
+            {
+                auto exec =
+                    hpx::execution::experimental::with_processing_units_count(
+                        executor(),
+                        hpx::execution::experimental::processing_units_count(
+                            HPX_FORWARD(Params, params), executor(),
+                            hpx::chrono::null_duration, 0));
+
+                return hpx::execution::experimental::create_rebound_policy(
+                    derived(), HPX_MOVE(exec), parameters());
+            }
+
         private:
-            friend struct hpx::parallel::execution::create_rebound_policy_t;
+            friend struct hpx::execution::experimental::create_rebound_policy_t;
             friend class hpx::serialization::access;
 
             template <typename Archive>
@@ -258,13 +391,13 @@ namespace hpx::execution {
         ///////////////////////////////////////////////////////////////////////
         // Extension: The class sequenced_task_policy_shim is an execution
         // policy type used as a unique type to disambiguate parallel algorithm
-        // overloading based on combining a underlying \a sequenced_task_policy
+        // overloading based on combining an underlying \a sequenced_task_policy
         // and an executor and indicate that a parallel algorithm's execution
         // may not be parallelized  (has to run sequentially).
         //
         // The algorithm returns a future representing the result of the
         // corresponding algorithm when invoked with the sequenced_policy.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct sequenced_task_policy_shim
           : execution_policy<sequenced_task_policy_shim, Executor, Parameters>
         {
@@ -275,6 +408,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr sequenced_task_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~sequenced_task_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr sequenced_task_policy_shim(
@@ -310,6 +446,14 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_non_task() const;
+            constexpr auto to_par() const;
+            constexpr auto to_unseq() const;
+#if defined(HPX_HAVE_DATAPAR)
+            constexpr auto to_simd() const;
+#endif
         };
     }    // namespace detail
 
@@ -321,7 +465,7 @@ namespace hpx::execution {
     ///
     /// The algorithm returns a future representing the result of the
     /// corresponding algorithm when invoked with the sequenced_policy.
-    using sequenced_task_policy =
+    HPX_CXX_CORE_EXPORT using sequenced_task_policy =
         detail::sequenced_task_policy_shim<sequenced_executor,
             hpx::traits::executor_parameters_type_t<sequenced_executor>>;
 
@@ -331,7 +475,7 @@ namespace hpx::execution {
         // unique type to disambiguate parallel algorithm overloading and
         // require that a parallel algorithm's execution may not be
         // parallelized.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct sequenced_policy_shim
           : execution_policy<sequenced_policy_shim, Executor, Parameters>
         {
@@ -342,6 +486,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr sequenced_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~sequenced_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr sequenced_policy_shim(
@@ -377,6 +524,14 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_task() const;
+            constexpr auto to_par() const;
+            constexpr auto to_unseq() const;
+#if defined(HPX_HAVE_DATAPAR)
+            constexpr auto to_simd() const;
+#endif
         };
     }    // namespace detail
 
@@ -384,21 +539,22 @@ namespace hpx::execution {
     /// The class sequenced_policy is an execution policy type used as a unique
     /// type to disambiguate parallel algorithm overloading and require that a
     /// parallel algorithm's execution may not be parallelized.
-    using sequenced_policy = detail::sequenced_policy_shim<sequenced_executor,
-        hpx::traits::executor_parameters_type_t<sequenced_executor>>;
+    HPX_CXX_CORE_EXPORT using sequenced_policy =
+        detail::sequenced_policy_shim<sequenced_executor,
+            hpx::traits::executor_parameters_type_t<sequenced_executor>>;
 
     /// Default sequential execution policy object.
-    inline constexpr sequenced_policy seq{};
+    HPX_CXX_CORE_EXPORT inline constexpr sequenced_policy seq{};
 
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
         // Extension: The class parallel_task_policy_shim is an execution policy
         // type used as a unique type to disambiguate parallel algorithm
-        // overloading based on combining a underlying \a parallel_task_policy
+        // overloading based on combining an underlying \a parallel_task_policy
         // and an executor and indicate that a parallel algorithm's execution
         // may be parallelized.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct parallel_task_policy_shim
           : execution_policy<parallel_task_policy_shim, Executor, Parameters>
         {
@@ -409,6 +565,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr parallel_task_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~parallel_task_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr parallel_task_policy_shim(
@@ -444,6 +603,14 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_non_task() const;
+            constexpr auto to_non_par() const;
+            constexpr auto to_unseq() const;
+#if defined(HPX_HAVE_DATAPAR)
+            constexpr auto to_simd() const;
+#endif
         };
     }    // namespace detail
 
@@ -454,7 +621,7 @@ namespace hpx::execution {
     ///
     /// The algorithm returns a future representing the result of the
     /// corresponding algorithm when invoked with the parallel_policy.
-    using parallel_task_policy =
+    HPX_CXX_CORE_EXPORT using parallel_task_policy =
         detail::parallel_task_policy_shim<parallel_executor,
             hpx::traits::executor_parameters_type_t<parallel_executor>>;
 
@@ -463,7 +630,7 @@ namespace hpx::execution {
         // The class parallel_policy_shim is an execution policy type used as a
         // unique type to disambiguate parallel algorithm overloading and
         // indicate that a parallel algorithm's execution may be parallelized.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct parallel_policy_shim
           : execution_policy<parallel_policy_shim, Executor, Parameters>
         {
@@ -474,6 +641,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr parallel_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~parallel_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr parallel_policy_shim(
@@ -509,6 +679,34 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_task() const;
+            constexpr auto to_non_par() const;
+            constexpr auto to_unseq() const;
+#if defined(HPX_HAVE_DATAPAR)
+            constexpr auto to_simd() const;
+#endif
+
+            /// \cond NOINTERNAL
+            // Forward execution operations to wrapped executor
+            // (member functions, not tag_invoke)
+            template <typename F, typename... Ts>
+            decltype(auto) async_execute(F&& f, Ts&&... ts) const
+            {
+                return hpx::parallel::execution::async_execute(this->executor(),
+                    HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+            }
+
+            template <typename F, typename Shape, typename... Ts>
+            decltype(auto) bulk_sync_execute(
+                F&& f, Shape const& shape, Ts&&... ts) const
+            {
+                return hpx::parallel::execution::bulk_sync_execute(
+                    this->executor(), HPX_FORWARD(F, f), shape,
+                    HPX_FORWARD(Ts, ts)...);
+            }
+            /// \endcond
         };
     }    // namespace detail
 
@@ -516,11 +714,12 @@ namespace hpx::execution {
     /// The class parallel_policy is an execution policy type used as a unique
     /// type to disambiguate parallel algorithm overloading and indicate that a
     /// parallel algorithm's execution may be parallelized.
-    using parallel_policy = detail::parallel_policy_shim<parallel_executor,
-        hpx::traits::executor_parameters_type_t<parallel_executor>>;
+    HPX_CXX_CORE_EXPORT using parallel_policy =
+        detail::parallel_policy_shim<parallel_executor,
+            hpx::traits::executor_parameters_type_t<parallel_executor>>;
 
     /// Default parallel execution policy object.
-    inline constexpr parallel_policy par{};
+    HPX_CXX_CORE_EXPORT inline constexpr parallel_policy par{};
 
     namespace detail {
 
@@ -529,7 +728,7 @@ namespace hpx::execution {
         // policy type used as a unique type to disambiguate parallel algorithm
         // overloading and indicate that a parallel algorithm's execution may be
         // parallelized and vectorized.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct parallel_unsequenced_task_policy_shim
           : execution_policy<parallel_unsequenced_task_policy_shim, Executor,
                 Parameters>
@@ -542,6 +741,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr parallel_unsequenced_task_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~parallel_unsequenced_task_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr parallel_unsequenced_task_policy_shim(
@@ -579,6 +781,11 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_non_task() const;
+            constexpr auto to_non_par() const;
+            constexpr auto to_non_unseq() const;
         };
     }    // namespace detail
 
@@ -587,7 +794,7 @@ namespace hpx::execution {
     /// used as a unique type to disambiguate parallel algorithm overloading
     /// and indicate that a parallel algorithm's execution may be parallelized
     /// and vectorized.
-    using parallel_unsequenced_task_policy =
+    HPX_CXX_CORE_EXPORT using parallel_unsequenced_task_policy =
         detail::parallel_unsequenced_task_policy_shim<parallel_executor,
             hpx::traits::executor_parameters_type_t<parallel_executor>>;
 
@@ -596,7 +803,7 @@ namespace hpx::execution {
         // The class parallel_unsequenced_policy_shim is an execution policy type
         // used as a unique type to disambiguate parallel algorithm overloading
         // and indicate that a parallel algorithm's execution may be parallelized.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct parallel_unsequenced_policy_shim
           : execution_policy<parallel_unsequenced_policy_shim, Executor,
                 Parameters>
@@ -608,6 +815,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr parallel_unsequenced_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~parallel_unsequenced_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr parallel_unsequenced_policy_shim(
@@ -640,11 +850,17 @@ namespace hpx::execution {
                 parallel_unsequenced_policy_shim<Executor_, Parameters_> const&
                     rhs)
             {
-                base_type::operator=(
-                    parallel_policy_shim(rhs.executor(), rhs.parameters()));
+                base_type::operator=(parallel_unsequenced_policy_shim(
+                    rhs.executor(), rhs.parameters()));
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_task() const;
+            constexpr auto to_non_task() const;
+            constexpr auto to_non_par() const;
+            constexpr auto to_non_unseq() const;
         };
     }    // namespace detail
 
@@ -653,24 +869,25 @@ namespace hpx::execution {
     /// as a unique type to disambiguate parallel algorithm overloading and
     /// indicate that a parallel algorithm's execution may be parallelized and
     /// vectorized.
-    using parallel_unsequenced_policy =
+    HPX_CXX_CORE_EXPORT using parallel_unsequenced_policy =
         detail::parallel_unsequenced_policy_shim<parallel_executor,
             hpx::traits::executor_parameters_type_t<parallel_executor>>;
 
     /// Default vector execution policy object.
-    inline constexpr parallel_unsequenced_policy par_unseq{};
+    HPX_CXX_CORE_EXPORT inline constexpr parallel_unsequenced_policy
+        par_unseq{};
 
     namespace detail {
 
         // Extension: The class unsequenced_task_policy_shim is an execution
         // policy type used as a unique type to disambiguate parallel algorithm
-        // overloading based on combining a underlying \a
-        // unsequenced_task_policy and an executor and indicate that a parallel
-        // algorithm's execution may be vectorized.
+        // overloading based on combining an underlying
+        // \a unsequenced_task_policy and an executor and indicate that a
+        // parallel algorithm's execution may be vectorized.
         //
         // The algorithm returns a future representing the result of the
         // corresponding algorithm when invoked with the unsequenced_policy.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct unsequenced_task_policy_shim
           : execution_policy<unsequenced_task_policy_shim, Executor, Parameters>
         {
@@ -681,6 +898,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr unsequenced_task_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~unsequenced_task_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr unsequenced_task_policy_shim(
@@ -716,6 +936,11 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_non_task() const;
+            constexpr auto to_par() const;
+            constexpr auto to_non_unseq() const;
         };
     }    // namespace detail
 
@@ -723,7 +948,7 @@ namespace hpx::execution {
     /// The class unsequenced_task_policy is an execution policy type used as a
     /// unique type to disambiguate parallel algorithm overloading and indicate
     /// that a parallel algorithm's execution may be vectorized.
-    using unsequenced_task_policy =
+    HPX_CXX_CORE_EXPORT using unsequenced_task_policy =
         detail::unsequenced_task_policy_shim<sequenced_executor,
             hpx::traits::executor_parameters_type_t<sequenced_executor>>;
 
@@ -732,7 +957,7 @@ namespace hpx::execution {
         // The class unsequenced_policy is an execution policy type used as a
         // unique type to disambiguate parallel algorithm overloading and
         // require that a parallel algorithm's execution may be vectorized.
-        template <typename Executor, typename Parameters>
+        HPX_CXX_CORE_EXPORT template <typename Executor, typename Parameters>
         struct unsequenced_policy_shim
           : execution_policy<unsequenced_policy_shim, Executor, Parameters>
         {
@@ -743,6 +968,9 @@ namespace hpx::execution {
         public:
             /// \cond NOINTERNAL
             constexpr unsequenced_policy_shim() = default;
+#if defined(__NVCC__) || defined(__CUDACC__)
+            constexpr ~unsequenced_policy_shim() {}
+#endif
 
             template <typename Executor_, typename Parameters_>
             constexpr unsequenced_policy_shim(
@@ -778,6 +1006,11 @@ namespace hpx::execution {
                 return *this;
             }
             /// \endcond
+
+            // Policy mapping member functions
+            constexpr auto to_task() const;
+            constexpr auto to_par() const;
+            constexpr auto to_non_unseq() const;
         };
     }    // namespace detail
 
@@ -785,267 +1018,275 @@ namespace hpx::execution {
     /// The class unsequenced_policy is an execution policy type used as a
     /// unique type to disambiguate parallel algorithm overloading and indicate
     /// that a parallel algorithm's execution may be vectorized.
-    using unsequenced_policy =
+    HPX_CXX_CORE_EXPORT using unsequenced_policy =
         detail::unsequenced_policy_shim<sequenced_executor,
             hpx::traits::executor_parameters_type_t<sequenced_executor>>;
 
     /// Default vector execution policy object.
-    inline constexpr unsequenced_policy unseq{};
+    HPX_CXX_CORE_EXPORT inline constexpr unsequenced_policy unseq{};
 
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
+        // Policy mapping member function implementations
+        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_task_t tag,
-            sequenced_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto sequenced_policy_shim<Executor, Parameters>::to_task()
+            const
         {
             return sequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_task, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_par_t tag,
-            sequenced_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto sequenced_policy_shim<Executor, Parameters>::to_par()
+            const
         {
             return parallel_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_unseq_t tag,
-            sequenced_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto sequenced_policy_shim<Executor, Parameters>::to_unseq()
+            const
         {
             return unsequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_unseq, this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_task_t tag,
-            sequenced_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        sequenced_task_policy_shim<Executor, Parameters>::to_non_task() const
         {
             return sequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_task,
+                    this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_par_t tag,
-            sequenced_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        sequenced_task_policy_shim<Executor, Parameters>::to_par() const
         {
             return parallel_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_unseq_t tag,
-            sequenced_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        sequenced_task_policy_shim<Executor, Parameters>::to_unseq() const
         {
             return unsequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_unseq, this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_task_t tag,
-            parallel_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        parallel_task_policy_shim<Executor, Parameters>::to_non_task() const
         {
             return parallel_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_task,
+                    this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_par_t tag,
-            parallel_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        parallel_task_policy_shim<Executor, Parameters>::to_non_par() const
         {
             return sequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_unseq_t tag,
-            parallel_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        parallel_task_policy_shim<Executor, Parameters>::to_unseq() const
         {
             return parallel_unsequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_unseq, this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_task_t tag,
-            parallel_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto parallel_policy_shim<Executor, Parameters>::to_task()
+            const
         {
             return parallel_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_task, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_par_t tag,
-            parallel_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto parallel_policy_shim<Executor, Parameters>::to_non_par()
+            const
         {
             return sequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_unseq_t tag,
-            parallel_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto parallel_policy_shim<Executor, Parameters>::to_unseq()
+            const
         {
             return parallel_unsequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_unseq, this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_task_t tag,
-            parallel_unsequenced_task_policy_shim<Executor, Parameters> const&
-                policy)
+        constexpr auto parallel_unsequenced_task_policy_shim<Executor,
+            Parameters>::to_non_task() const
         {
             return parallel_unsequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_task,
+                    this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_par_t tag,
-            parallel_unsequenced_task_policy_shim<Executor, Parameters> const&
-                policy)
+        constexpr auto parallel_unsequenced_task_policy_shim<Executor,
+            Parameters>::to_non_par() const
         {
             return unsequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_unseq_t tag,
-            parallel_unsequenced_task_policy_shim<Executor, Parameters> const&
-                policy)
+        constexpr auto parallel_unsequenced_task_policy_shim<Executor,
+            Parameters>::to_non_unseq() const
         {
             return parallel_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_unseq,
+                    this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_task_t tag,
-            parallel_unsequenced_policy_shim<Executor, Parameters> const&
-                policy)
+        constexpr auto
+        parallel_unsequenced_policy_shim<Executor, Parameters>::to_task() const
         {
             return parallel_unsequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_task, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_par_t tag,
-            parallel_unsequenced_policy_shim<Executor, Parameters> const&
-                policy)
+        constexpr auto parallel_unsequenced_policy_shim<Executor,
+            Parameters>::to_non_task() const
+        {
+            return parallel_unsequenced_policy()
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_task,
+                    this->executor()))
+                .with(this->parameters());
+        }
+
+        template <typename Executor, typename Parameters>
+        constexpr auto parallel_unsequenced_policy_shim<Executor,
+            Parameters>::to_non_par() const
         {
             return unsequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_unseq_t tag,
-            parallel_unsequenced_policy_shim<Executor, Parameters> const&
-                policy)
+        constexpr auto parallel_unsequenced_policy_shim<Executor,
+            Parameters>::to_non_unseq() const
         {
             return parallel_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_unseq,
+                    this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_task_t tag,
-            unsequenced_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        unsequenced_task_policy_shim<Executor, Parameters>::to_non_task() const
         {
             return unsequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_task,
+                    this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_par_t tag,
-            unsequenced_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        unsequenced_task_policy_shim<Executor, Parameters>::to_par() const
         {
             return parallel_unsequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_unseq_t tag,
-            unsequenced_task_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        unsequenced_task_policy_shim<Executor, Parameters>::to_non_unseq() const
         {
             return sequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_unseq,
+                    this->executor()))
+                .with(this->parameters());
         }
 
-        ///////////////////////////////////////////////////////////////////////
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_task_t tag,
-            unsequenced_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto unsequenced_policy_shim<Executor, Parameters>::to_task()
+            const
         {
             return unsequenced_task_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_task, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_par_t tag,
-            unsequenced_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto unsequenced_policy_shim<Executor, Parameters>::to_par()
+            const
         {
             return parallel_unsequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_par, this->executor()))
+                .with(this->parameters());
         }
 
         template <typename Executor, typename Parameters>
-        constexpr decltype(auto) tag_invoke(
-            hpx::execution::experimental::to_non_unseq_t tag,
-            unsequenced_policy_shim<Executor, Parameters> const& policy)
+        constexpr auto
+        unsequenced_policy_shim<Executor, Parameters>::to_non_unseq() const
         {
             return sequenced_policy()
-                .on(hpx::experimental::prefer(tag, policy.executor()))
-                .with(policy.parameters());
+                .on(hpx::experimental::prefer(
+                    hpx::execution::experimental::to_non_unseq,
+                    this->executor()))
+                .with(this->parameters());
         }
 
         ///////////////////////////////////////////////////////////////////////
@@ -1298,4 +1539,126 @@ namespace hpx::detail {
     {
     };
     /// \endcond
+
+    /// \endcond
 }    // namespace hpx::detail
+
+///////////////////////////////////////////////////////////////////////////////
+namespace hpx::execution::experimental {
+
+    /// \cond NOINTERNAL
+    // Make policy shims satisfy executor traits based on their wrapped executor
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<
+        hpx::execution::detail::parallel_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<hpx::execution::detail::
+            parallel_unsequenced_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<
+        hpx::execution::detail::parallel_task_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<hpx::execution::detail::
+            parallel_unsequenced_task_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<hpx::execution::detail::
+            sequenced_task_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<
+        hpx::execution::detail::sequenced_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<
+        hpx::execution::detail::unsequenced_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_two_way_executor<hpx::execution::detail::
+            unsequenced_task_policy_shim<Executor, Parameters>>
+      : is_two_way_executor<Executor>
+    {
+    };
+
+    // Also add bulk_two_way_executor specializations
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<
+        hpx::execution::detail::parallel_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<hpx::execution::detail::
+            parallel_unsequenced_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<
+        hpx::execution::detail::parallel_task_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<hpx::execution::detail::
+            parallel_unsequenced_task_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<hpx::execution::detail::
+            sequenced_task_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<
+        hpx::execution::detail::sequenced_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<
+        hpx::execution::detail::unsequenced_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+
+    template <typename Executor, typename Parameters>
+    struct is_bulk_two_way_executor<hpx::execution::detail::
+            unsequenced_task_policy_shim<Executor, Parameters>>
+      : is_bulk_two_way_executor<Executor>
+    {
+    };
+    /// \endcond
+}    // namespace hpx::execution::experimental

@@ -21,7 +21,7 @@ add_hpx_executable(
   cancelable_action_client INTERNAL_FLAGS
   SOURCES ${sources}
   DEPENDENCIES cancelable_action_component
-  FOLDER "Examples/CancelableAction"
+  FOLDER "Examples/CancelableAction" ${HPX_WITH_CXX_MODULES_OPTION}
 )
 
 add_hpx_example_target_dependencies(
@@ -31,5 +31,14 @@ add_hpx_example_target_dependencies(
 if(HPX_WITH_TESTS AND HPX_WITH_TESTS_EXAMPLES)
   add_hpx_example_test(
     "cancelable_action" cancelable_action_client THREADS_PER_LOCALITY 4
+  )
+endif()
+
+if(HPX_WITH_CXX_MODULES
+   AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+   AND (MSVC_VERSION LESS_EQUAL 1952)
+)
+  target_compile_definitions(
+    cancelable_action_client PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES
   )
 endif()

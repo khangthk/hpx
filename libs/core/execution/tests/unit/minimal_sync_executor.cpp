@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -117,11 +117,14 @@ template <typename Executor>
 void test_then(Executor& exec)
 {
     hpx::future<void> f1 = hpx::make_ready_future();
-    HPX_TEST(hpx::parallel::execution::then_execute(exec, &then_test, f1, 42)
+    HPX_TEST(hpx::parallel::execution::then_execute(
+                 exec, &then_test, HPX_MOVE(f1), 42)
                  .get() == hpx::this_thread::get_id());
 
     hpx::future<void> f2 = hpx::make_ready_future();
-    hpx::parallel::execution::then_execute(exec, &then_test_void, f2, 42).get();
+    hpx::parallel::execution::then_execute(
+        exec, &then_test_void, HPX_MOVE(f2), 42)
+        .get();
 }
 
 template <typename Executor>
@@ -244,29 +247,28 @@ struct test_sync_executor1
     using execution_category = hpx::execution::sequenced_execution_tag;
 
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::sync_execute_t,
-        test_sync_executor1 const&, F&& f, Ts&&... ts)
+    decltype(auto) sync_execute(F&& f, Ts&&... ts) const
     {
         ++count_sync;
         return hpx::invoke(std::forward<F>(f), std::forward<Ts>(ts)...);
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct is_one_way_executor<test_sync_executor1> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 struct test_sync_executor2 : test_sync_executor1
 {
     using execution_category = hpx::execution::sequenced_execution_tag;
 
     template <typename F, typename Shape, typename... Ts>
-    friend decltype(auto) tag_invoke(
-        hpx::parallel::execution::bulk_sync_execute_t,
-        test_sync_executor2 const&, F&& f, Shape const& shape, Ts&&... ts)
+    decltype(auto) bulk_sync_execute(
+        F&& f, Shape const& shape, Ts&&... ts) const
     {
         ++count_bulk_sync;
 
@@ -292,7 +294,8 @@ struct test_sync_executor2 : test_sync_executor1
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct is_one_way_executor<test_sync_executor2> : std::true_type
     {
@@ -302,7 +305,7 @@ namespace hpx::parallel::execution {
     struct is_bulk_one_way_executor<test_sync_executor2> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 ///////////////////////////////////////////////////////////////////////////////
 int hpx_main()

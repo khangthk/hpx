@@ -1,4 +1,4 @@
-//  Copyright (c) 1998-2024 Hartmut Kaiser
+//  Copyright (c) 1998-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -9,7 +9,7 @@
 
 #include <hpx/config.hpp>
 #include <hpx/components_base/server/wrapper_heap_base.hpp>
-#include <hpx/synchronization/shared_mutex.hpp>
+#include <hpx/modules/synchronization.hpp>
 
 #include <cstddef>
 #include <list>
@@ -21,7 +21,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx::util {
 
-    class HPX_EXPORT one_size_heap_list
+    HPX_CXX_EXPORT class HPX_EXPORT one_size_heap_list
     {
     public:
         using list_type = std::list<std::shared_ptr<util::wrapper_heap_base>>;

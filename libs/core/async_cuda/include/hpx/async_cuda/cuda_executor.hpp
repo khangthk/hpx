@@ -1,5 +1,7 @@
 //  Copyright (c) 2020 John Biddiscombe
+//  Copyright (c) 2026 Sai Charan Arvapally
 //  Copyright (c) 2020 Teodor Nikolov
+//  Copyright (c) 2024-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,33 +13,30 @@
 #include <hpx/async_cuda/cuda_exception.hpp>
 #include <hpx/async_cuda/cuda_future.hpp>
 #include <hpx/async_cuda/target.hpp>
-#include <hpx/errors/exception.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/execution_base/execution.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/future_access.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/futures.hpp>
 
 // CUDA runtime
 #include <hpx/async_cuda/custom_gpu_api.hpp>
-//
+
 #include <cstddef>
 #include <exception>
 #include <memory>
 #include <type_traits>
 #include <utility>
 
-namespace hpx { namespace cuda { namespace experimental {
+namespace hpx::cuda::experimental {
 
     namespace detail {
         // -------------------------------------------------------------------------
-        // A helper object to call a cudafunction returning a cudaError type
+        // A helper object to call a cuda function returning a cudaError type
         // or a plain kernel definition (or cublas function in cublas executor)
-        template <typename R, typename... Args>
+        HPX_CXX_CORE_EXPORT template <typename R, typename... Args>
         struct dispatch_helper;
 
         // default implementation - call the function
-        template <typename R, typename... Args>
+        HPX_CXX_CORE_EXPORT template <typename R, typename... Args>
         struct dispatch_helper
         {
             inline R operator()(R (*f)(Args...), Args... args) const
@@ -47,7 +46,7 @@ namespace hpx { namespace cuda { namespace experimental {
         };
 
         // specialization for return type void
-        template <typename... Args>
+        HPX_CXX_CORE_EXPORT template <typename... Args>
         struct dispatch_helper<void, Args...>
         {
             inline void operator()(void (*f)(Args...), Args... args) const
@@ -57,7 +56,7 @@ namespace hpx { namespace cuda { namespace experimental {
         };
 
         // specialization for return type of cudaError_t
-        template <typename... Args>
+        HPX_CXX_CORE_EXPORT template <typename... Args>
         struct dispatch_helper<cudaError_t, Args...>
         {
             inline void operator()(
@@ -66,14 +65,13 @@ namespace hpx { namespace cuda { namespace experimental {
                 check_cuda_error(f(args...));
             }
         };
-
     }    // namespace detail
 
     // -------------------------------------------------------------------------
     // Allows the launching of cuda functions and kernels on a stream with futures
     // returned that are set when the async functions/kernels are ready
     // -------------------------------------------------------------------------
-    struct cuda_executor_base
+    HPX_CXX_CORE_EXPORT struct cuda_executor_base
     {
         using future_type = hpx::future<void>;
 
@@ -81,11 +79,12 @@ namespace hpx { namespace cuda { namespace experimental {
         // constructors - create a cuda stream that all tasks invoked by
         // this helper will use
         // assume event mode is the default
-        cuda_executor_base(std::size_t device, bool event_mode)
-          : device_(device)
+        cuda_executor_base(std::size_t device, bool const event_mode)
+          : device_(static_cast<int>(device))
           , event_mode_(event_mode)
         {
-            target_ = std::make_shared<hpx::cuda::experimental::target>(device);
+            target_ =
+                std::make_shared<hpx::cuda::experimental::target>(device_);
             stream_ = target_->native_handle().get_stream();
         }
 
@@ -109,12 +108,13 @@ namespace hpx { namespace cuda { namespace experimental {
     // Allows you to launch kernels on a stream and get
     // futures back when they are ready
     // -------------------------------------------------------------------------
-    struct cuda_executor : cuda_executor_base
+    HPX_CXX_CORE_EXPORT struct cuda_executor : cuda_executor_base
     {
         // -------------------------------------------------------------------------
         // construct - create a cuda stream that all tasks invoked by
         // this helper will use
-        explicit cuda_executor(std::size_t device, bool event_mode = true)
+        explicit cuda_executor(
+            std::size_t const device, bool const event_mode = true)
           : cuda_executor_base(device, event_mode)
         {
         }
@@ -126,30 +126,27 @@ namespace hpx { namespace cuda { namespace experimental {
         // -------------------------------------------------------------------------
         // OneWay Execution
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(hpx::parallel::execution::post_t,
-            cuda_executor const& exec, F&& f, Ts&&... ts)
+        void post(F&& f, Ts&&... ts) const
         {
-            return exec.post(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+            post_impl(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
         // -------------------------------------------------------------------------
         // TwoWay Execution
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_execute_t,
-            cuda_executor const& exec, F&& f, Ts&&... ts)
+        decltype(auto) async_execute(F&& f, Ts&&... ts) const
         {
-            return exec.async(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+            return async_impl(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
     protected:
         // -------------------------------------------------------------------------
-        // launch a kernel on our stream and return without a future
-        // the return value is the value returned from the cuda call
-        // (typically this will be cudaError_t).
+        // launch a kernel on our stream without returning a future
+        // Errors are reported through check_cuda_error, typically via the
+        // CUDA call return value (for example cudaError_t).
         // Throws cuda_exception if the async launch fails.
         template <typename R, typename... Params, typename... Args>
-        void post(R (*cuda_function)(Params...), Args&&... args) const
+        void post_impl(R (*cuda_function)(Params...), Args&&... args) const
         {
             // make sure we run on the correct device
             check_cuda_error(cudaSetDevice(device_));
@@ -161,11 +158,11 @@ namespace hpx { namespace cuda { namespace experimental {
 
         // -------------------------------------------------------------------------
         // launch a kernel on our stream and return a future that will become ready
-        // when the task completes, this allows integregration of GPU kernels with
+        // when the task completes, this allows integration of GPU kernels with
         // hpx::futures and the tasking DAG.
         // Puts a cuda_exception in the future if the async launch fails.
         template <typename R, typename... Params, typename... Args>
-        hpx::future<void> async(
+        hpx::future<void> async_impl(
             R (*cuda_kernel)(Params...), Args&&... args) const
         {
             return hpx::detail::try_catch_exception_ptr(
@@ -183,10 +180,9 @@ namespace hpx { namespace cuda { namespace experimental {
                 });
         }
     };
+}    // namespace hpx::cuda::experimental
 
-}}}    // namespace hpx::cuda::experimental
-
-namespace hpx { namespace parallel { namespace execution {
+namespace hpx::execution::experimental {
 
     /// \cond NOINTERNAL
     template <>
@@ -203,4 +199,4 @@ namespace hpx { namespace parallel { namespace execution {
         // we support returning a waitable/future
     };
     /// \endcond
-}}}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental

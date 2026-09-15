@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //  Copyright (c) 2013 Agustin Berge
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,28 +8,21 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
-#include <hpx/allocator_support/thread_local_caching_allocator.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/async_base/traits/is_launch_policy.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
 #include <hpx/execution/traits/executor_traits.hpp>
 #include <hpx/execution/traits/future_then_result_exec.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/functional/invoke_result.hpp>
-#include <hpx/futures/detail/future_data.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/packaged_continuation.hpp>
-#include <hpx/futures/traits/future_access.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/concurrency.hpp>
+#include <hpx/modules/coroutines.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/serialization/detail/polymorphic_nonintrusive_factory.hpp>
-#include <hpx/threading_base/register_thread.hpp>
-#include <hpx/threading_base/thread_description.hpp>
-#include <hpx/threading_base/thread_init_data.hpp>
-#include <hpx/timing/steady_clock.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/timing.hpp>
 
 #include <exception>
 #include <iterator>
@@ -39,7 +32,8 @@
 
 namespace hpx::lcos::detail {
 
-    template <typename Executor, typename Future, typename F>
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename Future,
+        typename F>
     inline hpx::traits::future_then_executor_result_t<Executor,
         std::decay_t<Future>, F>
     then_execute_helper(Executor&& exec, F&& f, Future&& predecessor)
@@ -64,9 +58,9 @@ namespace hpx::lcos::detail {
             using continuation_result_type =
                 hpx::util::invoke_result_t<F, Future>;
 
-            using allocator_type =
-                hpx::util::thread_local_caching_allocator<char,
-                    hpx::util::internal_allocator<>>;
+            using allocator_type = hpx::util::thread_local_caching_allocator<
+                hpx::lockfree::variable_size_stack,
+                hpx::util::internal_allocator<>>;
 
             hpx::traits::detail::shared_state_ptr_t<result_type> p =
                 detail::make_continuation_alloc<continuation_result_type>(
@@ -155,7 +149,7 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    struct post_policy_spawner
+    HPX_CXX_CORE_EXPORT struct post_policy_spawner
     {
         template <typename F>
         void operator()(F&& f, hpx::threads::thread_description desc,
@@ -172,7 +166,7 @@ namespace hpx::lcos::detail {
         }
     };
 
-    template <typename Executor>
+    HPX_CXX_CORE_EXPORT template <typename Executor>
     struct executor_spawner
     {
         Executor exec;
@@ -187,7 +181,8 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename ContResult, typename Future, typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Future,
+        typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<continuation_result_t<ContResult>>
     make_continuation(Future&& future, Policy&& policy, F&& f)
     {
@@ -208,8 +203,8 @@ namespace hpx::lcos::detail {
     }
 
     // same as above, except with allocator
-    template <typename ContResult, typename Allocator, typename Future,
-        typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Allocator,
+        typename Future, typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<continuation_result_t<ContResult>>
     make_continuation_alloc(
         Allocator const& a, Future&& future, Policy&& policy, F&& f)
@@ -250,8 +245,8 @@ namespace hpx::lcos::detail {
 
     // same as above, except with allocator and without unwrapping returned
     // futures
-    template <typename ContResult, typename Allocator, typename Future,
-        typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Allocator,
+        typename Future, typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<ContResult>
     make_continuation_alloc_nounwrap(
         Allocator const& a, Future&& future, Policy&& policy, F&& f)
@@ -290,8 +285,8 @@ namespace hpx::lcos::detail {
         return r;
     }
 
-    template <typename ContResult, typename Future, typename Executor,
-        typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Future,
+        typename Executor, typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<ContResult>
     make_continuation_exec_policy(
         Future&& future, Executor&& exec, Policy&& policy, F&& f)
@@ -312,8 +307,8 @@ namespace hpx::lcos::detail {
         return p;
     }
 
-    template <typename ContResult, typename Future, typename Executor,
-        typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Future,
+        typename Executor, typename F>
     inline traits::detail::shared_state_ptr_t<ContResult>
     make_continuation_exec(Future&& future, Executor&& exec, F&& f)
     {

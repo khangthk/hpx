@@ -1,4 +1,5 @@
-//  Copyright (c) 2022-2024 Hartmut Kaiser
+//  Copyright (c) 2022-2025 Hartmut Kaiser
+//  Copyright (c) 2026 Sai Charan Arvapally
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,17 +12,13 @@
 #include <hpx/config.hpp>
 #include <hpx/compute_local/host/numa_domains.hpp>
 #include <hpx/compute_local/host/target.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/executors/fork_join_executor.hpp>
-#include <hpx/iterator_support/counting_shape.hpp>
-#include <hpx/iterator_support/iterator_range.hpp>
-#include <hpx/modules/concepts.hpp>
-#include <hpx/resource_partitioner/detail/partitioner.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/resource_partitioner.hpp>
 
 #include <chrono>
 #include <cstddef>
@@ -30,6 +27,8 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::execution::experimental {
 
@@ -53,7 +52,7 @@ namespace hpx::execution::experimental {
     /// This behaviour is similar to the plain \a fork_join_executor except that
     /// the block_fork_join_executor creates a hierarchy of fork_join_executors,
     /// one for each target used to initialize it.
-    class block_fork_join_executor
+    HPX_CXX_CORE_EXPORT class block_fork_join_executor
     {
         static hpx::threads::mask_type cores_for_targets(
             std::vector<compute::host::target> const& targets)
@@ -148,12 +147,14 @@ namespace hpx::execution::experimental {
         /// \note   This constructor will create one fork_join_executor for
         ///         each numa domain
         explicit block_fork_join_executor(
-            threads::thread_priority priority = threads::thread_priority::bound,
-            threads::thread_stacksize stacksize =
+            threads::thread_priority const priority =
+                threads::thread_priority::bound,
+            threads::thread_stacksize const stacksize =
                 threads::thread_stacksize::small_,
             fork_join_executor::loop_schedule const schedule =
                 fork_join_executor::loop_schedule::static_,
-            std::chrono::nanoseconds yield_delay = std::chrono::milliseconds(1))
+            std::chrono::nanoseconds const yield_delay =
+                std::chrono::milliseconds(1))
           : block_fork_join_executor(compute::host::numa_domains(), priority,
                 stacksize, schedule, yield_delay)
         {
@@ -173,12 +174,14 @@ namespace hpx::execution::experimental {
         ///         each given target
         explicit block_fork_join_executor(
             std::vector<compute::host::target> const& targets,
-            threads::thread_priority priority = threads::thread_priority::bound,
-            threads::thread_stacksize stacksize =
+            threads::thread_priority const priority =
+                threads::thread_priority::bound,
+            threads::thread_stacksize const stacksize =
                 threads::thread_stacksize::small_,
             fork_join_executor::loop_schedule const schedule =
                 fork_join_executor::loop_schedule::static_,
-            std::chrono::nanoseconds yield_delay = std::chrono::milliseconds(1))
+            std::chrono::nanoseconds const yield_delay =
+                std::chrono::milliseconds(1))
           : exec_(cores_for_targets(targets), priority, stacksize,
                 targets.size() == 1 ?
                     schedule :
@@ -196,7 +199,7 @@ namespace hpx::execution::experimental {
                         fork_join_executor::init_mode::no_init);
                 }
 
-                auto init_f = [&](std::size_t index) {
+                auto init_f = [&](std::size_t const index) {
                     // create the sub-executors
                     block_execs_[index] = fork_join_executor(
                         targets[index].native_handle().get_device(), priority,
@@ -208,6 +211,7 @@ namespace hpx::execution::experimental {
             }
         }
 
+        /// \cond NOINTERNAL
         template <typename F, typename S, typename... Ts>
         void bulk_sync_execute_helper(F&& f, S const& shape, Ts&&... ts)
         {
@@ -221,7 +225,7 @@ namespace hpx::execution::experimental {
             }
 
             std::size_t const size = std::size(shape);
-            auto outer_func = [&](std::size_t index, auto&& func,
+            auto outer_func = [&](std::size_t const index, auto&& func,
                                   auto const& full_shape, auto&&... args) {
                 // calculate the inner inner_shape dimensions
                 auto const part_begin = (index * size) / num_targets;
@@ -243,35 +247,24 @@ namespace hpx::execution::experimental {
                 outer_shape, HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
         }
 
-        // clang-format off
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(
-                !std::is_integral_v<S>
-            )>
-        // clang-format on
-        friend void tag_invoke(hpx::parallel::execution::bulk_sync_execute_t,
-            block_fork_join_executor& exec, F&& f, S const& shape, Ts&&... ts)
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        void bulk_sync_execute(F&& f, S const& shape, Ts&&... ts)
         {
-            exec.bulk_sync_execute_helper(
+            bulk_sync_execute_helper(
                 HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
         }
 
-        // clang-format off
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(
-                !std::is_integral_v<S>
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_async_execute_t,
-            block_fork_join_executor& exec, F&& f, S const& shape, Ts&&... ts)
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_async_execute(F&& f, S const& shape, Ts&&... ts)
         {
             // Forward to the synchronous version as we can't create futures to
             // the completion of the parallel region (this HPX thread
             // participates in computation).
             return hpx::detail::try_catch_exception_ptr(
                 [&]() {
-                    exec.bulk_sync_execute_helper(
+                    bulk_sync_execute_helper(
                         HPX_FORWARD(F, f), shape, HPX_FORWARD(Ts, ts)...);
                     return hpx::make_ready_future();
                 },
@@ -298,7 +291,7 @@ namespace hpx::execution::experimental {
                     hpx::forward_as_tuple(HPX_FORWARD(Fs, fs)...);
 
                 constexpr std::size_t Size = sizeof...(Fs);
-                auto outer_func = [&](std::size_t index) {
+                auto outer_func = [&](std::size_t const index) {
                     auto const part_begin = (index * Size) / num_targets;
                     auto const part_end = ((index + 1) * Size) / num_targets;
 
@@ -314,35 +307,23 @@ namespace hpx::execution::experimental {
             }
         }
 
-        // clang-format off
-        template <typename F, typename... Fs,
-            HPX_CONCEPT_REQUIRES_(
-                std::is_invocable_v<F> && (std::is_invocable_v<Fs> && ...)
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::sync_invoke_t,
-            block_fork_join_executor const& exec, F&& f, Fs&&... fs)
+        template <typename F, typename... Fs>
+            requires(std::is_invocable_v<F> && (std::is_invocable_v<Fs> && ...))
+        decltype(auto) sync_invoke(F&& f, Fs&&... fs) const
         {
-            exec.sync_invoke_helper(HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
+            sync_invoke_helper(HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
         }
 
-        // clang-format off
-        template <typename F, typename... Fs,
-            HPX_CONCEPT_REQUIRES_(
-                std::is_invocable_v<F> && (std::is_invocable_v<Fs> && ...)
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_invoke_t,
-            block_fork_join_executor const& exec, F&& f, Fs&&... fs)
+        template <typename F, typename... Fs>
+            requires(std::is_invocable_v<F> && (std::is_invocable_v<Fs> && ...))
+        decltype(auto) async_invoke(F&& f, Fs&&... fs) const
         {
             // Forward to the synchronous version as we can't create futures to
             // the completion of the parallel region (this HPX thread
             // participates in computation).
             return hpx::detail::try_catch_exception_ptr(
                 [&]() {
-                    exec.sync_invoke_helper(
+                    sync_invoke_helper(
                         HPX_FORWARD(F, f), HPX_FORWARD(Fs, fs)...);
                     return hpx::make_ready_future();
                 },
@@ -352,55 +333,46 @@ namespace hpx::execution::experimental {
         }
 
         // support all properties that are exposed by the fork_join_executor
-        // clang-format off
-        template <typename Tag, typename Property,
-            HPX_CONCEPT_REQUIRES_(
+        template <typename Tag, typename Property>
+            requires(
                 hpx::execution::experimental::is_scheduling_property_v<Tag> &&
-                hpx::functional::is_tag_invocable_v<
-                    Tag, fork_join_executor, Property>
-            )>
-        // clang-format on
-        friend block_fork_join_executor tag_invoke(Tag tag,
-            block_fork_join_executor const& exec, Property&& prop) noexcept
+                requires(
+                    Tag tag, fork_join_executor const& exec, Property&& prop) {
+                    tag(exec, HPX_FORWARD(Property, prop));
+                })
+        [[nodiscard]] block_fork_join_executor query(
+            Tag, Property&& prop) const noexcept
         {
-            auto exec_with_prop = exec;
-            exec_with_prop.exec_ = hpx::functional::tag_invoke(
-                tag, exec.exec_, HPX_FORWARD(Property, prop));
+            auto exec_with_prop = *this;
+            exec_with_prop.exec_ = Tag{}(exec_, HPX_FORWARD(Property, prop));
             return exec_with_prop;
         }
 
-        // clang-format off
-        template <typename Tag,
-            HPX_CONCEPT_REQUIRES_(
+        template <typename Tag>
+            requires(
                 hpx::execution::experimental::is_scheduling_property_v<Tag> &&
-                hpx::functional::is_tag_invocable_v<Tag, fork_join_executor>
-            )>
-        // clang-format on
-        friend decltype(auto) tag_invoke(
-            Tag tag, block_fork_join_executor const& exec) noexcept
+                requires(
+                    Tag tag, fork_join_executor const& exec) { tag(exec); })
+        [[nodiscard]] decltype(auto) query(Tag tag) const noexcept
         {
-            return hpx::functional::tag_invoke(tag, exec.exec_);
+            return tag(exec_);
         }
+        /// \endcond
 
     private:
         fork_join_executor exec_;
         std::vector<fork_join_executor> block_execs_;
     };
-}    // namespace hpx::execution::experimental
-
-namespace hpx::parallel::execution {
 
     /// \cond NOINTERNAL
     template <>
-    struct is_bulk_one_way_executor<
-        hpx::execution::experimental::block_fork_join_executor> : std::true_type
+    struct is_bulk_one_way_executor<block_fork_join_executor> : std::true_type
     {
     };
 
     template <>
-    struct is_bulk_two_way_executor<
-        hpx::execution::experimental::block_fork_join_executor> : std::true_type
+    struct is_bulk_two_way_executor<block_fork_join_executor> : std::true_type
     {
     };
     /// \endcond
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental

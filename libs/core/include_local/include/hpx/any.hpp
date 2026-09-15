@@ -6,5 +6,5 @@
 
 #pragma once
 
-#include <hpx/datastructures/any.hpp>
-#include <hpx/datastructures/serialization/serializable_any.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/datastructures.hpp>

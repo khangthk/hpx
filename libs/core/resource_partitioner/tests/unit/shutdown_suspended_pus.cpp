@@ -23,8 +23,8 @@
 #include <utility>
 #include <vector>
 
-std::size_t const max_threads = (std::min)(
-    std::size_t(4), std::size_t(hpx::threads::hardware_concurrency()));
+std::size_t const max_threads = (std::min) (std::size_t(4),
+    std::size_t(hpx::threads::hardware_concurrency()));
 
 int hpx_main()
 {
@@ -79,6 +79,7 @@ int main(int argc, char* argv[])
         std::vector<hpx::resource::scheduling_policy> schedulers = {
             hpx::resource::scheduling_policy::local,
             hpx::resource::scheduling_policy::local_priority_fifo,
+            hpx::resource::scheduling_policy::local_priority_fifo_double,
 #if defined(HPX_HAVE_CXX11_STD_ATOMIC_128BIT)
             hpx::resource::scheduling_policy::local_priority_lifo,
 #endif

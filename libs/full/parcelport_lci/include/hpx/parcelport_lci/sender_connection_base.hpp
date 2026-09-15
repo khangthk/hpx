@@ -11,8 +11,8 @@
 
 #if defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCI)
 
+#include <hpx/modules/parcelset.hpp>
 #include <hpx/parcelport_lci/parcelport_lci.hpp>
-#include <hpx/parcelset/parcelport_connection.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -23,15 +23,13 @@
 
 namespace hpx::parcelset::policies::lci {
     struct sender_connection_base
-      : public parcelset::parcelport_connection<sender_connection_base,
-            std::vector<char>>
+      : public parcelset::parcelport_connection<sender_connection_base>
     {
     protected:
         using write_handler_type =
             hpx::function<void(std::error_code const&, parcel const&)>;
-        using data_type = std::vector<char>;
         using base_type =
-            parcelset::parcelport_connection<sender_connection_base, data_type>;
+            parcelset::parcelport_connection<sender_connection_base>;
         using handler_type = hpx::move_only_function<void(error_code const&)>;
         using postprocess_handler_type = hpx::move_only_function<void(
             error_code const&, parcelset::locality const&,
@@ -48,7 +46,7 @@ namespace hpx::parcelset::policies::lci {
         struct return_t
         {
             return_status_t status;
-            LCI_comp_t completion;
+            ::lci::comp_t completion;
         };
         sender_connection_base(int dst, parcelset::parcelport* pp)
           : dst_rank(dst)
@@ -77,9 +75,7 @@ namespace hpx::parcelset::policies::lci {
         return_t send(bool in_bg_work);
         virtual return_t send_nb() = 0;
         virtual void done() = 0;
-        virtual bool tryMerge(
-            const std::shared_ptr<sender_connection_base>& other_base) = 0;
-        void profile_start_hook(const header& header_);
+        void profile_start_hook(header const& header_);
         void profile_end_hook();
 
         int dst_rank;

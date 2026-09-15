@@ -1,5 +1,5 @@
 //  Copyright (c) 2014 Thomas Heller
-//  Copyright (c) 2016-2024 Hartmut Kaiser
+//  Copyright (c) 2016-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,16 +10,8 @@
 #include <hpx/config.hpp>
 #include <hpx/config/endian.hpp>
 #include <hpx/assert.hpp>
-
-#if !defined(__CUDA_ARCH__)
-#include <hpx/serialization/serialize.hpp>
-#include <hpx/serialization/traits/is_bitwise_serializable.hpp>
-#include <hpx/serialization/traits/is_not_bitwise_serializable.hpp>
-#else
-#include <hpx/serialization/serialization_fwd.hpp>
-#endif
-
 #include <hpx/compute_local/vector.hpp>
+#include <hpx/modules/serialization.hpp>
 
 #include <type_traits>
 
@@ -28,14 +20,14 @@ namespace hpx::serialization {
 #if !defined(__CUDA_ARCH__)
     // load compute::vector<T>
     namespace detail {
-        template <typename T, typename Allocator>
+
+        HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
         void load_impl(input_archive& ar, compute::vector<T, Allocator>& vs,
             std::false_type)
         {
             // normal load ...
-            using value_type =
-                typename compute::vector<T, Allocator>::value_type;
-            using size_type = typename compute::vector<T, Allocator>::size_type;
+            using value_type = compute::vector<T, Allocator>::value_type;
+            using size_type = compute::vector<T, Allocator>::size_type;
 
             size_type size;
             value_type v;
@@ -52,7 +44,7 @@ namespace hpx::serialization {
             }
         }
 
-        template <typename T, typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
         void load_impl(
             input_archive& ar, compute::vector<T, Allocator>& v, std::true_type)
         {
@@ -67,9 +59,8 @@ namespace hpx::serialization {
                 !(ar.disable_array_optimization() || ar.endianess_differs()));
 #endif
             // bitwise load ...
-            using value_type =
-                typename compute::vector<T, Allocator>::value_type;
-            using size_type = typename compute::vector<T, Allocator>::size_type;
+            using value_type = compute::vector<T, Allocator>::value_type;
+            using size_type = compute::vector<T, Allocator>::size_type;
 
             size_type size;
             ar >> size;    //-V128
@@ -79,11 +70,12 @@ namespace hpx::serialization {
             }
 
             v.resize(size);
-            load_binary(ar, v.device_data(), v.size() * sizeof(value_type));
+            load_binary(ar, detail::array_of_fundamental_type_v<T>,
+                v.device_data(), v.size() * sizeof(value_type));
         }
     }    // namespace detail
 
-    template <typename T, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
     void serialize(
         input_archive& ar, compute::vector<T, Allocator>& v, unsigned)
     {
@@ -102,7 +94,7 @@ namespace hpx::serialization {
     // save compute::vector<T>
     namespace detail {
 
-        template <typename T, typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
         void save_impl(output_archive& ar,
             compute::vector<T, Allocator> const& vs, std::false_type)
         {
@@ -113,7 +105,7 @@ namespace hpx::serialization {
             }
         }
 
-        template <typename T, typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
         void save_impl(output_archive& ar,
             compute::vector<T, Allocator> const& v, std::true_type)
         {
@@ -128,18 +120,18 @@ namespace hpx::serialization {
                 !(ar.disable_array_optimization() || ar.endianess_differs()));
 #endif
             // bitwise save ...
-            using value_type =
-                typename compute::vector<T, Allocator>::value_type;
-            save_binary(ar, v.device_data(), v.size() * sizeof(value_type));
+            using value_type = compute::vector<T, Allocator>::value_type;
+            save_binary(ar, detail::array_of_fundamental_type_v<T>,
+                v.device_data(), v.size() * sizeof(value_type));
         }
     }    // namespace detail
 
-    template <typename T, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
     void serialize(
         output_archive& ar, compute::vector<T, Allocator> const& v, unsigned)
     {
-        using element_type = typename std::remove_const<
-            typename compute::vector<T, Allocator>::value_type>::type;
+        using element_type = std::remove_const_t<
+            typename compute::vector<T, Allocator>::value_type>;
 
         using use_optimized = std::integral_constant<bool,
             std::is_default_constructible_v<element_type> &&
@@ -155,12 +147,12 @@ namespace hpx::serialization {
         detail::save_impl(ar, v, use_optimized());
     }
 #else
-    template <typename T, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
     void serialize(input_archive&, compute::vector<T, Allocator>&, unsigned)
     {
     }
 
-    template <typename T, typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Allocator>
     void serialize(
         output_archive&, compute::vector<T, Allocator> const&, unsigned)
     {

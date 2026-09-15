@@ -12,14 +12,13 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/datastructures/member_pack.hpp>
 #include <hpx/functional/invoke.hpp>
-#include <hpx/functional/invoke_result.hpp>
 #include <hpx/functional/one_shot.hpp>
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
-#include <hpx/type_support/decay.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <type_traits>
@@ -141,18 +140,17 @@ namespace hpx::detail {
 #endif
         }
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-        [[nodiscard]] util::itt::string_handle get_function_annotation_itt()
-            const
+        [[nodiscard]] hpx::tracing::annotation_handle
+        get_function_annotation_tracing() const
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-            return traits::get_function_annotation_itt<F>::call(_f);
+            return traits::get_function_annotation_tracing<F>::call(_f);
 #else
-            static util::itt::string_handle sh("bound_front");
+            static auto sh =
+                hpx::tracing::create_annotation_handle("bound_front");
             return sh;
 #endif
         }
-#endif
 
     private:
         F _f;
@@ -174,7 +172,7 @@ namespace hpx {
     /// \returns    A function object of type \c T that is unspecified, except that
     ///             the types of objects returned by two calls to \c hpx::bind_front
     ///             with the same arguments are the same.
-    template <typename F, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename F, typename... Ts>
     constexpr detail::bound_front<std::decay_t<F>,
         util::make_index_pack_t<sizeof...(Ts)>, util::decay_unwrap_t<Ts>...>
     bind_front(F&& f, Ts&&... vs)
@@ -187,23 +185,12 @@ namespace hpx {
     }
 
     // nullary functions do not need to be bound again
-    template <typename F>
+    HPX_CXX_CORE_EXPORT template <typename F>
     constexpr std::decay_t<F> bind_front(F&& f)    //-V524
     {
         return HPX_FORWARD(F, f);
     }
 }    // namespace hpx
-
-namespace hpx::util {
-
-    template <typename F, typename... Ts>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::util::bind_front is deprecated, use hpx::bind_front instead")
-    constexpr decltype(auto) bind_front(F&& f, Ts&&... ts)
-    {
-        return hpx::bind_front(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
-    }
-}    // namespace hpx::util
 
 ///////////////////////////////////////////////////////////////////////////////
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
@@ -231,17 +218,15 @@ namespace hpx::traits {
         }
     };
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
     template <typename F, typename... Ts>
-    struct get_function_annotation_itt<hpx::detail::bound_front<F, Ts...>>
+    struct get_function_annotation_tracing<hpx::detail::bound_front<F, Ts...>>
     {
-        [[nodiscard]] static util::itt::string_handle call(
+        [[nodiscard]] static hpx::tracing::annotation_handle call(
             hpx::detail::bound_front<F, Ts...> const& f) noexcept
         {
-            return f.get_function_annotation_itt();
+            return f.get_function_annotation_tracing();
         }
     };
-#endif
 }    // namespace hpx::traits
 #endif
 
@@ -249,7 +234,7 @@ namespace hpx::traits {
 namespace hpx::serialization {
 
     // serialization of the bound_front object
-    template <typename Archive, typename F, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename Archive, typename F, typename... Ts>
     void serialize(Archive& ar, ::hpx::detail::bound_front<F, Ts...>& bound,
         unsigned int const version = 0)
     {

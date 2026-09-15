@@ -79,9 +79,9 @@ are completed to avoid confusion.
    keep them around in case (like Vc for example).
 
 #. Update the minimum required versions if necessary (compilers, dependencies,
-   etc.) in ``prerequisites.rst``.
+   etc.) in ``prerequisites.rst``. Update latest tested versions.
 
-#. Verify that the Jenkins setups for the release branch on Rostam and Piz Daint
+#. Verify that the Jenkins setups for the release branch on Rostam
    are running and do not display any errors.
 
 #. Repeat the following steps until satisfied with the release.
@@ -124,9 +124,8 @@ are completed to avoid confusion.
    script automatically tag the with the corresponding release number. The
    script requires that you have the |stellar| Group signing key.
 
-#. Update the websites (`hpx.stellar-group.org <https://hpx.stellar-group.org>`_
-   and `stellar-group.org <https://stellar-group.org>`). You can login on
-   wordpress through `this page <https://hpx.stellar-group.org/wp-login.php>`.
+#. Update the website (`hpx.dev <https://hpx.dev>`_). You can login on
+   wordpress through `this page <https://hpx.dev/wp-login.php>`.
    You can update the pages with the following:
 
    * Update links on the downloads page. Link to the release on GitHub.
@@ -160,7 +159,7 @@ are completed to avoid confusion.
 
 #. Announce the release on hpx-users@stellar-group.org, stellar@cct.lsu.edu,
    allcct@cct.lsu.edu, faculty@csc.lsu.edu, faculty@ece.lsu.edu,
-   the |hpx| Slack channel, the IRC channel,
+   the |hpx| Slack channel, the STEllAR-GROUP Discord channel,
    our list of external collaborators, isocpp.org, reddit.com, HPC Wire, Inside
    HPC, Heise Online, and a CCT press release.
 

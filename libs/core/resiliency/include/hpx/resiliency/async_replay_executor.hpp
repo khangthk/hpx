@@ -1,6 +1,6 @@
 //  Copyright (c) 2019 National Technology & Engineering Solutions of Sandia,
 //                     LLC (NTESS).
-//  Copyright (c) 2018-2024 Hartmut Kaiser
+//  Copyright (c) 2018-2025 Hartmut Kaiser
 //  Copyright (c) 2018-2019 Adrian Serio
 //  Copyright (c) 2019 Nikunj Gupta
 //
@@ -15,13 +15,11 @@
 #include <hpx/resiliency/async_replay.hpp>
 #include <hpx/resiliency/resiliency_cpos.hpp>
 
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/detail/invoke.hpp>
 #include <hpx/modules/async_local.hpp>
 #include <hpx/modules/execution.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <exception>
@@ -29,7 +27,6 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 namespace hpx::resiliency::experimental {
 
@@ -37,7 +34,8 @@ namespace hpx::resiliency::experimental {
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Result, typename Pred, typename F, typename Tuple>
+        HPX_CXX_CORE_EXPORT template <typename Result, typename Pred,
+            typename F, typename Tuple>
         struct async_replay_executor_helper
           : std::enable_shared_from_this<
                 async_replay_executor_helper<Result, Pred, F, Tuple>>
@@ -58,14 +56,14 @@ namespace hpx::resiliency::experimental {
             }
 
             template <typename Executor>
-            hpx::parallel::execution::executor_future_t<Executor, Result> call(
-                Executor&& exec, std::size_t n)
+            hpx::execution::experimental::executor_future_t<Executor, Result>
+            call(Executor&& exec, std::size_t n)
             {
                 // launch given function asynchronously
                 using pack_type =
                     hpx::util::make_index_pack<std::tuple_size_v<Tuple>>;
                 using result_type =
-                    hpx::parallel::execution::executor_future_t<Executor,
+                    hpx::execution::experimental::executor_future_t<Executor,
                         Result>;
 
                 result_type f = invoke(exec, pack_type{});
@@ -148,14 +146,15 @@ namespace hpx::resiliency::experimental {
             }
 
             template <typename Executor>
-            hpx::parallel::execution::executor_future_t<Executor, void> call(
-                Executor&& exec, std::size_t n)
+            hpx::execution::experimental::executor_future_t<Executor, void>
+            call(Executor&& exec, std::size_t n)
             {
                 // launch given function asynchronously
                 using pack_type =
                     hpx::util::make_index_pack<std::tuple_size_v<Tuple>>;
                 using result_type =
-                    hpx::parallel::execution::executor_future_t<Executor, void>;
+                    hpx::execution::experimental::executor_future_t<Executor,
+                        void>;
 
                 result_type f = invoke(exec, pack_type{});
 
@@ -199,7 +198,8 @@ namespace hpx::resiliency::experimental {
             Tuple t_;
         };
 
-        template <typename Result, typename Pred, typename F, typename... Ts>
+        HPX_CXX_CORE_EXPORT template <typename Result, typename Pred,
+            typename F, typename... Ts>
         std::shared_ptr<async_replay_executor_helper<Result, std::decay_t<Pred>,
             std::decay_t<F>, std::tuple<std::decay_t<Ts>...>>>
         make_async_replay_executor_helper(Pred&& pred, F&& f, Ts&&... ts)
@@ -213,18 +213,24 @@ namespace hpx::resiliency::experimental {
         }
     }    // namespace detail
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f. Verify the result of those
-    // invocations using the given predicate pred. Repeat launching on error
-    // exactly n times (except if abort_replay_exception is thrown).
-    // clang-format off
-    template <typename Executor, typename Pred, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::traits::is_one_way_executor_v<Executor> ||
-            hpx::traits::is_two_way_executor_v<Executor>
-        )>
-    // clang-format on
-    decltype(auto) tag_invoke(async_replay_validate_t, Executor&& exec,
+    /// \brief ADL hook for async_replay_validate CPO with executor.
+    ///
+    /// Asynchronously launches \a f on \a exec, validating results with
+    /// \a pred. Repeats on error up to \a n times (aborts on
+    /// abort_replay_exception).
+    ///
+    /// \param tag   CPO tag (async_replay_validate_t).
+    /// \param exec  Executor to run \a f on.
+    /// \param n     Maximum number of retry attempts.
+    /// \param pred  Predicate validating each invocation result.
+    /// \param f     Callable to invoke asynchronously.
+    /// \param ts    Arguments forwarded to \a f.
+    ///
+    /// \returns future with the first valid result of \a f.
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename Pred, typename F,
+        typename... Ts>
+        requires(one_way_executor<Executor> || two_way_executor<Executor>)
+    decltype(auto) hpx_invoke(async_replay_validate_t, Executor&& exec,
         std::size_t n, Pred&& pred, F&& f, Ts&&... ts)
     {
         using result_type =
@@ -236,14 +242,21 @@ namespace hpx::resiliency::experimental {
         return helper->call(HPX_FORWARD(Executor, exec), n);
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f. Repeat launching on error exactly
-    // n times (except if abort_replay_exception is thrown). clang-format off
-    template <typename Executor, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(hpx::traits::is_one_way_executor_v<Executor> ||
-            hpx::traits::is_two_way_executor_v<Executor>)>
-    // clang-format on
-    decltype(auto) tag_invoke(
+    /// \brief ADL hook for async_replay CPO with executor.
+    ///
+    /// Asynchronously launches \a f on \a exec, repeating on error up to
+    /// \a n times (aborts on abort_replay_exception).
+    ///
+    /// \param tag   CPO tag (async_replay_t).
+    /// \param exec  Executor to run \a f on.
+    /// \param n     Maximum number of retry attempts.
+    /// \param f     Callable to invoke asynchronously.
+    /// \param ts    Arguments forwarded to \a f.
+    ///
+    /// \returns future with the first successful result of \a f.
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename F, typename... Ts>
+        requires(one_way_executor<Executor> || two_way_executor<Executor>)
+    decltype(auto) hpx_invoke(
         async_replay_t, Executor&& exec, std::size_t n, F&& f, Ts&&... ts)
     {
         using result_type =

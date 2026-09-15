@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,14 +6,17 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/coroutines/coroutine.hpp>
-#include <hpx/functional/bind.hpp>
-#include <hpx/functional/bind_front.hpp>
+#include <hpx/modules/coroutines.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/tracing.hpp>
 #include <hpx/threading_base/create_thread.hpp>
 #include <hpx/threading_base/detail/get_default_timer_service.hpp>
 #include <hpx/threading_base/set_thread_state_timed.hpp>
 #include <hpx/threading_base/threading_base_fwd.hpp>
+#ifdef HPX_HAVE_MODULE_LIKWID
+#include <hpx/modules/likwid.hpp>
+#endif
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
 #include <winsock2.h>
@@ -83,7 +86,7 @@ namespace hpx::threads::detail {
         // create a new thread in suspended state, which will execute the
         // requested set_state when timer fires and will re-awaken this thread,
         // allowing the deadline_timer to go out of scope gracefully
-        thread_id_ref_type const self_id = get_outer_self_id();    // keep alive
+        thread_id_ref_type const self_id = get_self_id();    // keep alive
 
         std::shared_ptr<std::atomic<bool>> triggered(
             std::make_shared<std::atomic<bool>>(false));
@@ -99,7 +102,7 @@ namespace hpx::threads::detail {
 
         // create timer firing in correspondence with given time
         using deadline_timer =
-            asio::basic_waitable_timer<std::chrono::steady_clock>;
+            ::asio::basic_waitable_timer<std::chrono::steady_clock>;
 
         deadline_timer t(get_default_timer_service(), abs_time);
 
@@ -129,8 +132,16 @@ namespace hpx::threads::detail {
         // this waits for the thread to be reactivated when the timer fired
         // if it returns signaled the timer has been canceled, otherwise
         // the timer fired and the wake_timer_thread above has been executed
-        thread_restart_state const statex = get_self().yield(thread_result_type(
-            thread_schedule_state::suspended, invalid_thread_id));
+        thread_restart_state statex;
+
+        {
+#ifdef HPX_HAVE_MODULE_LIKWID
+            hpx::likwid::suspend_region region;
+#endif
+            hpx::tracing::fiber_suspend_region tracy_suspend("timer_wait");
+            statex = get_self().yield(thread_result_type(
+                thread_schedule_state::suspended, invalid_thread_id));
+        }
 
         HPX_ASSERT(statex == thread_restart_state::abort ||
             statex == thread_restart_state::timeout);

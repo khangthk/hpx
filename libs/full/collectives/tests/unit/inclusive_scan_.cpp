@@ -1,4 +1,4 @@
-//  Copyright (c) 2019-2023 Hartmut Kaiser
+//  Copyright (c) 2019-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -21,7 +21,15 @@
 
 using namespace hpx::collectives;
 
+// Keep independently created communicators from aliasing in AGAS while
+// localities transition between test phases.
 constexpr char const* inclusive_scan_basename = "/test/inclusive_scan/";
+constexpr char const* inclusive_scan_multiple_use_basename =
+    "/test/inclusive_scan/multiple_use/";
+constexpr char const* inclusive_scan_explicit_generation_basename =
+    "/test/inclusive_scan/explicit_generation/";
+constexpr char const* inclusive_scan_local_basename =
+    "/test/inclusive_scan/local/";
 #if defined(HPX_DEBUG)
 constexpr int ITERATIONS = 100;
 #else
@@ -60,7 +68,7 @@ void test_multiple_use()
     HPX_TEST_LTE(static_cast<std::uint32_t>(2), num_localities);
 
     auto const inclusive_scan_client =
-        create_communicator(inclusive_scan_basename,
+        create_communicator(inclusive_scan_multiple_use_basename,
             num_sites_arg(num_localities), this_site_arg(here));
 
     // test functionality based on immediate local result value
@@ -86,7 +94,7 @@ void test_multiple_use_with_generation()
     HPX_TEST_LTE(static_cast<std::uint32_t>(2), num_localities);
 
     auto const inclusive_scan_client =
-        create_communicator(inclusive_scan_basename,
+        create_communicator(inclusive_scan_explicit_generation_basename,
             num_sites_arg(num_localities), this_site_arg(here));
 
     hpx::chrono::high_resolution_timer const t;
@@ -112,10 +120,8 @@ void test_multiple_use_with_generation()
     }
 }
 
-void test_local_use()
+void test_local_use(std::uint32_t num_sites)
 {
-    constexpr std::uint32_t num_sites = 10;
-
     std::vector<hpx::future<void>> sites;
     sites.reserve(num_sites);
 
@@ -124,7 +130,7 @@ void test_local_use()
     {
         sites.push_back(hpx::async([=]() {
             auto const inclusive_scan_client =
-                create_communicator(inclusive_scan_basename,
+                create_communicator(inclusive_scan_local_basename,
                     num_sites_arg(num_sites), this_site_arg(site));
 
             hpx::chrono::high_resolution_timer const t;
@@ -154,7 +160,11 @@ void test_local_use()
         }));
     }
 
-    hpx::wait_all(std::move(sites));
+    hpx::wait_all(sites);
+    for (auto& site : sites)
+    {
+        site.get();
+    }
 }
 
 int hpx_main()
@@ -170,7 +180,8 @@ int hpx_main()
 
     if (hpx::get_locality_id() == 0)
     {
-        test_local_use();
+        test_local_use(1);
+        test_local_use(10);
     }
 
     return hpx::finalize();

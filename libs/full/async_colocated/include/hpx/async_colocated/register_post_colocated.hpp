@@ -7,17 +7,19 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/async_colocated/functional/colocated_helpers.hpp>
-#include <hpx/async_distributed/bind_action.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/functional/bind.hpp>
-#include <hpx/functional/move_only_function.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/async_colocated/macros.hpp>
 
-namespace hpx { namespace detail {
+namespace hpx::detail {
 
-    template <typename Action, typename Ts = typename Action::arguments_type>
+    HPX_CXX_EXPORT template <typename Action,
+        typename Ts = typename Action::arguments_type>
     struct post_colocated_bound_action;
 
     template <typename Action, typename... Ts>
@@ -30,7 +32,4 @@ namespace hpx { namespace detail {
                 hpx::id_type>,
             Ts...>;
     };
-}}    // namespace hpx::detail
-
-#define HPX_REGISTER_APPLY_COLOCATED_DECLARATION(Action, Name)
-#define HPX_REGISTER_APPLY_COLOCATED(action, name)
+}    // namespace hpx::detail

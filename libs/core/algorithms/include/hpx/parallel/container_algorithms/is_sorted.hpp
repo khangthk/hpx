@@ -420,7 +420,7 @@ namespace hpx { namespace ranges {
     ///
     template <typename Rng, typename Pred = hpx::parallel::detail::less,
         typename Proj = hpx::identity>
-    hpx::traits::range_iterator_t<Rng>
+    std::ranges::iterator_t<Rng>
     is_sorted_until(Rng&& rng, Pred&& pred = Pred(), Proj&& proj = Proj());
 
     /// Returns the first element in the range rng that is not sorted.
@@ -488,7 +488,7 @@ namespace hpx { namespace ranges {
         typename Pred = hpx::parallel::detail::less,
         typename Proj = hpx::identity>
     typename hpx::parallel::util::detail::algorithm_result<ExPolicy,
-        hpx::traits::range_iterator_t<Rng>>
+        std::ranges::iterator_t<Rng>>
     is_sorted_until(ExPolicy&& policy, Rng&& rng, Pred&& pred = Pred(),
         Proj&& proj = Proj());
     // clang-format on
@@ -498,40 +498,42 @@ namespace hpx { namespace ranges {
 
 #include <hpx/config.hpp>
 #include <hpx/algorithms/traits/projected_range.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/iterator_support/range.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/is_sorted.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 
 #include <cstddef>
+#include <iterator>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
 namespace hpx::ranges {
 
-    inline constexpr struct is_sorted_t
-      : hpx::detail::tag_parallel_algorithm<is_sorted_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct is_sorted_t
+      : hpx::detail::tag_dispatch<is_sorted_t,
+            hpx::detail::tag_parallel_algorithm<is_sorted_t>>
     {
-    private:
         template <typename FwdIter, typename Sent,
             typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_forward_iterator_v<FwdIter> &&
-                hpx::traits::is_sentinel_for_v<Sent, FwdIter> &&
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
+                std::forward_iterator<FwdIter> &&
+                std::sentinel_for<Sent, FwdIter> &&
                 hpx::parallel::traits::is_projected_v<Proj, FwdIter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected<Proj, FwdIter>,
                     hpx::parallel::traits::projected<Proj, FwdIter>
                 >
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(hpx::ranges::is_sorted_t, FwdIter first,
-            Sent last, Pred pred = Pred(), Proj proj = Proj())
+        static bool invoke_default(
+            FwdIter first, Sent last, Pred pred = Pred(), Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted<FwdIter, Sent>().call(
                 hpx::execution::seq, first, last, HPX_MOVE(pred),
@@ -540,23 +542,23 @@ namespace hpx::ranges {
 
         template <typename ExPolicy, typename FwdIter, typename Sent,
             typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_forward_iterator_v<FwdIter> &&
-                hpx::traits::is_sentinel_for_v<Sent, FwdIter> &&
+                std::forward_iterator<FwdIter> &&
+                std::sentinel_for<Sent, FwdIter> &&
                 hpx::parallel::traits::is_projected_v<Proj, FwdIter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected<Proj, FwdIter>,
                     hpx::parallel::traits::projected<Proj, FwdIter>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy, bool>
-        tag_fallback_invoke(hpx::ranges::is_sorted_t, ExPolicy&& policy,
-            FwdIter first, Sent last, Pred pred = Pred(), Proj proj = Proj())
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy, bool>
+        invoke_default(ExPolicy&& policy, FwdIter first, Sent last,
+            Pred pred = Pred(), Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted<FwdIter, Sent>().call(
                 HPX_FORWARD(ExPolicy, policy), first, last, HPX_MOVE(pred),
@@ -564,75 +566,73 @@ namespace hpx::ranges {
         }
 
         template <typename Rng, typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_range_v<Rng> &&
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected_range<Proj, Rng>,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(hpx::ranges::is_sorted_t, Rng&& rng,
-            Pred pred = Pred(), Proj proj = Proj())
+        static bool invoke_default(
+            Rng&& rng, Pred pred = Pred(), Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted<
-                hpx::traits::range_iterator_t<Rng>,
-                hpx::traits::range_iterator_t<Rng>>()
+                std::ranges::iterator_t<Rng>, std::ranges::iterator_t<Rng>>()
                 .call(hpx::execution::seq, hpx::util::begin(rng),
                     hpx::util::end(rng), HPX_MOVE(pred), HPX_MOVE(proj));
         }
 
         template <typename ExPolicy, typename Rng,
             typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_range_v<Rng> &&
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected_range<Proj, Rng>,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy, bool>
-        tag_fallback_invoke(hpx::ranges::is_sorted_t, ExPolicy&& policy,
-            Rng&& rng, Pred pred = Pred(), Proj proj = Proj())
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy, bool>
+        invoke_default(ExPolicy&& policy, Rng&& rng, Pred pred = Pred(),
+            Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted<
-                hpx::traits::range_iterator_t<Rng>,
-                hpx::traits::range_iterator_t<Rng>>()
+                std::ranges::iterator_t<Rng>, std::ranges::iterator_t<Rng>>()
                 .call(HPX_FORWARD(ExPolicy, policy), hpx::util::begin(rng),
                     hpx::util::end(rng), HPX_MOVE(pred), HPX_MOVE(proj));
         }
     } is_sorted{};
 
-    inline constexpr struct is_sorted_until_t final
-      : hpx::detail::tag_parallel_algorithm<is_sorted_until_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct is_sorted_until_t final
+      : hpx::detail::tag_dispatch<is_sorted_until_t,
+            hpx::detail::tag_parallel_algorithm<is_sorted_until_t>>
     {
-    private:
         template <typename FwdIter, typename Sent,
             typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_forward_iterator_v<FwdIter> &&
-                hpx::traits::is_sentinel_for_v<Sent, FwdIter> &&
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
+                std::forward_iterator<FwdIter> &&
+                std::sentinel_for<Sent, FwdIter> &&
                 hpx::parallel::traits::is_projected_v<Proj, FwdIter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected<Proj, FwdIter>,
                     hpx::parallel::traits::projected<Proj, FwdIter>
                 >
-            )>
+            )
         // clang-format on
-        friend FwdIter tag_fallback_invoke(hpx::ranges::is_sorted_until_t,
+        static FwdIter invoke_default(
             FwdIter first, Sent last, Pred pred = Pred(), Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted_until<FwdIter, Sent>().call(
@@ -642,24 +642,24 @@ namespace hpx::ranges {
 
         template <typename ExPolicy, typename FwdIter, typename Sent,
             typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_forward_iterator_v<FwdIter> &&
-                hpx::traits::is_sentinel_for_v<Sent, FwdIter> &&
+                std::forward_iterator<FwdIter> &&
+                std::sentinel_for<Sent, FwdIter> &&
                 hpx::parallel::traits::is_projected_v<Proj, FwdIter> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected<Proj, FwdIter>,
                     hpx::parallel::traits::projected<Proj, FwdIter>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
             FwdIter>
-        tag_fallback_invoke(hpx::ranges::is_sorted_until_t, ExPolicy&& policy,
-            FwdIter first, Sent last, Pred pred = Pred(), Proj proj = Proj())
+        invoke_default(ExPolicy&& policy, FwdIter first, Sent last,
+            Pred pred = Pred(), Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted_until<FwdIter, Sent>().call(
                 HPX_FORWARD(ExPolicy, policy), first, last, HPX_MOVE(pred),
@@ -667,52 +667,49 @@ namespace hpx::ranges {
         }
 
         template <typename Rng, typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_range_v<Rng> &&
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected_range<Proj, Rng>,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::traits::range_iterator_t<Rng> tag_fallback_invoke(
-            hpx::ranges::is_sorted_until_t, Rng&& rng, Pred pred = Pred(),
-            Proj proj = Proj())
+        static std::ranges::iterator_t<Rng> invoke_default(
+            Rng&& rng, Pred pred = Pred(), Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted_until<
-                hpx::traits::range_iterator_t<Rng>,
-                hpx::traits::range_iterator_t<Rng>>()
+                std::ranges::iterator_t<Rng>, std::ranges::iterator_t<Rng>>()
                 .call(hpx::execution::seq, hpx::util::begin(rng),
                     hpx::util::end(rng), HPX_MOVE(pred), HPX_MOVE(proj));
         }
 
         template <typename ExPolicy, typename Rng,
             typename Pred = hpx::parallel::detail::less,
-            typename Proj = hpx::identity,
-            // clang-format off
-            HPX_CONCEPT_REQUIRES_(
+            typename Proj = hpx::identity>
+        // clang-format off
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                hpx::traits::is_range_v<Rng> &&
+                std::ranges::range<Rng> &&
                 hpx::parallel::traits::is_projected_range_v<Proj, Rng> &&
                 hpx::parallel::traits::is_indirect_callable_v<
                     hpx::execution::sequenced_policy, Pred,
                     hpx::parallel::traits::projected_range<Proj, Rng>,
                     hpx::parallel::traits::projected_range<Proj, Rng>
                 >
-            )>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
-            hpx::traits::range_iterator_t<Rng>>
-        tag_fallback_invoke(hpx::ranges::is_sorted_until_t, ExPolicy&& policy,
-            Rng&& rng, Pred pred = Pred(), Proj proj = Proj())
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
+            std::ranges::iterator_t<Rng>>
+        invoke_default(ExPolicy&& policy, Rng&& rng, Pred pred = Pred(),
+            Proj proj = Proj())
         {
             return hpx::parallel::detail::is_sorted_until<
-                hpx::traits::range_iterator_t<Rng>,
-                hpx::traits::range_iterator_t<Rng>>()
+                std::ranges::iterator_t<Rng>, std::ranges::iterator_t<Rng>>()
                 .call(HPX_FORWARD(ExPolicy, policy), hpx::util::begin(rng),
                     hpx::util::end(rng), HPX_MOVE(pred), HPX_MOVE(proj));
         }

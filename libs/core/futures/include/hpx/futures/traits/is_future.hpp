@@ -7,25 +7,17 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/futures/future_fwd.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <functional>
 #include <type_traits>
-
-namespace hpx {
-
-    template <typename R>
-    class future;
-
-    template <typename R>
-    class shared_future;
-}    // namespace hpx
 
 namespace hpx::traits {
 
     namespace detail {
 
-        template <typename Future, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename Future, typename Enable = void>
         struct is_unique_future : std::false_type
         {
         };
@@ -35,10 +27,10 @@ namespace hpx::traits {
         {
         };
 
-        template <typename R>
+        HPX_CXX_CORE_EXPORT template <typename R>
         inline constexpr bool is_unique_future_v = is_unique_future<R>::value;
 
-        template <typename Future, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename Future, typename Enable = void>
         struct is_future_customization_point : std::false_type
         {
         };
@@ -55,24 +47,24 @@ namespace hpx::traits {
         };
     }    // namespace detail
 
-    template <typename Future>
+    HPX_CXX_CORE_EXPORT template <typename Future>
     struct is_future
       : detail::is_future_customization_point<std::decay_t<Future>>
     {
     };
 
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     inline constexpr bool is_future_v = is_future<R>::value;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     using is_future_any = hpx::util::any_of<is_future<Ts>...>;
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     inline constexpr bool is_future_any_v = is_future_any<Ts...>::value;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Future>
+    HPX_CXX_CORE_EXPORT template <typename Future>
     struct is_ref_wrapped_future : std::false_type
     {
     };
@@ -83,7 +75,7 @@ namespace hpx::traits {
     {
     };
 
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     inline constexpr bool is_ref_wrapped_future_v =
         is_ref_wrapped_future<R>::value;
 }    // namespace hpx::traits

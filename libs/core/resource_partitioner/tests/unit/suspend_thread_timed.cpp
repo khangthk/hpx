@@ -26,8 +26,8 @@
 #include <utility>
 #include <vector>
 
-std::size_t const max_threads = (std::min)(
-    std::size_t(4), std::size_t(hpx::threads::hardware_concurrency()));
+std::size_t const max_threads = (std::min) (std::size_t(4),
+    std::size_t(hpx::threads::hardware_concurrency()));
 
 int hpx_main(int argc, char* argv[])
 {
@@ -60,7 +60,7 @@ int hpx_main(int argc, char* argv[])
         while (t.elapsed() < 1)
         {
             for (std::size_t i = 0;
-                 i < hpx::resource::get_num_threads("default"); ++i)
+                i < hpx::resource::get_num_threads("default"); ++i)
             {
                 fs.push_back(hpx::parallel::execution::async_execute_after(
                     exec, std::chrono::milliseconds(dist(gen)), []() {}));
@@ -100,7 +100,7 @@ int hpx_main(int argc, char* argv[])
 
         // Don't exit with suspended pus
         for (std::size_t thread_num_resume = 0; thread_num_resume < thread_num;
-             ++thread_num_resume)
+            ++thread_num_resume)
         {
             hpx::threads::resume_processing_unit(tp, thread_num_resume).get();
         }
@@ -141,6 +141,7 @@ int main(int argc, char* argv[])
         std::vector<hpx::resource::scheduling_policy> schedulers = {
             hpx::resource::scheduling_policy::local,
             hpx::resource::scheduling_policy::local_priority_fifo,
+            hpx::resource::scheduling_policy::local_priority_fifo_double,
 #if defined(HPX_HAVE_CXX11_STD_ATOMIC_128BIT)
             hpx::resource::scheduling_policy::local_priority_lifo,
 #endif

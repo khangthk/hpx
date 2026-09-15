@@ -9,14 +9,14 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_combinators/wait_all.hpp>
-#include <hpx/execution/executors/execution_information.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/parallel/algorithms/for_each.hpp>
-#include <hpx/runtime_local/get_worker_thread_num.hpp>
-#include <hpx/topology/topology.hpp>
-#include <hpx/type_support/construct_at.hpp>
+#include <hpx/modules/algorithms.hpp>
+#include <hpx/modules/async_combinators.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/topology.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <limits>
@@ -31,7 +31,7 @@
 namespace hpx::parallel::util {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T, typename Executors>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Executors>
     class numa_allocator
     {
         using executor_type = typename Executors::value_type;
@@ -53,15 +53,14 @@ namespace hpx::parallel::util {
             using other = numa_allocator<U, Executors>;
         };
 
-        numa_allocator(Executors const& executors, hpx::threads::topology& topo)
+        numa_allocator(
+            Executors const& executors, hpx::threads::topology& /* topo */)
           : executors_(executors)
-          , topo_(topo)
         {
         }
 
         numa_allocator(numa_allocator const& rhs)
           : executors_(rhs.executors_)
-          , topo_(rhs.topo_)
         {
         }
 
@@ -70,7 +69,6 @@ namespace hpx::parallel::util {
         template <typename U>
         numa_allocator(numa_allocator<U, Executors> const& rhs)
           : executors_(rhs.executors_)
-          , topo_(rhs.topo_)
         {
         }
 
@@ -87,18 +85,25 @@ namespace hpx::parallel::util {
         // memory allocation
         pointer allocate(size_type cnt, void const* = nullptr)
         {
-            // allocate memory
-            pointer p = static_cast<pointer>(topo_.allocate(cnt * sizeof(T)));
+            // allocate memory using the singleton topology
+            auto& topo = hpx::threads::get_topology();
+            pointer p = static_cast<pointer>(topo.allocate(cnt * sizeof(T)));
 
             // first touch policy, distribute evenly onto executors
-            std::size_t part_size = cnt / executors_.size();
+            // last partition receives any remainder elements to avoid
+            // leaving trailing elements untouched (which would cause
+            // incorrect NUMA domain bindings)
+            std::size_t const num_exec = executors_.size();
+            std::size_t const part_size = cnt / num_exec;
             std::vector<hpx::future<void>> first_touch;
-            first_touch.reserve(executors_.size());
+            first_touch.reserve(num_exec);
 
-            for (std::size_t i = 0; i != executors_.size(); ++i)
+            for (std::size_t i = 0; i != num_exec; ++i)
             {
                 pointer begin = p + i * part_size;
-                pointer end = begin + part_size;
+                // last executor covers any remainder
+                pointer end =
+                    (i + 1 == num_exec) ? (p + cnt) : (begin + part_size);
                 first_touch.push_back(hpx::for_each(
                     hpx::execution::par(hpx::execution::task).on(executors_[i]),
                     begin, end,
@@ -112,13 +117,14 @@ namespace hpx::parallel::util {
                         *reinterpret_cast<char*>(&val) = 0;
 
 #if defined(HPX_DEBUG)
+                        auto& topo_ = hpx::threads::get_topology();
                         // make sure memory was placed appropriately
                         hpx::threads::mask_type const mem_mask =
                             topo_.get_thread_affinity_mask_from_lva(&val);
 
                         std::size_t thread_num = hpx::get_worker_thread_num();
                         hpx::threads::mask_cref_type thread_mask =
-                            hpx::parallel::execution::get_pu_mask(
+                            hpx::execution::experimental::get_pu_mask(
                                 executors_[i], topo_, thread_num);
 
                         HPX_ASSERT(threads::mask_size(mem_mask) ==
@@ -143,7 +149,7 @@ namespace hpx::parallel::util {
 
         void deallocate(pointer p, size_type cnt) noexcept
         {
-            topo_.deallocate(p, cnt * sizeof(T));
+            hpx::threads::get_topology().deallocate(p, cnt * sizeof(T));
         }
 
         // size
@@ -179,7 +185,6 @@ namespace hpx::parallel::util {
         friend class numa_allocator;
 
         Executors const& executors_;
-        hpx::threads::topology& topo_;
     };
 }    // namespace hpx::parallel::util
 // namespace hpx::parallel::util

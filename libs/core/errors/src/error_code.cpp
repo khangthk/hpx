@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2011      Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -75,6 +75,11 @@ namespace hpx {
         /* 54 */ "out_of_range",
         /* 55 */ "length_error",
         /* 56 */ "migration_needs_retry",
+        /* 57 */ "stale_state",
+        /* 58 */ "target_fenced",
+        /* 59 */ "future_wait_timed_out",
+        /* 60 */ "locality_was_disconnected",
+        /* 61 */ "future_uncompleted",
 
         /*    */ ""};
     /// \endcond
@@ -103,13 +108,12 @@ namespace hpx {
                 return "HPX";
             }
 
-            [[nodiscard]] std::string message(int value) const override
+            [[nodiscard]] std::string message(int const value) const override
             {
                 if (value >= hpx::error::success &&
                     value < hpx::error::last_error)
                 {
-                    return std::string("HPX(") + error_names[value] +
-                        ")";    //-V108
+                    return std::string("HPX(") + error_names[value] + ")";
                 }
                 if (value & hpx::error::system_error_flag)
                 {
@@ -162,7 +166,14 @@ namespace hpx {
         return lightweight_hpx_category;
     }
 
-    std::error_category const& get_hpx_category(throwmode mode) noexcept
+    std::error_category const& get_lightweight_hpx_rethrow_category() noexcept
+    {
+        static detail::lightweight_hpx_category_rethrow
+            lightweight_hpx_category_rethrow;
+        return lightweight_hpx_category_rethrow;
+    }
+
+    std::error_category const& get_hpx_category(throwmode const mode) noexcept
     {
         switch (mode)
         {
@@ -170,18 +181,37 @@ namespace hpx {
             return get_hpx_rethrow_category();
 
         case throwmode::lightweight:
-        case throwmode::lightweight_rethrow:
             return get_lightweight_hpx_category();
 
+        case throwmode::lightweight_rethrow:
+            return get_lightweight_hpx_rethrow_category();
+
         case throwmode::plain:
-        default:
             break;
         }
         return get_hpx_category();
     }
 
+    throwmode get_throwmode(error_code const& ec)
+    {
+        std::error_category const& category = ec.category();
+        if (category == get_lightweight_hpx_rethrow_category())
+        {
+            return throwmode::lightweight_rethrow;
+        }
+        if (category == get_lightweight_hpx_category())
+        {
+            return throwmode::lightweight;
+        }
+        if (category == get_hpx_rethrow_category())
+        {
+            return throwmode::rethrow;
+        }
+        return throwmode::plain;
+    }
+
     ///////////////////////////////////////////////////////////////////////////
-    error_code::error_code(error e, throwmode mode)
+    error_code::error_code(error const e, throwmode const mode)
       : std::error_code(make_system_error_code(e, mode))
     {
         if (e != hpx::error::success && e != hpx::error::no_success &&
@@ -191,8 +221,8 @@ namespace hpx {
         }
     }
 
-    error_code::error_code(
-        error e, char const* func, char const* file, long line, throwmode mode)
+    error_code::error_code(error const e, char const* func, char const* file,
+        long const line, throwmode const mode)
       : std::error_code(make_system_error_code(e, mode))
     {
         if (e != hpx::error::success && e != hpx::error::no_success &&
@@ -202,7 +232,7 @@ namespace hpx {
         }
     }
 
-    error_code::error_code(error e, char const* msg, throwmode mode)
+    error_code::error_code(error const e, char const* msg, throwmode const mode)
       : std::error_code(make_system_error_code(e, mode))
     {
         if (e != hpx::error::success && e != hpx::error::no_success &&
@@ -212,8 +242,8 @@ namespace hpx {
         }
     }
 
-    error_code::error_code(error e, char const* msg, char const* func,
-        char const* file, long line, throwmode mode)
+    error_code::error_code(error const e, char const* msg, char const* func,
+        char const* file, long const line, throwmode const mode)
       : std::error_code(make_system_error_code(e, mode))
     {
         if (e != hpx::error::success && e != hpx::error::no_success &&
@@ -223,7 +253,8 @@ namespace hpx {
         }
     }
 
-    error_code::error_code(error e, std::string const& msg, throwmode mode)
+    error_code::error_code(
+        error const e, std::string const& msg, throwmode const mode)
       : std::error_code(make_system_error_code(e, mode))
     {
         if (e != hpx::error::success && e != hpx::error::no_success &&
@@ -233,8 +264,9 @@ namespace hpx {
         }
     }
 
-    error_code::error_code(error e, std::string const& msg, char const* func,
-        char const* file, long line, throwmode mode)
+    error_code::error_code(error const e, std::string const& msg,
+        char const* func, char const* file, long const line,
+        throwmode const mode)
       : std::error_code(make_system_error_code(e, mode))
     {
         if (e != hpx::error::success && e != hpx::error::no_success &&
@@ -244,7 +276,30 @@ namespace hpx {
         }
     }
 
-    error_code::error_code(int err, hpx::exception const& e)
+    error_code::error_code(std::error_code const& ec, std::string const& msg,
+        char const* func, char const* file, long const line,
+        throwmode const mode)
+      : std::error_code(ec)
+    {
+        std::error_category const& category = ec.category();
+        bool const is_hpx_category = category == get_hpx_category() ||
+            category == get_hpx_rethrow_category() ||
+            category == get_lightweight_hpx_category() ||
+            category == get_lightweight_hpx_rethrow_category();
+
+        if (is_hpx_category)
+        {
+            error const e = static_cast<error>(ec.value());
+            if (e != hpx::error::success && e != hpx::error::no_success &&
+                !(mode & throwmode::lightweight))
+            {
+                exception_ =
+                    detail::get_exception(e, msg, mode, func, file, line);
+            }
+        }
+    }
+
+    error_code::error_code(int const err, hpx::exception const& e)
     {
         this->std::error_code::assign(err, get_hpx_category());
         exception_ = std::make_exception_ptr(e);
@@ -255,6 +310,21 @@ namespace hpx {
             make_system_error_code(get_error(e), throwmode::rethrow))
       , exception_(e)
     {
+    }
+
+    void error_code::assign(
+        error e, std::string const& msg, throwmode const mode)
+    {
+        exception_ = {};
+
+        this->std::error_code::assign(
+            static_cast<int>(e), get_hpx_category(mode));
+
+        if (e != hpx::error::success && e != hpx::error::no_success &&
+            !(mode & throwmode::lightweight))
+        {
+            exception_ = detail::get_exception(e, msg, mode);
+        }
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -277,11 +347,13 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     error_code::error_code(error_code const& rhs)
       : std::error_code(rhs.value() == hpx::error::success ?
-                make_success_code(
-                    (category() == get_lightweight_hpx_category()) ?
+                static_cast<std::error_code const&>(make_success_code(
+                    (rhs.category() == get_lightweight_hpx_rethrow_category()) ?
+                        hpx::throwmode::lightweight_rethrow :
+                        (rhs.category() == get_lightweight_hpx_category()) ?
                         hpx::throwmode::lightweight :
-                        hpx::throwmode::plain) :
-                rhs)
+                        hpx::throwmode::plain)) :
+                static_cast<std::error_code const&>(rhs))
       , exception_(rhs.exception_)
     {
     }
@@ -295,7 +367,9 @@ namespace hpx {
             {
                 // if the rhs is a success code, we maintain our throw mode
                 this->std::error_code::operator=(make_success_code(
-                    (category() == get_lightweight_hpx_category()) ?
+                    (category() == get_lightweight_hpx_rethrow_category()) ?
+                        hpx::throwmode::lightweight_rethrow :
+                        (category() == get_lightweight_hpx_category()) ?
                         hpx::throwmode::lightweight :
                         hpx::throwmode::plain));
             }

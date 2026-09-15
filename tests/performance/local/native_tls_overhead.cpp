@@ -6,7 +6,7 @@
 
 #include <hpx/config.hpp>
 
-#include <hpx/concurrency/barrier.hpp>
+#include <hpx/modules/concurrency.hpp>
 #include <hpx/modules/format.hpp>
 #include <hpx/modules/program_options.hpp>
 #include <hpx/modules/timing.hpp>
@@ -35,7 +35,7 @@ inline void worker(hpx::util::barrier& b, std::uint64_t updates)
 {
     b.wait();
 
-    for (double i = 0.; i < updates; ++i)
+    for (double i = 0.; i < static_cast<double>(updates); ++i)
     {
         global_scratch = new double;
 
@@ -99,7 +99,7 @@ int main(int argc, char** argv)
             thread.join();
     }
 
-    const double duration = t.elapsed();
+    double const duration = t.elapsed();
 
     ///////////////////////////////////////////////////////////////////////////
     // output results

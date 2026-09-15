@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2013-2014 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -15,10 +15,8 @@
 #include <hpx/modules/runtime_configuration.hpp>
 #include <hpx/modules/runtime_local.hpp>
 #include <hpx/modules/threading.hpp>
+#include <hpx/modules/tracing.hpp>
 #include <hpx/modules/util.hpp>
-#if defined(HPX_HAVE_APEX)
-#include <hpx/modules/threading_base.hpp>
-#endif
 
 #include <hpx/parcelset_base/parcelport.hpp>
 
@@ -37,10 +35,8 @@ namespace hpx::parcelset {
         std::size_t zero_copy_serialization_threshold)
       : num_parcel_destinations_(0)
       , here_(HPX_MOVE(here))
-      , max_inbound_message_size_(
-            static_cast<std::int64_t>(ini.get_max_inbound_message_size()))
-      , max_outbound_message_size_(
-            static_cast<std::int64_t>(ini.get_max_outbound_message_size()))
+      , max_inbound_message_size_(0)
+      , max_outbound_message_size_(0)
       , allow_array_optimizations_(true)
       , allow_zero_copy_optimizations_(true)
       , allow_zero_copy_receive_optimizations_(true)
@@ -52,6 +48,13 @@ namespace hpx::parcelset {
     {
         std::string key("hpx.parcel.");
         key += type;
+
+        // clang-format off
+        max_inbound_message_size_ = static_cast<std::int64_t>(
+            ini.get_max_inbound_message_size(type));
+        max_outbound_message_size_ = static_cast<std::int64_t>(
+            ini.get_max_outbound_message_size(type));
+        // clang-format on
 
         if (hpx::util::get_entry_as<int>(ini, key + ".array_optimization", 1) ==
             0)
@@ -338,7 +341,7 @@ namespace hpx::parcelset {
         std::int64_t count = 0;
         for (auto&& p : pending_parcels_)
         {
-            count += hpx::get<0>(p.second).size();
+            count += static_cast<std::int64_t>(hpx::get<0>(p.second).size());
             HPX_ASSERT(
                 hpx::get<0>(p.second).size() == hpx::get<1>(p.second).size());
         }
@@ -399,9 +402,8 @@ namespace hpx::parcelset {
             return;
         }
 
-#if defined(HPX_HAVE_APEX) && defined(HPX_HAVE_PARCEL_PROFILING)
-        // tell APEX about the parcel sent
-        util::external_timer::send(
+#if defined(HPX_HAVE_PARCEL_PROFILING)
+        hpx::tracing::send_parcel(p.parcel_id().get_msb(),
             p.parcel_id().get_lsb(), p.size(), p.destination_locality_id());
 #endif
     }

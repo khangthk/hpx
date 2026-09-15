@@ -1,4 +1,4 @@
-//  Copyright (c) 2015-2024 Hartmut Kaiser
+//  Copyright (c) 2015-2026 Hartmut Kaiser
 //  Copyright (c) 2015-2016 Thomas Heller
 //  Copyright (c) 2024 Hartmut Kaiser
 //
@@ -12,10 +12,11 @@
 #include <hpx/assert.hpp>
 #include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/synchronization.hpp>
 #include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/naming/credit_handling.hpp>
-#include <hpx/synchronization/spinlock.hpp>
-#include <hpx/type_support/extra_data.hpp>
 
 #include <cstddef>
 #include <map>
@@ -30,7 +31,7 @@ namespace hpx::serialization::detail {
     ///////////////////////////////////////////////////////////////////////////
     // This class allows to handle credit splitting for gid_types during
     // serialization.
-    class preprocess_gid_types
+    HPX_CXX_EXPORT class preprocess_gid_types
     {
         using mutex_type = hpx::spinlock;
 
@@ -123,20 +124,22 @@ namespace hpx::serialization::detail {
         }
 
     private:
-        mutable mutex_type mtx_;
+        mutable mutex_type mtx_ = mutex_type("preprocess_gid_types");
         split_gids_map split_gids_;
     };
 }    // namespace hpx::serialization::detail
 
-// This is explicitly instantiated to ensure that the id is stable across
-// shared libraries.
-template <>
-struct hpx::util::extra_data_helper<
-    hpx::serialization::detail::preprocess_gid_types>
-{
-    HPX_EXPORT static extra_data_id_type id() noexcept;
-    static constexpr void reset(
-        serialization::detail::preprocess_gid_types*) noexcept
+namespace hpx::util {
+
+    // This is explicitly instantiated to ensure that the id is stable across
+    // shared libraries.
+    template <>
+    struct extra_data_helper<hpx::serialization::detail::preprocess_gid_types>
     {
-    }
-};
+        HPX_EXPORT static extra_data_id_type id() noexcept;
+        static constexpr void reset(
+            serialization::detail::preprocess_gid_types*) noexcept
+        {
+        }
+    };
+}    // namespace hpx::util

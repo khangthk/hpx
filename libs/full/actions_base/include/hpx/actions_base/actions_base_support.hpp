@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //  Copyright (c)      2011 Thomas Heller
 //
@@ -14,14 +14,8 @@
 #include <hpx/actions_base/actions_base_fwd.hpp>
 #include <hpx/actions_base/actions_base_support.hpp>
 #include <hpx/actions_base/traits/action_remote_result.hpp>
-#include <hpx/debugging/demangle_helper.hpp>
-#include <hpx/serialization/traits/needs_automatic_registration.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/threading_base/thread_init_data.hpp>
-#if defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0 &&                  \
-    !defined(HPX_HAVE_APEX)
-#include <hpx/modules/itt_notify.hpp>
-#endif
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <cstdint>
 
@@ -35,7 +29,7 @@ namespace hpx::actions::detail {
     // Figure out what priority the action has to be associated with a
     // dynamically specified default priority results in using the static
     // Priority.
-    template <threads::thread_priority Priority>
+    HPX_CXX_EXPORT template <threads::thread_priority Priority>
     struct thread_priority
     {
         constexpr static threads::thread_priority call(
@@ -67,7 +61,7 @@ namespace hpx::actions::detail {
     // Figure out what stacksize the action has to be associated with a
     // dynamically specified default stacksize results in using the static
     // Stacksize.
-    template <threads::thread_stacksize Stacksize>
+    HPX_CXX_EXPORT template <threads::thread_stacksize Stacksize>
     struct thread_stacksize
     {
         constexpr static threads::thread_stacksize call(
@@ -94,55 +88,13 @@ namespace hpx::actions::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-#if defined(HPX_HAVE_NETWORKING)
-    template <typename Action>
-    char const* get_action_name() noexcept
-#if !defined(HPX_HAVE_AUTOMATIC_SERIALIZATION_REGISTRATION)
-        ;
-#else
-    {
-        /// If you encounter this assert while compiling code, that means that
-        /// you have a HPX_REGISTER_ACTION macro somewhere in a source file,
-        /// but the header in which the action is defined misses a
-        /// HPX_REGISTER_ACTION_DECLARATION
-        static_assert(traits::needs_automatic_registration_v<Action>,
-            "HPX_REGISTER_ACTION_DECLARATION missing");
-        return util::debug::type_id<Action>::typeid_.type_id();
-    }
-#endif
-#else    // HPX_HAVE_NETWORKING
-    template <typename Action>
-    char const* get_action_name() noexcept
-    {
-        return util::debug::type_id<Action>::typeid_.type_id();
-    }
-#endif
-
-    ///////////////////////////////////////////////////////////////////////////
-    template <typename Action>
+    HPX_CXX_EXPORT template <typename Action>
     std::uint32_t get_action_id()
     {
         static std::uint32_t id =
             get_action_id_from_name(get_action_name<Action>());
         return id;
     }
-
-#if defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0 &&                  \
-    !defined(HPX_HAVE_APEX)
-
-    template <typename Action>
-    util::itt::string_handle const& get_action_name_itt() noexcept
-#if !defined(HPX_HAVE_AUTOMATIC_SERIALIZATION_REGISTRATION)
-        ;
-#else
-    {
-        static util::itt::string_handle sh =
-            util::itt::string_handle(get_action_name<Action>());
-        return sh;
-    }
-#endif
-#endif
-
     /// \endcond
 }    // namespace hpx::actions::detail
 

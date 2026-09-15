@@ -8,9 +8,9 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/execution/traits/is_execution_policy.hpp>
-#include <hpx/futures/future.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/futures.hpp>
 #include <hpx/parallel/util/detail/handle_exception_termination_handler.hpp>
 
 #if defined(HPX_COMPUTE_DEVICE_CODE)
@@ -29,7 +29,7 @@
 namespace hpx::parallel::util::detail {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename ExPolicy, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Enable = void>
     struct handle_local_exceptions
     {
         ///////////////////////////////////////////////////////////////////////
@@ -537,7 +537,7 @@ namespace hpx::parallel::util::detail {
         }
     };
 
-    struct terminate_on_local_exceptions
+    HPX_CXX_CORE_EXPORT struct terminate_on_local_exceptions
     {
         ///////////////////////////////////////////////////////////////////////
         [[noreturn]] static void call(std::exception_ptr const&)

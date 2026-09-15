@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,17 +10,12 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
 #include <hpx/components/client_base.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/components_base/get_lva.hpp>
-#include <hpx/components_base/traits/component_pin_support.hpp>
-#include <hpx/components_base/traits/component_type_is_compatible.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/components_base.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/naming_base/id_type.hpp>
+#include <hpx/modules/naming_base.hpp>
 
 #include <memory>
 
@@ -31,7 +26,7 @@ namespace hpx {
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
-        struct get_ptr_deleter
+        HPX_CXX_EXPORT struct get_ptr_deleter
         {
             explicit get_ptr_deleter(hpx::id_type id) noexcept
               : id_(HPX_MOVE(id))
@@ -48,7 +43,7 @@ namespace hpx {
             hpx::id_type id_;    // holds component alive
         };
 
-        struct get_ptr_no_unpin_deleter
+        HPX_CXX_EXPORT struct get_ptr_no_unpin_deleter
         {
             explicit get_ptr_no_unpin_deleter(hpx::id_type id) noexcept
               : id_(HPX_MOVE(id))
@@ -64,7 +59,7 @@ namespace hpx {
             hpx::id_type id_;    // holds component alive
         };
 
-        struct get_ptr_for_migration_deleter
+        HPX_CXX_EXPORT struct get_ptr_for_migration_deleter
         {
             explicit get_ptr_for_migration_deleter(hpx::id_type id) noexcept
               : id_(HPX_MOVE(id))
@@ -92,7 +87,7 @@ namespace hpx {
             hpx::id_type id_;    // holds component alive
         };
 
-        template <typename Component, typename Deleter>
+        HPX_CXX_EXPORT template <typename Component, typename Deleter>
         std::shared_ptr<Component> get_ptr_postproc(naming::address const& addr,
             hpx::id_type const& id, bool pin_object = true)
         {
@@ -126,7 +121,7 @@ namespace hpx {
         ///////////////////////////////////////////////////////////////////////
         // This is similar to get_ptr<> below, except that the shared_ptr will
         // delete the local instance when it goes out of scope.
-        template <typename Component>
+        HPX_CXX_EXPORT template <typename Component>
         std::shared_ptr<Component> get_ptr_for_migration(
             naming::address const& addr, hpx::id_type const& id)
         {
@@ -136,7 +131,7 @@ namespace hpx {
         }
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Component>
+        HPX_CXX_EXPORT template <typename Component>
         std::shared_ptr<Component> resolve_get_ptr_local(hpx::id_type const& id)
         {
             return std::shared_ptr<Component>(
@@ -145,7 +140,7 @@ namespace hpx {
                 detail::get_ptr_no_unpin_deleter(id));
         }
 
-        template <typename Component>
+        HPX_CXX_EXPORT template <typename Component>
         hpx::future_or_value<std::shared_ptr<Component>> get_ptr(
             hpx::id_type const& id)
         {
@@ -216,7 +211,7 @@ namespace hpx {
     ///            not be migrated as long as there is at least one copy of the
     ///            returned shared_ptr alive.
     ///
-    template <typename Component>
+    HPX_CXX_EXPORT template <typename Component>
     hpx::future<std::shared_ptr<Component>> get_ptr(hpx::id_type const& id)
     {
         auto result = detail::get_ptr<Component>(id);
@@ -251,7 +246,7 @@ namespace hpx {
     ///            not be migrated as long as there is at least one copy of the
     ///            returned shared_ptr alive.
     ///
-    template <typename Derived, typename Stub, typename Data>
+    HPX_CXX_EXPORT template <typename Derived, typename Stub, typename Data>
     hpx::future<std::shared_ptr<typename components::client_base<Derived, Stub,
         Data>::server_component_type>>
     get_ptr(components::client_base<Derived, Stub, Data> const& c)
@@ -300,7 +295,7 @@ namespace hpx {
     std::shared_ptr<Component> get_ptr(
         launch::sync_policy p, hpx::id_type const& id, error_code& ec = throws);
 #else
-    template <typename Component>
+    HPX_CXX_EXPORT template <typename Component>
     std::shared_ptr<Component> get_ptr(
         launch::sync_policy, hpx::id_type const& id, error_code& ec = throws)
     {
@@ -343,7 +338,7 @@ namespace hpx {
     ///            parameter \a ec. Otherwise, it throws an instance of
     ///            hpx::exception.
     ///
-    template <typename Derived, typename Stub, typename Data>
+    HPX_CXX_EXPORT template <typename Derived, typename Stub, typename Data>
     std::shared_ptr<typename components::client_base<Derived, Stub,
         Data>::server_component_type>
     get_ptr(launch::sync_policy p,

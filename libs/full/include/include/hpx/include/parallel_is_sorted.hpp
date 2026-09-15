@@ -6,5 +6,6 @@
 
 #pragma once
 
-#include <hpx/parallel/algorithms/is_sorted.hpp>
-#include <hpx/parallel/container_algorithms/is_sorted.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/algorithms.hpp>
+#include <hpx/modules/segmented_algorithms.hpp>

@@ -14,7 +14,7 @@
 #include <hpx/coroutines/detail/get_stack_pointer.hpp>
 #include <hpx/coroutines/detail/swap_context.hpp>
 #if defined(HPX_HAVE_COROUTINE_COUNTERS)
-#include <hpx/util/get_and_reset_value.hpp>
+#include <hpx/modules/util.hpp>
 #endif
 
 // include unistd.h conditionally to check for POSIX version. Not all OSs have
@@ -82,17 +82,17 @@ namespace hpx::threads::coroutines {
 #if !defined(HPX_GENERIC_CONTEXT_USE_SEGMENTED_STACKS)
         struct stack_allocator
         {
-            static constexpr std::size_t maximum_stacksize() noexcept
+            static constexpr std::ptrdiff_t maximum_stacksize() noexcept
             {
                 return HPX_HUGE_STACK_SIZE;
             }
 
-            static constexpr std::size_t default_stacksize() noexcept
+            static constexpr std::ptrdiff_t default_stacksize() noexcept
             {
                 return HPX_MEDIUM_STACK_SIZE;
             }
 
-            static constexpr std::size_t minimum_stacksize() noexcept
+            static constexpr std::ptrdiff_t minimum_stacksize() noexcept
             {
                 return HPX_SMALL_STACK_SIZE;
             }
@@ -127,18 +127,18 @@ namespace hpx::threads::coroutines {
         {
             typedef void* segments_context[HPX_COROUTINES_SEGMENTS];
 
-            static std::size_t maximum_stacksize() noexcept
+            static std::ptrdiff_t maximum_stacksize() noexcept
             {
                 HPX_ASSERT_MSG(false, "segmented stack is unbound");
                 return 0;
             }
 
-            static constexpr std::size_t default_stacksize() noexcept
+            static constexpr std::ptrdiff_t default_stacksize() noexcept
             {
                 return minimum_stacksize();
             }
 
-            static constexpr std::size_t minimum_stacksize() noexcept
+            static constexpr std::ptrdiff_t minimum_stacksize() noexcept
             {
                 return SIGSTKSZ + sizeof(boost::context::detail::fcontext_t) +
                     15;
@@ -191,6 +191,7 @@ namespace hpx::threads::coroutines {
         class fcontext_context_impl
         {
         public:
+            // NOLINTNEXTLINE(bugprone-crtp-constructor-accessibility)
             HPX_NON_COPYABLE(fcontext_context_impl);
 
         public:
@@ -198,6 +199,7 @@ namespace hpx::threads::coroutines {
 
             // Create a context that on restore invokes Functor on
             // a new stack. The stack size can be optionally specified.
+            // NOLINTNEXTLINE(bugprone-crtp-constructor-accessibility)
             explicit fcontext_context_impl(std::ptrdiff_t stack_size = -1)
               : cb_(std::make_pair(static_cast<void*>(this), nullptr))
               , funp_(&trampoline<CoroutineImpl>)
@@ -205,7 +207,7 @@ namespace hpx::threads::coroutines {
               , alloc_()
               , stack_size_((stack_size == -1) ?
                         alloc_.minimum_stacksize() :
-                        static_cast<std::size_t>(stack_size))
+                        static_cast<std::ptrdiff_t>(stack_size))
               , stack_pointer_(nullptr)
             {
             }
@@ -349,7 +351,7 @@ namespace hpx::threads::coroutines {
             void (*funp_)(boost::context::detail::transfer_t);
             boost::context::detail::fcontext_t ctx_;
             stack_allocator alloc_;
-            std::size_t stack_size_;
+            std::ptrdiff_t stack_size_;
             void* stack_pointer_;
         };
     }    // namespace detail::generic_context

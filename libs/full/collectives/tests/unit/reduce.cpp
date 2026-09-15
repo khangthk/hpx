@@ -1,4 +1,4 @@
-//  Copyright (c) 2019-2023 Hartmut Kaiser
+//  Copyright (c) 2019-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -20,12 +20,35 @@
 
 using namespace hpx::collectives;
 
+// Keep independently created communicators from aliasing in AGAS while
+// localities transition between test phases.
 constexpr char const* reduce_direct_basename = "/test/reduce_direct/";
+constexpr char const* reduce_direct_multiple_use_basename =
+    "/test/reduce_direct/multiple_use/";
+constexpr char const* reduce_direct_explicit_generation_basename =
+    "/test/reduce_direct/explicit_generation/";
+constexpr char const* reduce_direct_local_basename =
+    "/test/reduce_direct/local/";
 #if defined(HPX_DEBUG)
 constexpr int ITERATIONS = 100;
 #else
 constexpr int ITERATIONS = 1000;
 #endif
+
+struct move_only_plus
+{
+    move_only_plus() = default;
+    move_only_plus(move_only_plus const&) = delete;
+    move_only_plus(move_only_plus&&) = default;
+    move_only_plus& operator=(move_only_plus const&) = delete;
+    move_only_plus& operator=(move_only_plus&&) = default;
+
+    std::uint32_t operator()(
+        std::uint32_t lhs, std::uint32_t rhs) const noexcept
+    {
+        return lhs + rhs;
+    }
+};
 
 void test_one_shot_use()
 {
@@ -70,7 +93,7 @@ void test_multiple_use()
     HPX_TEST_LTE(static_cast<std::uint32_t>(2), num_localities);
 
     auto const reduce_direct_client =
-        create_communicator(reduce_direct_basename,
+        create_communicator(reduce_direct_multiple_use_basename,
             num_sites_arg(num_localities), this_site_arg(this_locality));
 
     // test functionality based on immediate local result value
@@ -107,7 +130,7 @@ void test_multiple_use_with_generation()
     HPX_TEST_LTE(static_cast<std::uint32_t>(2), num_localities);
 
     auto const reduce_direct_client =
-        create_communicator(reduce_direct_basename,
+        create_communicator(reduce_direct_explicit_generation_basename,
             num_sites_arg(num_localities), this_site_arg(this_locality));
 
     hpx::chrono::high_resolution_timer const t;
@@ -143,10 +166,8 @@ void test_multiple_use_with_generation()
     }
 }
 
-void test_local_use()
+void test_local_use(std::uint32_t num_sites)
 {
-    constexpr std::uint32_t num_sites = 10;
-
     std::vector<hpx::future<void>> sites;
     sites.reserve(num_sites);
 
@@ -155,7 +176,7 @@ void test_local_use()
     {
         sites.push_back(hpx::async([=]() {
             auto const reduce_direct_client =
-                create_communicator(reduce_direct_basename,
+                create_communicator(reduce_direct_local_basename,
                     num_sites_arg(num_sites), this_site_arg(site));
 
             hpx::chrono::high_resolution_timer const t;
@@ -166,9 +187,10 @@ void test_local_use()
                 auto value = site + i;
                 if (site == 0)
                 {
-                    hpx::future<std::uint32_t> overall_result = reduce_here(
-                        reduce_direct_client, std::move(value), std::plus<>{},
-                        generation_arg(i + 1), this_site_arg(site));
+                    hpx::future<std::uint32_t> overall_result =
+                        reduce_here(reduce_direct_client, std::move(value),
+                            move_only_plus{}, generation_arg(i + 1),
+                            this_site_arg(site));
 
                     std::uint32_t sum = 0;
                     for (std::uint32_t j = 0; j != num_sites; ++j)
@@ -189,7 +211,7 @@ void test_local_use()
             auto const elapsed = t.elapsed();
             if (site == 0)
             {
-                std::cout << "local timing: " << elapsed / (10 * ITERATIONS)
+                std::cout << "local timing: " << elapsed / ITERATIONS
                           << "[s]\n";
             }
         }));
@@ -211,7 +233,8 @@ int hpx_main()
 
     if (hpx::get_locality_id() == 0)
     {
-        test_local_use();
+        test_local_use(1);
+        test_local_use(10);
     }
 
     return hpx::finalize();

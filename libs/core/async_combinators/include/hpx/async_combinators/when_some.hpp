@@ -184,20 +184,12 @@ namespace hpx {
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/tag_invoke.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/futures_factory.hpp>
-#include <hpx/futures/traits/acquire_future.hpp>
-#include <hpx/futures/traits/acquire_shared_state.hpp>
-#include <hpx/futures/traits/detail/future_traits.hpp>
-#include <hpx/futures/traits/future_access.hpp>
-#include <hpx/futures/traits/is_future.hpp>
-#include <hpx/futures/traits/is_future_range.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/type_support/pack.hpp>
-#include <hpx/util/detail/reserve.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/type_support.hpp>
+#include <hpx/modules/util.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -212,7 +204,7 @@ namespace hpx {
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx {
 
-    template <typename Sequence>
+    HPX_CXX_CORE_EXPORT template <typename Sequence>
     struct when_some_result
     {
         when_some_result() = default;
@@ -383,7 +375,7 @@ namespace hpx::lcos::detail {
             // set callback functions to executed when future is ready
             set_on_completed_callback(*this);
 
-            // if all of the requested futures are already set, our
+            // if all the requested futures are already set, our
             // callback above has already been called often enough, otherwise
             // we suspend ourselves
             if (!goal_reached_on_calling_thread_.load(
@@ -400,7 +392,7 @@ namespace hpx::lcos::detail {
             return HPX_MOVE(values_);
         }
 
-        mutable mutex_type mtx_;
+        mutable mutex_type mtx_ = mutex_type("when_some");
         when_some_result<Sequence> values_;
         std::atomic<std::size_t> count_;
         std::size_t needed_count_;
@@ -411,14 +403,12 @@ namespace hpx::lcos::detail {
 namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct when_some_t final
-      : hpx::functional::tag<when_some_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct when_some_t final
     {
-    private:
         template <typename Range,
             typename Enable =
                 std::enable_if_t<traits::is_future_range_v<Range>>>
-        friend auto tag_invoke(when_some_t, std::size_t n, Range&& lazy_values)
+        auto operator()(std::size_t n, Range&& lazy_values) const
         {
             using result_type = std::decay_t<Range>;
 
@@ -455,8 +445,8 @@ namespace hpx {
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend decltype(auto) tag_invoke(
-            when_some_t, std::size_t n, Iterator begin, Iterator end)
+        decltype(auto) operator()(
+            std::size_t n, Iterator begin, Iterator end) const
         {
             using value_type = lcos::detail::future_iterator_traits_t<Iterator>;
 
@@ -467,10 +457,10 @@ namespace hpx {
             std::transform(begin, end, std::back_inserter(values),
                 traits::acquire_future_disp());
 
-            return tag_invoke(when_some_t{}, n, HPX_MOVE(values));
+            return (*this)(n, HPX_MOVE(values));
         }
 
-        friend decltype(auto) tag_invoke(when_some_t, std::size_t n)
+        decltype(auto) operator()(std::size_t n) const
         {
             using result_type = hpx::tuple<>;
 
@@ -488,7 +478,7 @@ namespace hpx {
         template <typename T, typename... Ts,
             typename Enable = std::enable_if_t<!(
                 traits::is_future_range_v<T> && sizeof...(Ts) == 0)>>
-        friend auto tag_invoke(when_some_t, std::size_t n, T&& t, Ts&&... ts)
+        auto operator()(std::size_t n, T&& t, Ts&&... ts) const
         {
             using result_type = hpx::tuple<traits::acquire_future_t<T>,
                 traits::acquire_future_t<Ts>...>;
@@ -526,15 +516,13 @@ namespace hpx {
     } when_some{};
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct when_some_n_t final
-      : hpx::functional::tag<when_some_n_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct when_some_n_t final
     {
-    private:
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend decltype(auto) tag_invoke(
-            when_some_n_t, std::size_t n, Iterator begin, std::size_t count)
+        decltype(auto) operator()(
+            std::size_t n, Iterator begin, std::size_t count) const
         {
             using value_type = lcos::detail::future_iterator_traits_t<Iterator>;
 
@@ -551,80 +539,5 @@ namespace hpx {
         }
     } when_some_n{};
 }    // namespace hpx
-
-namespace hpx::lcos {
-
-    template <typename Range>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_some is deprecated. Use hpx::when_some instead.")
-    std::enable_if_t<traits::is_future_range_v<Range>,
-        hpx::future<
-            when_some_result<std::decay_t<Range>>>> when_some(std::size_t n,
-        Range&& values, error_code& = throws)
-    {
-        return hpx::when_some(n, HPX_FORWARD(Range, values));
-    }
-
-    template <typename Iterator,
-        typename Container =
-            std::vector<lcos::detail::future_iterator_traits_t<Iterator>>,
-        typename Enable =
-            std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_some is deprecated. Use hpx::when_some instead.")
-    hpx::future<when_some_result<Container>> when_some(
-        std::size_t n, Iterator begin, Iterator end, error_code& = throws)
-    {
-        return hpx::when_some(n, begin, end);
-    }
-
-    template <typename Iterator,
-        typename Container =
-            std::vector<lcos::detail::future_iterator_traits_t<Iterator>>,
-        typename Enable =
-            std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::when_some_n is deprecated. Use hpx::when_some_n instead.")
-    hpx::future<when_some_result<Container>> when_some_n(
-        std::size_t n, Iterator begin, std::size_t count, error_code& = throws)
-    {
-        return hpx::when_some(n, begin, count);
-    }
-
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_some is deprecated. Use hpx::when_some instead.")
-    inline hpx::future<when_some_result<hpx::tuple<>>> when_some(
-        std::size_t n, error_code& = throws)
-    {
-        return hpx::when_some(n);
-    }
-
-    template <typename T, typename... Ts>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_some is deprecated. Use hpx::when_some instead.")
-    std::enable_if_t<!(traits::is_future_range_v<T> && sizeof...(Ts) == 0),
-        hpx::future<when_some_result<hpx::tuple<traits::acquire_future_t<T>,
-            traits::acquire_future_t<Ts>...>>>> when_some(std::size_t n, T&& t,
-        Ts&&... ts)
-    {
-        return hpx::when_some(n, HPX_FORWARD(T, t), HPX_FORWARD(Ts, ts)...);
-    }
-
-    template <typename T, typename... Ts>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_some is deprecated. Use hpx::when_some instead.")
-    std::enable_if_t<!(traits::is_future_range_v<T> && sizeof...(Ts) == 0),
-        hpx::future<when_some_result<hpx::tuple<traits::acquire_future_t<T>,
-            traits::acquire_future_t<Ts>...>>>> when_some(std::size_t n,
-        error_code&, T&& t, Ts&&... ts)
-    {
-        return hpx::when_some(n, HPX_FORWARD(T, t), HPX_FORWARD(Ts, ts)...);
-    }
-
-    template <typename Container>
-    using when_some_result HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::when_some_result is deprecated. Use hpx::when_some_result "
-        "instead.") = hpx::when_some_result<Container>;
-}    // namespace hpx::lcos
 
 #endif    // DOXYGEN

@@ -2,6 +2,7 @@
 //  Copyright (c)      2020 Google
 //  Copyright (c)      2022 Patrick Diehl
 //  Copyright (c)      2023 Hartmut Kaiser
+//  Copyright (c)      2024 Jiakun Yan
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,7 +10,7 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/concepts/has_xxx.hpp>
+#include <hpx/modules/concepts.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/logging.hpp>
 #include <hpx/modules/mpi_base.hpp>
@@ -77,6 +78,9 @@ namespace hpx::util {
                     get_entry_as(cfg, "hpx.parcel.mpi.priority", 0))) ||
             (get_entry_as(cfg, "hpx.parcel.lci.enable", 1) &&
                 (get_entry_as(cfg, "hpx.parcel.lci.priority", 1) >
+                    get_entry_as(cfg, "hpx.parcel.mpi.priority", 0))) ||
+            (get_entry_as(cfg, "hpx.parcel.lcw.enable", 1) &&
+                (get_entry_as(cfg, "hpx.parcel.lcw.priority", 1) >
                     get_entry_as(cfg, "hpx.parcel.mpi.priority", 0))))
         {
             LBT_(info) << "MPI support disabled via configuration settings\n";
@@ -317,6 +321,29 @@ namespace hpx::util {
             MPI_Finalized(&is_finalized);
             if (!is_finalized)
             {
+                if (communicator_ != MPI_COMM_NULL)
+                {
+                    // Synchronize entry into MPI_Finalize across all ranks.
+                    // The runtime shuts down independently on every
+                    // locality, so ranks reach this point at noticeably
+                    // different times. Entering MPI_Finalize while peers
+                    // are still communicating exposes teardown races in
+                    // the underlying MPI implementation (observed with
+                    // Open MPI's btl/uct: fatal UD endpoint timeouts while
+                    // a rank that is already inside MPI_Finalize processes
+                    // a peer's late connection request). A barrier
+                    // immediately before MPI_Finalize lets every rank
+                    // finish its outstanding traffic while all peers still
+                    // progress normally. Any error is ignored: proceeding
+                    // to MPI_Finalize is the best remaining option either
+                    // way.
+                    [[maybe_unused]] int const ret = MPI_Barrier(communicator_);
+
+                    // Release the duplicated communicator before
+                    // MPI_Finalize reclaims the remaining MPI state.
+                    MPI_Comm_free(&communicator_);
+                }
+
                 MPI_Finalize();
             }
         }
@@ -466,6 +493,98 @@ namespace hpx::util {
         l.unlock();
 
         report_error(sl, error_code);
+    }
+
+    // Acknowledgement: code adapted from github.com/jeffhammond/BigMPI
+    MPI_Datatype mpi_environment::type_contiguous(size_t const nbytes)
+    {
+        constexpr int int_max = (std::numeric_limits<int>::max)();
+
+        size_t c = nbytes / int_max;
+        size_t r = nbytes % int_max;
+
+        HPX_ASSERT(c < int_max);
+        HPX_ASSERT(r < int_max);
+
+        MPI_Datatype chunks;
+        MPI_Type_vector(
+            static_cast<int>(c), int_max, int_max, MPI_BYTE, &chunks);
+
+        MPI_Datatype remainder;
+        MPI_Type_contiguous(static_cast<int>(r), MPI_BYTE, &remainder);
+
+        MPI_Aint const remdisp = static_cast<MPI_Aint>(c) * int_max;
+        constexpr int blocklengths[2] = {1, 1};
+        MPI_Aint displacements[2] = {0, remdisp};
+        MPI_Datatype types[2] = {chunks, remainder};
+        MPI_Datatype newtype;
+        MPI_Type_create_struct(2, blocklengths, displacements, types, &newtype);
+
+        MPI_Type_free(&chunks);
+        MPI_Type_free(&remainder);
+
+        return newtype;
+    }
+
+    MPI_Request mpi_environment::isend(
+        void const* address, size_t size, int rank, int tag)
+    {
+        MPI_Request request;
+        MPI_Datatype datatype;
+        int length;
+        if (size > static_cast<size_t>((std::numeric_limits<int>::max)()))
+        {
+            datatype = type_contiguous(size);
+            MPI_Type_commit(&datatype);
+            length = 1;
+        }
+        else
+        {
+            datatype = MPI_BYTE;
+            length = static_cast<int>(size);
+        }
+
+        {
+            scoped_lock l;
+            int const ret = MPI_Isend(
+                address, length, datatype, rank, tag, communicator(), &request);
+            check_mpi_error(l, HPX_CURRENT_SOURCE_LOCATION(), ret);
+        }
+
+        if (datatype != MPI_BYTE)
+            MPI_Type_free(&datatype);
+        return request;
+    }
+
+    MPI_Request mpi_environment::irecv(
+        void* address, size_t size, int rank, int tag)
+    {
+        MPI_Request request;
+        MPI_Datatype datatype;
+        int length;
+        if (size > static_cast<size_t>((std::numeric_limits<int>::max)()))
+        {
+            datatype = type_contiguous(size);
+            MPI_Type_commit(&datatype);
+            length = 1;
+        }
+        else
+        {
+            datatype = MPI_BYTE;
+            length = static_cast<int>(size);
+        }
+
+        {
+            scoped_lock l;
+            int const ret = MPI_Irecv(
+                address, length, datatype, rank, tag, communicator(), &request);
+            check_mpi_error(l, HPX_CURRENT_SOURCE_LOCATION(), ret);
+        }
+
+        if (datatype != MPI_BYTE)
+            MPI_Type_free(&datatype);
+
+        return request;
     }
 }    // namespace hpx::util
 

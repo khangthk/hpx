@@ -15,18 +15,17 @@
 #include <hpx/modules/asio.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/functional.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 #include <hpx/modules/runtime_configuration.hpp>
 #include <hpx/modules/util.hpp>
+
+#include <hpx/asio/asio_util.hpp>
 
 #include <hpx/parcelport_tcp/connection_handler.hpp>
 #include <hpx/parcelport_tcp/locality.hpp>
 #include <hpx/parcelport_tcp/receiver.hpp>
 #include <hpx/parcelport_tcp/sender.hpp>
-#include <hpx/parcelset_base/locality.hpp>
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__)
-#include <winsock2.h>
-#endif
 #include <asio/io_context.hpp>
 #include <asio/ip/tcp.hpp>
 
@@ -86,18 +85,18 @@ namespace hpx::parcelset::policies::tcp {
 
     bool connection_handler::do_run()
     {
-        using asio::ip::tcp;
-        asio::io_context& io_service = io_service_pool_.get_io_service();
+        using ::asio::ip::tcp;
+        ::asio::io_context& io_service = io_service_pool_.get_io_service();
         if (nullptr == acceptor_)
             acceptor_ = new tcp::acceptor(io_service);
 
         // initialize network
         std::size_t tried = 0;
         exception_list errors;
-        util::endpoint_iterator_type const end = util::accept_end();
-        for (util::endpoint_iterator_type it =
+        util::detail::endpoint_iterator_type const end = util::accept_end();
+        for (util::detail::endpoint_iterator_type it =
                  util::accept_begin(here_.get<locality>(), io_service);
-             it != end; ++it, ++tried)
+            it != end; ++it, ++tried)
         {
             try
             {
@@ -109,6 +108,38 @@ namespace hpx::parcelset::policies::tcp {
                 acceptor_->set_option(tcp::acceptor::reuse_address(true));
                 acceptor_->bind(ep);
                 acceptor_->listen();
+
+                // Advertise the port that was bound, not the one that was
+                // asked for. They differ when the configuration says port 0,
+                // which hands the choice to the operating system; without this
+                // nothing learns which port it picked and no peer can connect.
+                //
+                // Only the port is taken. The bound address may be a wildcard
+                // that is reachable from nowhere, so the configured one stays.
+                // One acceptor serves the whole loop, so at most one bind
+                // succeeds and there is exactly one port to report. Reading it
+                // back is done before the first async_accept, and without
+                // throwing: a bound socket that cannot be queried is still
+                // usable.
+                std::error_code local_ec;
+                if (tcp::endpoint const bound =
+                        acceptor_->local_endpoint(local_ec);
+                    !local_ec && bound.port() != here_.get<locality>().port())
+                {
+                    here_ = parcelset::locality(locality(
+                        here_.get<locality>().address(), bound.port()));
+                }
+                else if (local_ec)
+                {
+                    // Keeping the configured port is the safe course, but if
+                    // that port was 0 this locality is now unreachable and the
+                    // reason would otherwise be invisible.
+                    LPT_(warning).format(
+                        "tcp::parcelport::run: bound {} but could not read the "
+                        "endpoint back, keeping the configured one: {}",
+                        ep, local_ec.message());
+                }
+
                 acceptor_->async_accept(receiver_conn->socket(),
                     hpx::bind(&connection_handler::handle_accept, this,
                         placeholders::_1, receiver_conn));
@@ -147,6 +178,7 @@ namespace hpx::parcelset::policies::tcp {
         if (acceptor_ != nullptr)
         {
             std::error_code ec;
+            // NOLINTNEXTLINE(bugprone-unused-return-value)
             acceptor_->close(ec);
             delete acceptor_;
             acceptor_ = nullptr;
@@ -156,30 +188,33 @@ namespace hpx::parcelset::policies::tcp {
     std::shared_ptr<sender> connection_handler::create_connection(
         parcelset::locality const& l, error_code& ec)
     {
-        asio::io_context& io_service = io_service_pool_.get_io_service();
+        ::asio::io_context& io_service = io_service_pool_.get_io_service();
 
         // The parcel gets serialized inside the connection constructor, no
         // need to keep the original parcel alive after this call returned.
         auto sender_connection = std::make_shared<sender>(io_service, l, this);
 
         // Connect to the target locality, retry if needed
-        std::error_code error = asio::error::try_again;
+        std::error_code error = ::asio::error::try_again;
         for (std::size_t i = 0; i < HPX_MAX_NETWORK_RETRIES; ++i)
         {
             // The acceptor is only nullptr when the parcelport has been stopped.
             // An exit here, avoids hangs when late parcels are in flight (those are
             // mainly decref requests).
             if (acceptor_ == nullptr)
+            {
                 return std::shared_ptr<sender>();
+            }
             try
             {
-                util::endpoint_iterator_type end = util::connect_end();
-                for (util::endpoint_iterator_type it =
+                util::detail::endpoint_iterator_type end = util::connect_end();
+                for (util::detail::endpoint_iterator_type it =
                          util::connect_begin(l.get<locality>(), io_service);
-                     it != end; ++it)
+                    it != end; ++it)
                 {
-                    asio::ip::tcp::socket& s = sender_connection->socket();
+                    ::asio::ip::tcp::socket& s = sender_connection->socket();
                     s.close();
+                    // NOLINTNEXTLINE(bugprone-unused-return-value)
                     s.connect(*it, error);
                     if (!error)
                         break;
@@ -227,10 +262,10 @@ namespace hpx::parcelset::policies::tcp {
 
         // make sure the Nagle algorithm is disabled for this socket,
         // disable lingering on close
-        asio::ip::tcp::socket& s = sender_connection->socket();
+        ::asio::ip::tcp::socket& s = sender_connection->socket();
 
-        s.set_option(asio::ip::tcp::no_delay(true));
-        s.set_option(asio::socket_base::linger(true, 0));
+        s.set_option(::asio::ip::tcp::no_delay(true));
+        s.set_option(::asio::socket_base::linger(true, 0));
 
 #if defined(HPX_HOLDON_TO_OUTGOING_CONNECTIONS)
         {
@@ -289,7 +324,7 @@ namespace hpx::parcelset::policies::tcp {
             // handle this incoming connection
             std::shared_ptr<receiver> c(receiver_conn);
 
-            asio::io_context& io_service = io_service_pool_.get_io_service();
+            ::asio::io_context& io_service = io_service_pool_.get_io_service();
             receiver_conn.reset(new receiver(
                 io_service, get_max_inbound_message_size(), *this));
             acceptor_->async_accept(receiver_conn->socket(),
@@ -303,9 +338,9 @@ namespace hpx::parcelset::policies::tcp {
             }
 
             // disable Nagle algorithm, disable lingering on close
-            asio::ip::tcp::socket& s = c->socket();
-            s.set_option(asio::ip::tcp::no_delay(true));
-            s.set_option(asio::socket_base::linger(true, 0));
+            ::asio::ip::tcp::socket& s = c->socket();
+            s.set_option(::asio::ip::tcp::no_delay(true));
+            s.set_option(::asio::socket_base::linger(true, 0));
 
             // now accept the incoming connection by starting to read from the
             // socket
@@ -329,7 +364,7 @@ namespace hpx::parcelset::policies::tcp {
             return;
         }
 
-        if (e != asio::error::operation_aborted && e != asio::error::eof)
+        if (e != ::asio::error::operation_aborted && e != asio::error::eof)
         {
             LPT_(error).format(
                 "handle read operation completion: error: {}", e.message());

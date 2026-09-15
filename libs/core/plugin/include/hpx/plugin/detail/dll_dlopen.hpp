@@ -1,5 +1,5 @@
 //  Copyright Vladimir Prus 2004.
-//  Copyright (c) 2005-2022 Hartmut Kaiser
+//  Copyright (c) 2005-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -12,6 +12,7 @@
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/filesystem.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
 
 #include <memory>
 #include <mutex>
@@ -33,12 +34,6 @@
     "This file shouldn't be included directly, use the file hpx/plugin/dll.hpp only."
 #endif
 
-#if !defined(_WIN32)
-using HMODULE = void*;
-#else
-using HMODULE = struct HINSTANCE__*;
-#endif
-
 ///////////////////////////////////////////////////////////////////////////////
 #if !defined(RTLD_LOCAL)
 #define RTLD_LOCAL 0    // some systems do not have RTLD_LOCAL
@@ -48,16 +43,33 @@ using HMODULE = struct HINSTANCE__*;
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
-#define MyFreeLibrary(x) dlclose(x)
-#define MyLoadLibrary(x)                                                       \
-    reinterpret_cast<HMODULE>(dlopen(x, RTLD_GLOBAL | RTLD_LAZY))
-#define MyGetProcAddress(x, y) dlsym(x, y)
-
-///////////////////////////////////////////////////////////////////////////////
 namespace hpx::util::plugin {
 
+    ///////////////////////////////////////////////////////////////////////////////
+#if !defined(_WIN32)
+    HPX_CXX_CORE_EXPORT using HMODULE = void*;
+#else
+    HPX_CXX_CORE_EXPORT using HMODULE = struct HINSTANCE__*;
+#endif
+
+    ///////////////////////////////////////////////////////////////////////////////
+    inline int MyFreeLibrary(HMODULE x)
+    {
+        return dlclose(x);
+    }
+
+    inline HMODULE MyLoadLibrary(char const* path)
+    {
+        return reinterpret_cast<HMODULE>(dlopen(path, RTLD_GLOBAL | RTLD_LAZY));
+    }
+
+    inline void* MyGetProcAddress(HMODULE x, char const* y)
+    {
+        return dlsym(x, y);
+    }
+
     ///////////////////////////////////////////////////////////////////////////
-    class dll
+    HPX_CXX_CORE_EXPORT class dll
     {
     protected:
         ///////////////////////////////////////////////////////////////////////
@@ -268,7 +280,9 @@ namespace hpx::util::plugin {
             // Cast to the right type.
             dlerror();    // Clear the error state.
 
-            return std::make_pair(address, free_dll<SymbolType>(handle, mtx_));
+            return std::make_pair(address,
+                hpx::function<void(SymbolType)>(
+                    free_dll<SymbolType>(handle, mtx_)));
         }
 
         void keep_alive(error_code& ec = throws)
@@ -331,7 +345,7 @@ namespace hpx::util::plugin {
             result = directory;
             ::dlerror();    // Clear the error state.
 #else
-            result = path(dll_name).parent_path().string();
+            result = hpx::filesystem::to_string(path(dll_name).parent_path());
 #endif
 #elif defined(__APPLE__)
             // SO staticfloat's solution
@@ -351,7 +365,8 @@ namespace hpx::util::plugin {
                         if (((intptr_t) dll_handle & (-4)) ==
                             ((intptr_t) probe_handle & (-4)))
                         {
-                            result = path(image_name).parent_path().string();
+                            result = hpx::filesystem::to_string(
+                                path(image_name).parent_path());
                             break;
                         }
                     }

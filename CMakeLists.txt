@@ -1,5 +1,5 @@
 # Copyright (c)      2020 Mikael Simberg
-# Copyright (c) 2007-2024 Hartmut Kaiser
+# Copyright (c) 2007-2026 Hartmut Kaiser
 # Copyright (c) 2011-2014 Thomas Heller
 # Copyright (c)      2024 Isidoros Tsaousis-Seiras
 # Copyright (c) 2007-2008 Chirag Dekate
@@ -56,13 +56,16 @@ if(HPX_WITH_INSTALLED_VERSION)
 endif()
 
 # ##############################################################################
+string(TIMESTAMP HPX_COPYRIGHT_YEAR "%Y")
+
+# ##############################################################################
 # Build all of HPX
 # ##############################################################################
-set(HPX_VERSION_MAJOR 1)
-set(HPX_VERSION_MINOR 11)
+set(HPX_VERSION_MAJOR 2)
+set(HPX_VERSION_MINOR 0)
 set(HPX_VERSION_SUBMINOR 0)
-set(HPX_VERSION_DATE 20240529)
-set(HPX_VERSION_TAG "-trunk")
+set(HPX_VERSION_DATE 20250630)
+set(HPX_VERSION_TAG "")
 
 set(HPX_VERSION
     "${HPX_VERSION_MAJOR}.${HPX_VERSION_MINOR}.${HPX_VERSION_SUBMINOR}"
@@ -92,6 +95,7 @@ hpx_set_cmake_policy(CMP0042 NEW)
 hpx_set_cmake_policy(CMP0060 NEW)
 hpx_set_cmake_policy(CMP0074 NEW)
 hpx_set_cmake_policy(CMP0167 OLD)
+hpx_set_cmake_policy(CMP0144 NEW)
 
 # We save the passed compiler flag to a special variable. This is needed for our
 # build system unit tests. Some flags might influence the created symbols
@@ -105,14 +109,20 @@ include(CMakeDependentOption)
 # include additional macro definitions
 include(HPX_AddConfigTest)
 include(HPX_AddDefinitions)
-include(HPX_CreateSymbolicLink)
 
 hpx_force_out_of_tree_build(
   "This project requires an out-of-source-tree build. See README.rst. Clean your CMake cache and CMakeFiles if this message persists."
 )
 
-if(NOT HPX_CMAKE_LOGLEVEL)
-  set(HPX_CMAKE_LOGLEVEL "WARN")
+hpx_option(
+  HPX_WITH_GIT_HOOKS BOOL
+  "Enable git commit hooks for formatting checks on commit (default: OFF)." OFF
+  ADVANCED
+)
+
+if(HPX_WITH_GIT_HOOKS)
+  include(HPX_SetupGitHooks)
+  hpx_setup_git_hooks()
 endif()
 
 # print initial diagnostics
@@ -232,15 +242,35 @@ if(HPX_WITH_LOGGING)
   hpx_add_config_define(HPX_HAVE_LOGGING)
 endif()
 
+# Explicitly enable the supervision functionalities
+hpx_option(
+  HPX_WITH_SUPERVISION BOOL "Enable supervision functionalities. (default: OFF)"
+  OFF
+  CATEGORY "Modules"
+  ADVANCED
+)
+if(HPX_WITH_SUPERVISION)
+  hpx_add_config_define(HPX_HAVE_SUPERVISION)
+endif()
+
 hpx_option(
   HPX_WITH_FAULT_TOLERANCE
   BOOL
   "Build HPX to tolerate failures of nodes, i.e. ignore errors in active communication channels (default: OFF)"
-  OFF
+  ${HPX_WITH_SUPERVISION}
   ADVANCED
 )
-if(HPX_WITH_FAULT_TOLERANCE)
+if(HPX_WITH_FAULT_TOLERANCE OR HPX_WITH_SUPERVISION)
   hpx_add_config_define(HPX_HAVE_FAULT_TOLERANCE)
+endif()
+
+hpx_option(
+  HPX_WITH_FORCE_DISCONNECT BOOL
+  "Build HPX to support forceful disconnect of localities (default: OFF)"
+  ${HPX_WITH_SUPERVISION} ADVANCED
+)
+if(HPX_WITH_FORCE_DISCONNECT OR HPX_WITH_SUPERVISION)
+  hpx_add_config_define(HPX_HAVE_FORCE_DISCONNECT)
 endif()
 
 # Compiler related build options
@@ -290,16 +320,18 @@ if(HPX_WITH_DOCUMENTATION)
 endif()
 
 if(WIN32)
-  set(HPX_WITH_PSEUDO_DEPENDENCIES
-      OFF
-      CACHE INTERNAL "" FORCE
-  )
+  set(HPX_WITH_PSEUDO_DEPENDENCIES_DEFAULT OFF)
 else()
-  set(HPX_WITH_PSEUDO_DEPENDENCIES
-      ON
-      CACHE INTERNAL "" FORCE
-  )
+  set(HPX_WITH_PSEUDO_DEPENDENCIES_DEFAULT ON)
 endif()
+
+hpx_option(
+  HPX_WITH_PSEUDO_DEPENDENCIES
+  BOOL
+  "Turn compiler warnings into errors (default: ${HPX_WITH_PSEUDO_DEPENDENCIES_DEFAULT})"
+  ${HPX_WITH_PSEUDO_DEPENDENCIES_DEFAULT}
+  ADVANCED
+)
 
 hpx_option(
   HPX_WITH_UNITY_BUILD BOOL
@@ -307,6 +339,28 @@ hpx_option(
 )
 if(HPX_WITH_UNITY_BUILD)
   set(HPX_WITH_UNITY_BUILD_OPTION UNITY_BUILD)
+endif()
+
+# ##############################################################################
+# C++20 modules configuration
+# ##############################################################################
+
+hpx_option(
+  HPX_WITH_CXX_MODULES BOOL "Enable exposing C++20 modules (default: OFF)." OFF
+  ADVANCED
+)
+if(HPX_WITH_CXX_MODULES)
+  include(HPX_CXXModules)
+  hpx_check_cxx_modules_support()
+
+  hpx_info(
+    "HPX will build and install C++20 module interface units for downstream users."
+  )
+  hpx_add_config_define(HPX_HAVE_CXX_MODULES)
+
+  set(HPX_WITH_CXX_MODULES_OPTION SCAN_FOR_MODULES ON)
+else()
+  hpx_info("HPX will be built and used with traditional headers only.")
 endif()
 
 hpx_option(
@@ -579,14 +633,22 @@ if(HPX_WITH_CUDA AND HPX_WITH_HIP)
   )
 endif()
 
-# ## HPX STDEXEC configuration ##
+# HPX THRUST configuration
+set(HPX_WITH_THRUST_DEFAULT OFF)
+if(HPX_WITH_CUDA)
+  set(HPX_WITH_THRUST_DEFAULT ON)
+endif()
 
 hpx_option(
-  HPX_WITH_STDEXEC BOOL
-  "Use STDEXEC executors instead of native HPX.(default: OFF)" OFF
-  CATEGORY "Executor"
+  HPX_WITH_THRUST
+  BOOL
+  "Enable support for NVIDIA Thrust integration (default: ON when CUDA is enabled, OFF otherwise)"
+  ${HPX_WITH_THRUST_DEFAULT}
   ADVANCED
+  CATEGORY "Build Targets"
 )
+
+# ## HPX STDEXEC configuration ##
 
 hpx_option(
   HPX_WITH_FETCH_STDEXEC BOOL "Use FetchContent to fetch STDEXEC.(default: ON)"
@@ -621,6 +683,7 @@ if(APPLE
    OR HPX_WITH_CUDA
    OR HPX_WITH_HIP
    OR HPX_WITH_PARCELPORT_LCI
+   OR HPX_WITH_PARCELPORT_LCW
 )
   set(HPX_WITH_PKGCONFIG_DEFAULT OFF)
 endif()
@@ -1000,12 +1063,16 @@ hpx_option(
 if(HPX_WITH_APEX)
   hpx_add_config_define(HPX_HAVE_APEX) # tell HPX that we use APEX
   hpx_option(
-    HPX_WITH_APEX_NO_UPDATE BOOL
-    "Do not update code from remote APEX repository." OFF CATEGORY "Profiling"
+    HPX_WITH_APEX_REPOSITORY STRING "APEX repository"
+    "https://github.com/STEllAR-GROUP/apex.git" CATEGORY "Profiling"
   )
   hpx_option(
-    HPX_WITH_APEX_TAG STRING "APEX repository tag or branch" "v2.6.5"
+    HPX_WITH_APEX_TAG STRING "APEX repository tag or branch" "hpx_v1.11.0"
     CATEGORY "Profiling"
+  )
+  hpx_option(
+    HPX_WITH_APEX_NO_UPDATE BOOL
+    "Do not update code from remote APEX repository." OFF CATEGORY "Profiling"
   )
 endif()
 
@@ -1028,7 +1095,7 @@ hpx_option(
   ADVANCED
 )
 
-set(HPX_WITH_ASIO_TAG_DEFAULT "asio-1-21-0")
+set(HPX_WITH_ASIO_TAG_DEFAULT "asio-1-30-2")
 if(HPX_WITH_HIP)
   # newer versions of Asio currently fail when compiled with HIPCC
   set(HPX_WITH_ASIO_TAG_DEFAULT "asio-1-16-0")
@@ -1108,6 +1175,84 @@ hpx_option(
   CATEGORY "Profiling"
 )
 
+hpx_option(
+  HPX_LIKWID_WITH_LIKWID BOOL "Enable Likwid instrumentation support." OFF
+  CATEGORY "Profiling"
+)
+
+hpx_option(
+  HPX_WITH_TRACY BOOL "Enable Tracy instrumentation support." OFF
+  CATEGORY "Profiling"
+)
+
+if(HPX_WITH_TRACY)
+  hpx_option(
+    HPX_WITH_TRACY_TAG STRING "Tracy repository tag or branch" "v0.14.1"
+    CATEGORY "Profiling"
+  )
+
+  # Per-subsystem tracing gates. Each event class is compiled out when its
+  # option is OFF so that users profiling one subsystem do not pay the cost of
+  # the others. Defaults preserve current behaviour: all three classes on.
+  hpx_option(
+    HPX_WITH_TRACING_LIFECYCLE_EVENTS
+    BOOL
+    "Emit per-task lifecycle events (staged, created, executing, yielded, suspended, resumed, completed, deleted). Default: ON."
+    ON
+    CATEGORY "Profiling"
+  )
+  if(HPX_WITH_TRACING_LIFECYCLE_EVENTS)
+    hpx_add_config_define(HPX_HAVE_TRACING_LIFECYCLE_EVENTS)
+  endif()
+
+  hpx_option(
+    HPX_WITH_TRACING_CAUSAL_EVENTS
+    BOOL
+    "Emit causal chain events (future_fulfilled, future_exception_set, continuation_run, continuation_finished, handle_on_completed_fired). Default: ON."
+    ON
+    CATEGORY "Profiling"
+  )
+  if(HPX_WITH_TRACING_CAUSAL_EVENTS)
+    hpx_add_config_define(HPX_HAVE_TRACING_CAUSAL_EVENTS)
+  endif()
+
+  hpx_option(
+    HPX_WITH_TRACING_WORK_STEALING_EVENTS
+    BOOL
+    "Emit work-stealing events when a worker steals a task from another. Default: ON."
+    ON
+    CATEGORY "Profiling"
+  )
+  if(HPX_WITH_TRACING_WORK_STEALING_EVENTS)
+    hpx_add_config_define(HPX_HAVE_TRACING_WORK_STEALING_EVENTS)
+  endif()
+
+  # 1-in-N task sampling for the Tracy lifecycle hooks. APEX and ITTNotify
+  # already treat every lifecycle hook as a constexpr no-op, so sampling would
+  # gate dead code on those backends; only Tracy actually emits.
+  hpx_option(
+    HPX_WITH_TRACING_SAMPLE_RATE
+    STRING
+    "1-in-N task-lifecycle sampling rate for the Tracy backend; 1 emits every task, higher values emit correspondingly fewer (default: 1)"
+    "1"
+    ADVANCED
+  )
+  if(NOT HPX_WITH_TRACING_SAMPLE_RATE MATCHES "^[1-9][0-9]*$")
+    hpx_error(
+      "HPX_WITH_TRACING_SAMPLE_RATE must be a positive integer, got '${HPX_WITH_TRACING_SAMPLE_RATE}'"
+    )
+  endif()
+  hpx_add_config_define(HPX_TRACING_SAMPLE_RATE ${HPX_WITH_TRACING_SAMPLE_RATE})
+endif()
+
+hpx_option(
+  HPX_WITH_FETCH_TRACY
+  BOOL
+  "Use FetchContent to fetch Tracy. By default an installed Tracy will be used. (default: OFF)"
+  OFF
+  CATEGORY "Build Targets"
+)
+
 # Experimental settings
 hpx_option(
   HPX_WITH_IO_POOL
@@ -1158,6 +1303,8 @@ endif()
 if(HPX_WITH_APEX AND NOT HPX_WITH_DISTRIBUTED_RUNTIME)
   hpx_error("HPX_WITH_DISTRIBUTED_RUNTIME=OFF requires HPX_WITH_APEX=OFF")
 endif()
+
+include(HPX_SetupTracing)
 
 if(HPX_WITH_NETWORKING)
   hpx_add_config_define(HPX_HAVE_NETWORKING)
@@ -1226,7 +1373,15 @@ if(HPX_WITH_NETWORKING)
     ADVANCED
   )
   hpx_option(
-    HPX_WITH_LCI_TAG STRING "LCI repository tag or branch" "v1.7.7"
+    HPX_WITH_LCI_TAG STRING "LCI repository tag or branch"
+    "f72956b4609c796b5faac1c24a782dd8ac824ad6" # latest commit as of 2025-12-10
+    CATEGORY "Build Targets"
+    ADVANCED
+  )
+  hpx_option(
+    HPX_WITH_LCI_BOOTSTRAP_MPI BOOL
+    "Configure the autofetched LCI with mpi bootstrap support (default: OFF)"
+    OFF
     CATEGORY "Build Targets"
     ADVANCED
   )
@@ -1247,6 +1402,47 @@ if(HPX_WITH_NETWORKING)
   )
   if(HPX_WITH_PARCELPORT_LCI_PCOUNTER)
     hpx_add_config_define(HPX_HAVE_PARCELPORT_LCI_PCOUNTER)
+  endif()
+
+  hpx_option(
+    HPX_WITH_PARCELPORT_LCW BOOL "Enable the LCW based parcelport." OFF
+    CATEGORY "Parcelport"
+  )
+  if(HPX_WITH_PARCELPORT_LCW)
+    hpx_add_config_define(HPX_HAVE_PARCELPORT_LCW)
+  endif()
+  # Options for automatically fetching LCI
+  hpx_option(
+    HPX_WITH_FETCH_LCW
+    BOOL
+    "Use FetchContent to fetch LCW. By default an installed LCW will be used. (default: OFF)"
+    OFF
+    CATEGORY "Build Targets"
+    ADVANCED
+  )
+  hpx_option(
+    HPX_WITH_LCW_TAG STRING "LCW repository tag or branch"
+    "f26fdd068110ec62a56ecb364254c3ce0b101174" # latest commit as of 2025-12-10
+    CATEGORY "Build Targets"
+    ADVANCED
+  )
+  hpx_option(
+    HPX_WITH_PARCELPORT_LCW_LOG STRING
+    "Enable the LCW-parcelport-specific logger" OFF
+    CATEGORY "Parcelport"
+    ADVANCED
+  )
+  if(HPX_WITH_PARCELPORT_LCW_LOG)
+    hpx_add_config_define(HPX_HAVE_PARCELPORT_LCW_LOG)
+  endif()
+  hpx_option(
+    HPX_WITH_PARCELPORT_LCW_PCOUNTER STRING
+    "Enable the LCW-parcelport-specific performance counter" OFF
+    CATEGORY "Parcelport"
+    ADVANCED
+  )
+  if(HPX_WITH_PARCELPORT_LCW_PCOUNTER)
+    hpx_add_config_define(HPX_HAVE_PARCELPORT_LCW_PCOUNTER)
   endif()
 
   hpx_option(
@@ -1353,6 +1549,9 @@ if((HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_MPI)
     # hpx_add_compile_flag() below does not add the extra options to the top
     # level directory
     hpx_add_config_define(OMPI_IMPORTS)
+    if(HPX_WITH_CUDA)
+      hpx_add_config_cond_define(NOMINMAX)
+    endif()
   endif()
 endif()
 
@@ -1361,8 +1560,8 @@ if(HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_LCI)
   hpx_option(
     HPX_WITH_PARCELPORT_LCI_ENV
     STRING
-    "List of environment variables checked to detect LCI (default: MV2_COMM_WORLD_RANK;PMI_RANK;OMPI_COMM_WORLD_SIZE;ALPS_APP_PE;PMIX_RANK;PALS_NODEID)."
-    "MV2_COMM_WORLD_RANK;PMI_RANK;OMPI_COMM_WORLD_SIZE;ALPS_APP_PE;PMIX_RANK;PALS_NODEID"
+    "List of environment variables checked to detect LCI (default: MV2_COMM_WORLD_RANK;PMI_RANK;OMPI_COMM_WORLD_SIZE;ALPS_APP_PE;PMIX_RANK;PALS_NODEID;LCT_PMI_FILE_NRANKS)."
+    "MV2_COMM_WORLD_RANK;PMI_RANK;OMPI_COMM_WORLD_SIZE;ALPS_APP_PE;PMIX_RANK;PALS_NODEID;LCT_PMI_FILE_NRANKS"
     CATEGORY "Parcelport"
     ADVANCED
   )
@@ -1381,7 +1580,32 @@ if(HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_LCI)
   endif()
 endif()
 
-# External libraries/frameworks used by some of the examples and benchmarks
+if(HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_LCW)
+  # lcw parcelport settings
+  hpx_option(
+    HPX_WITH_PARCELPORT_LCW_ENV
+    STRING
+    "List of environment variables checked to detect LCW (default: MV2_COMM_WORLD_RANK;PMI_RANK;OMPI_COMM_WORLD_SIZE;ALPS_APP_PE;PMIX_RANK;PALS_NODEID;LCT_PMI_FILE_NRANKS)."
+    "MV2_COMM_WORLD_RANK;PMI_RANK;OMPI_COMM_WORLD_SIZE;ALPS_APP_PE;PMIX_RANK;PALS_NODEID;LCT_PMI_FILE_NRANKS"
+    CATEGORY "Parcelport"
+    ADVANCED
+  )
+
+  # This list is to detect whether we run inside an lcw environment. If one of
+  # those environment variables is set, the LCW parcelport is enabled by
+  # default. PMI_RANK: Intel MPI and MVAPICH2 OMPI_COMM_WORLD_SIZE: OpenMPI
+  # starting at version 1.3
+  if(HPX_WITH_PARCELPORT_LCW_ENV)
+    string(REPLACE ";" "," hpx_parcelport_lcw_env_
+                   "${HPX_WITH_PARCELPORT_LCW_ENV}"
+    )
+    hpx_add_config_define(
+      HPX_HAVE_PARCELPORT_LCW_ENV "\"${hpx_parcelport_lcw_env_}\""
+    )
+  endif()
+endif()
+
+# External libraries/frameworks used by sme of the examples and benchmarks
 hpx_option(
   HPX_WITH_EXAMPLES_OPENMP BOOL
   "Enable examples requiring OpenMP support (default: OFF)." OFF
@@ -1390,18 +1614,6 @@ hpx_option(
 )
 if(HPX_WITH_EXAMPLES_OPENMP)
   find_package(OpenMP REQUIRED)
-endif()
-hpx_option(
-  HPX_WITH_EXAMPLES_TBB BOOL
-  "Enable examples requiring TBB support (default: OFF)." OFF
-  CATEGORY "Build Targets"
-  ADVANCED
-)
-if(HPX_WITH_EXAMPLES_TBB)
-  find_package(TBB)
-  if(NOT Tbb_FOUND)
-    set(HPX_WITH_EXAMPLES_TBB OFF)
-  endif()
 endif()
 hpx_option(
   HPX_WITH_EXAMPLES_QTHREADS BOOL
@@ -1415,6 +1627,15 @@ if(HPX_WITH_EXAMPLES_QTHREADS)
     set(HPX_WITH_EXAMPLES_QTHREADS OFF)
   endif()
 endif()
+
+hpx_option(
+  HPX_WITH_EXAMPLES_TASKBENCH
+  BOOL
+  "Enable the task-bench example (fetched from upstream StanfordLegion/task-bench, default: OFF)."
+  OFF
+  CATEGORY "Build Targets"
+  ADVANCED
+)
 
 hpx_option(
   HPX_WITH_EXAMPLES_HDF5 BOOL
@@ -1446,6 +1667,24 @@ if(NOT "${HPX_PLATFORM_UC}" STREQUAL "BLUEGENEQ")
 endif()
 
 # Debugging related build options
+hpx_option(
+  HPX_WITH_CONTRACTS BOOL "Enable C++ contracts support in HPX" OFF
+  CATEGORY "Debugging"
+)
+
+if(HPX_WITH_CONTRACTS)
+  hpx_add_config_define(HPX_HAVE_CONTRACTS)
+endif()
+
+hpx_option(
+  HPX_WITH_ASSERTS_AS_CONTRACT_ASSERTS BOOL
+  "Swap hpx_assert with hpx_contract_assert" OFF CATEGORY "Debugging"
+)
+
+if(HPX_WITH_ASSERTS_AS_CONTRACT_ASSERTS)
+  hpx_add_config_define(HPX_HAVE_ASSERTS_AS_CONTRACT_ASSERTS)
+endif()
+
 hpx_option(
   HPX_WITH_VALGRIND BOOL "Enable Valgrind instrumentation support." OFF
   CATEGORY "Debugging"
@@ -1579,12 +1818,18 @@ if(HPX_WITH_THREAD_DEBUG_INFO)
   hpx_add_config_define(HPX_HAVE_THREAD_MINIMAL_DEADLOCK_DETECTION)
 endif()
 
-# run hpx_main on all localities by default
+# run hpx_main on all localities by default (will be removed after V1.11.0)
 hpx_option(
-  HPX_WITH_RUN_MAIN_EVERYWHERE BOOL
-  "Run hpx_main by default on all localities (default: OFF)." OFF ADVANCED
+  HPX_WITH_RUN_MAIN_EVERYWHERE
+  BOOL
+  "Run hpx_main by default on all localities (default: OFF, deprecated, will be removed)."
+  OFF
+  ADVANCED
 )
 if(HPX_WITH_RUN_MAIN_EVERYWHERE)
+  hpx_info("Note: the configuration parameter HPX_WITH_RUN_MAIN_EVERYWHERE is\n"
+           "     deprecated and will be removed in the future."
+  )
   hpx_add_config_define(HPX_HAVE_RUN_MAIN_EVERYWHERE)
 endif()
 
@@ -1656,6 +1901,12 @@ if(HPX_WITH_TUPLE_RVALUE_SWAP)
   hpx_add_config_define(HPX_HAVE_TUPLE_RVALUE_SWAP)
 endif()
 
+hpx_option(
+  HPX_WITH_MODULE_COMPATIBILITY_HEADERS BOOL
+  "Generate backwards-compatibility headers for HPX Modules (default: OFF)" OFF
+  ADVANCED
+)
+
 # ##############################################################################
 # Special diagnostic flags, do not enable by default, only if needed
 hpx_option(
@@ -1690,20 +1941,21 @@ if(MSVC)
 endif()
 
 # Setup platform specific compiler options and check for compatible compilers
+set(_compiler "${CMAKE_CXX_COMPILER_ID} V${CMAKE_CXX_COMPILER_VERSION}")
 if("${HPX_PLATFORM_UC}" STREQUAL "NATIVE")
-  hpx_info("Compiling with the native toolset")
+  hpx_info("Compiling with the native toolset: ${_compiler}")
 elseif("${HPX_PLATFORM_UC}" STREQUAL "ANDROID")
-  hpx_info("Compiling for Android devices")
+  hpx_info("Compiling for Android devices: ${_compiler}")
 elseif("${HPX_PLATFORM_UC}" STREQUAL "XEONPHI")
-  hpx_info("Compiling for Intel Xeon Phi devices")
+  hpx_info("Compiling for Intel Xeon Phi devices: ${_compiler}")
   if(NOT ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel"))
     hpx_error("HPX on the MIC can only be compiled with the Intel compiler.")
   endif()
 elseif("${HPX_PLATFORM_UC}" STREQUAL "BLUEGENEQ")
+  hpx_info("Compiling for BlueGene/Q: ${_compiler}")
   if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     hpx_error("HPX on the BG/Q can only be compiled with bgclang")
   endif()
-  hpx_info("Compiling for BlueGene/Q")
 endif()
 
 # ##############################################################################
@@ -1731,6 +1983,17 @@ hpx_option(
   ADVANCED
 )
 
+hpx_option(
+  HPX_WITH_CXX20_STD_EXECUTION_POLICES
+  BOOL
+  "Support using std execution policies for HPX parallel algorithms (default: ON)."
+  ON
+  ADVANCED
+)
+if(HPX_WITH_CXX20_STD_EXECUTION_POLICES)
+  hpx_add_config_define(HPX_HAVE_CXX20_STD_EXECUTION_POLICES)
+endif()
+
 # Need to include the CUDA setup before the config test to enable the CUDA
 # language
 include(HPX_SetupCUDA)
@@ -1753,8 +2016,15 @@ endif()
 if("${HPX_PLATFORM_UC}" STREQUAL "BLUEGENEQ")
   set(__use_generic_coroutine_context ON)
 endif()
-# If compiling for riscv64 or arm64, automatically bake in Boost.Context
-if(${__target_arch} STREQUAL "riscv64" OR ${__target_arch} STREQUAL "arm64")
+# If compiling for riscv64, arm or arm64 (including armv5, armv6, armv7),
+# automatically bake in Boost.Context
+if(${__target_arch} STREQUAL "riscv64"
+   OR ${__target_arch} STREQUAL "arm64"
+   OR ${__target_arch} STREQUAL "arm"
+   OR ${__target_arch} STREQUAL "armv5"
+   OR ${__target_arch} STREQUAL "armv6"
+   OR ${__target_arch} STREQUAL "armv7"
+)
   set(__use_generic_coroutine_context ON)
 endif()
 
@@ -1885,11 +2155,21 @@ if(WIN32)
       # Make sure that __cplusplus is properly defined
       hpx_add_target_compile_option(-Zc:__cplusplus PUBLIC)
 
+      # stdexec requires the conforming MSVC preprocessor.
+      if(NOT (${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang"
+              AND "x${CMAKE_CXX_SIMULATE_ID}" STREQUAL "xMSVC")
+      )
+        hpx_add_target_compile_option(-Zc:preprocessor PUBLIC)
+      endif()
+
       # Silence C++17 deprecation warnings
       hpx_add_config_cond_define(_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS)
 
       # Silence C++20 deprecation warnings
       hpx_add_config_cond_define(_SILENCE_ALL_CXX20_DEPRECATION_WARNINGS)
+
+      # Silence C++23 deprecation warnings
+      hpx_add_config_cond_define(_SILENCE_ALL_CXX23_DEPRECATION_WARNINGS)
 
       # ASan is available in Visual Studion starting V16.8
       if((MSVC_VERSION GREATER_EQUAL 1928) AND HPX_WITH_SANITIZERS)
@@ -1971,12 +2251,6 @@ if(HPX_WITH_COMPILER_WARNINGS)
     # is illegal in the current source character set
     hpx_add_compile_flag(-wd4828)
 
-    if(HPX_WITH_CXX_STANDARD LESS 20)
-      # support for attribute 'msvc::no_unique_address' in C++17 and earlier is
-      # a vendor extension
-      hpx_add_compile_flag(-wd4848)
-    endif()
-
     if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "VC")
       # unary minus operator applied to unsigned type, result still unsigned
       hpx_add_compile_flag(-wd4146)
@@ -1987,6 +2261,16 @@ if(HPX_WITH_COMPILER_WARNINGS)
       # 'return': conversion from 'short' to 'Vc_1::schar', possible loss of
       # data
       hpx_add_compile_flag(-wd4244)
+    endif()
+
+    # when compiling with modules enabled, the following warning can't be
+    # disabled inline
+    if(HPX_WITH_CXX_MODULES)
+      # 'symbol' needs to have dll-interface to be used by clients of 'symbol'
+      hpx_add_compile_flag(-wd4251)
+      # non dll-interface struct 'symbol' used as base for dll-interface class
+      # 'symbol'
+      hpx_add_compile_flag(-wd4275)
     endif()
 
   else() # Trial and error approach for any other compiler ...
@@ -2259,13 +2543,16 @@ include(HPX_SetupThreads)
 # Setup our required Boost libraries.
 include(HPX_SetupBoost)
 include(HPX_SetupBoostFilesystem)
-include(HPX_SetupBoostIostreams)
 
 # Set up standalone Asio
 include(HPX_SetupAsio)
 
 # Find all allocators which are currently supported.
 include(HPX_SetupAllocator)
+
+if(HPX_WITH_FETCH_HWLOC)
+  set(HPX_HWLOC_INSTALL_PATH ${CMAKE_INSTALL_PREFIX}/hwloc_installed)
+endif()
 include(HPX_SetupHwloc)
 
 # reset external source lists
@@ -2284,6 +2571,10 @@ endif()
 if(HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_LCI)
   include(HPX_SetupLCI)
   hpx_setup_lci()
+endif()
+if(HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_LCW)
+  include(HPX_SetupLCW)
+  hpx_setup_lcw()
 endif()
 if(HPX_WITH_NETWORKING AND HPX_WITH_PARCELPORT_GASNET)
   include(HPX_SetupGasnet)
@@ -2318,7 +2609,7 @@ endif()
 
 if(HPX_WITH_GENERIC_CONTEXT_COROUTINES)
   # Check if we can use generic coroutine contexts without any problems
-  if(NOT Boost_CONTEXT_FOUND)
+  if(NOT (Boost_CONTEXT_FOUND OR TARGET Boost::context))
     hpx_error(
       "The usage of Boost.Context was selected but Boost.Context was not found."
     )
@@ -2358,7 +2649,7 @@ endif()
 include(HPX_GitCommit)
 hpx_add_config_define(HPX_HAVE_GIT_COMMIT "\"${HPX_WITH_GIT_COMMIT}\"")
 
-hpx_include(SetOutputPaths)
+include(HPX_SetOutputPaths)
 
 # ##############################################################################
 # Fixing git tag, if necessary
@@ -2412,8 +2703,19 @@ endif()
 # ##############################################################################
 # Debug library postfix
 # ##############################################################################
-set(CMAKE_DEBUG_POSTFIX "d")
-set(HPX_DEBUG_POSTFIX "d")
+# Only set debug postfix for Debug builds to maintain ABI separation
+get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+if(is_multi_config OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+  hpx_option(
+    HPX_WITH_DEBUG_POSTFIX STRING
+    "Postfix for debug libraries. (default: \"d\")" "d" ADVANCED
+    CATEGORY "Build Targets"
+  )
+  set(CMAKE_DEBUG_POSTFIX "${HPX_WITH_DEBUG_POSTFIX}")
+  if(NOT "${HPX_WITH_DEBUG_POSTFIX}" STREQUAL "")
+    hpx_add_config_define(HPX_HAVE_DEBUG_POSTFIX "${HPX_WITH_DEBUG_POSTFIX}")
+  endif()
+endif()
 
 if(HPX_WITH_DISTRIBUTED_RUNTIME)
   if(HPX_WITH_COMPRESSION_BZIP2)
@@ -2456,7 +2758,7 @@ add_subdirectory(wrap)
 # ##############################################################################
 # Documentation toolchain (Sphinx, Doxygen, Breathe)
 # ##############################################################################
-hpx_include(Documentation)
+include(HPX_Documentation)
 
 # ##############################################################################
 # Add core configuration

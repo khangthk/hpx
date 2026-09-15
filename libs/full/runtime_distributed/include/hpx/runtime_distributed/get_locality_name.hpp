@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,8 +10,8 @@
 
 #include <hpx/config.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/runtime_local/get_locality_name.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/runtime_local.hpp>
 
 #include <string>
 
@@ -32,5 +32,6 @@ namespace hpx {
     ///           and may be different for different parcel ports.
     ///
     /// \see      \a std::string get_locality_name()
-    HPX_EXPORT future<std::string> get_locality_name(hpx::id_type const& id);
+    HPX_CXX_EXPORT HPX_EXPORT future<std::string> get_locality_name(
+        hpx::id_type const& id);
 }    // namespace hpx

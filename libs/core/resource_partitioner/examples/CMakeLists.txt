@@ -27,9 +27,8 @@ set(example_programs ${example_programs} oversubscribing_resource_partitioner
                      simple_resource_partitioner
 )
 
-# Intel compilers have trouble compiling these examples, older versions of MSVC
-# fail too
-if(NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel" AND NOT MSVC)
+# Intel compilers have trouble compiling these examples
+if(NOT ${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
   set(example_programs ${example_programs} guided_pool_test async_customization)
 endif()
 
@@ -71,3 +70,11 @@ foreach(example_program ${example_programs})
     )
   endif()
 endforeach()
+
+if(HPX_WITH_CXX_MODULES AND MSVC)
+  foreach(example oversubscribing_resource_partitioner
+                  simple_resource_partitioner
+  )
+    target_compile_definitions(${example} PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES)
+  endforeach()
+endif()

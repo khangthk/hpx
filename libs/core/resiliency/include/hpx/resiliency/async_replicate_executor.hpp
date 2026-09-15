@@ -1,6 +1,6 @@
 //  Copyright (c) 2019 National Technology & Engineering Solutions of Sandia,
 //                     LLC (NTESS).
-//  Copyright (c) 2018-2024 Hartmut Kaiser
+//  Copyright (c) 2018-2025 Hartmut Kaiser
 //  Copyright (c) 2018-2019 Adrian Serio
 //  Copyright (c) 2019 Nikunj Gupta
 //
@@ -14,11 +14,9 @@
 #include <hpx/resiliency/async_replicate.hpp>
 #include <hpx/resiliency/resiliency_cpos.hpp>
 
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/functional/detail/invoke.hpp>
-#include <hpx/functional/invoke_fused.hpp>
 #include <hpx/modules/async_local.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
 
 #include <cstddef>
@@ -31,14 +29,34 @@ namespace hpx::resiliency::experimental {
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Result>
+        HPX_CXX_CORE_EXPORT template <typename Result>
         struct async_replicate_vote_validate_executor
         {
+            template <typename Pred, typename T, typename U>
+            static void emplace_result(
+                Pred&& pred, std::vector<T>& valid_results, U&& result)
+            {
+                if (HPX_INVOKE(pred, result))
+                {
+                    valid_results.emplace_back(HPX_FORWARD(U, result));
+                }
+            }
+
+            template <typename Pred, typename T, typename U>
+            static void emplace_result(Pred&& pred,
+                std::vector<T>& valid_results, std::vector<U>&& results)
+            {
+                for (auto&& result : HPX_MOVE(results))
+                {
+                    emplace_result(pred, valid_results, HPX_MOVE(result));
+                }
+            }
+
             template <typename Executor, typename Vote, typename Pred,
                 typename F, typename... Ts>
-            static typename hpx::traits::executor_future<Executor, Result>::type
-            call(Executor&& exec, std::size_t n, Vote&& vote, Pred&& pred,
-                F&& f, Ts&&... ts)
+            static hpx::traits::executor_future_t<Executor, Result> call(
+                Executor&& exec, std::size_t n, Vote&& vote, Pred&& pred, F&& f,
+                Ts&&... ts)
             {
                 using result_type =
                     typename hpx::util::detail::invoke_deferred_result<F,
@@ -46,14 +64,16 @@ namespace hpx::resiliency::experimental {
 
                 // launch given function n times
                 auto func = [f = HPX_FORWARD(F, f),
-                                t = hpx::make_tuple(HPX_FORWARD(Ts, ts)...)](
+                                ... ts = HPX_FORWARD(Ts, ts)](
                                 std::size_t) mutable -> result_type {
                     // ignore argument (invocation count of bulk_execute)
-                    return hpx::invoke_fused(f, t);
+                    return HPX_INVOKE(f, ts...);
                 };
 
                 auto&& results = hpx::parallel::execution::bulk_async_execute(
-                    HPX_FORWARD(Executor, exec), HPX_MOVE(func), n);
+                    hpx::execution::to_hierarchical_spawning(
+                        HPX_FORWARD(Executor, exec)),
+                    HPX_MOVE(func), n);
 
                 // wait for all threads to finish executing and return the first
                 // result that passes the predicate, properly handle exceptions
@@ -82,27 +102,25 @@ namespace hpx::resiliency::experimental {
                             }
                             else
                             {
-                                auto&& result = results.get();
-                                if (HPX_INVOKE(pred, result))
-                                {
-                                    valid_results.emplace_back(
-                                        HPX_MOVE(result));
-                                }
+                                emplace_result(HPX_FORWARD(Pred, pred),
+                                    valid_results, results.get());
                             }
                         }
                         else
                         {
-                            for (auto&& f : HPX_MOVE(results))
+                            for (auto&& fut :
+                                HPX_FORWARD(decltype(results), results))
                             {
-                                if (f.has_exception())
+                                if (fut.has_exception())
                                 {
                                     // rethrow abort_replicate_exception, if
                                     // caught
-                                    ex = detail::rethrow_on_abort_replicate(f);
+                                    ex =
+                                        detail::rethrow_on_abort_replicate(fut);
                                 }
                                 else
                                 {
-                                    auto&& result = f.get();
+                                    auto&& result = fut.get();
                                     if (HPX_INVOKE(pred, result))
                                     {
                                         valid_results.emplace_back(
@@ -143,10 +161,10 @@ namespace hpx::resiliency::experimental {
             {
                 // launch given function n times
                 auto func = [f = HPX_FORWARD(F, f),
-                                t = hpx::make_tuple(HPX_FORWARD(Ts, ts)...)](
+                                ... ts = HPX_FORWARD(Ts, ts)](
                                 std::size_t) mutable {
                     // ignore argument (invocation count of bulk_execute)
-                    hpx::invoke_fused(f, t);
+                    HPX_INVOKE(f, ts...);
 
                     // return non-void result to force executor into providing a
                     // future for each invocation (returning void might optimize
@@ -155,7 +173,9 @@ namespace hpx::resiliency::experimental {
                 };
 
                 auto&& results = hpx::parallel::execution::bulk_async_execute(
-                    HPX_FORWARD(Executor, exec), HPX_MOVE(func), n);
+                    hpx::execution::to_hierarchical_spawning(
+                        HPX_FORWARD(Executor, exec)),
+                    HPX_MOVE(func), n);
 
                 // wait for all threads to finish executing and return the first
                 // result that passes the predicate, properly handle exceptions
@@ -184,7 +204,8 @@ namespace hpx::resiliency::experimental {
                         }
                         else
                         {
-                            for (auto&& f : HPX_MOVE(results))
+                            for (auto&& f :
+                                HPX_FORWARD(decltype(results), results))
                             {
                                 if (f.has_exception())
                                 {
@@ -218,19 +239,25 @@ namespace hpx::resiliency::experimental {
         };
     }    // namespace detail
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f exactly n times. Verify the result
-    // of those invocations using the given predicate pred. Run all the valid
-    // results against a user provided voting function. Return the valid output.
-    // clang-format off
-    template <typename Executor, typename Vote, typename Pred, typename F,
-        typename... Ts,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::traits::is_one_way_executor_v<Executor> ||
-            hpx::traits::is_two_way_executor_v<Executor>
-        )>
-    // clang-format on
-    decltype(auto) tag_invoke(async_replicate_vote_validate_t, Executor&& exec,
+    /// \brief ADL hook for async_replicate_vote_validate CPO with executor.
+    ///
+    /// Asynchronously launches \a f exactly \a n times on \a exec,
+    /// validates results with \a pred, then runs valid results through
+    /// \a vote.
+    ///
+    /// \param tag   CPO tag (async_replicate_vote_validate_t).
+    /// \param exec  Executor to run \a f on.
+    /// \param n     Number of replicated invocations.
+    /// \param vote  Voting function selecting among valid results.
+    /// \param pred  Predicate validating each invocation result.
+    /// \param f     Callable to invoke asynchronously.
+    /// \param ts    Arguments forwarded to \a f.
+    ///
+    /// \returns future with the voted-upon result.
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename Vote,
+        typename Pred, typename F, typename... Ts>
+        requires(one_way_executor<Executor> || two_way_executor<Executor>)
+    decltype(auto) hpx_invoke(async_replicate_vote_validate_t, Executor&& exec,
         std::size_t n, Vote&& vote, Pred&& pred, F&& f, Ts&&... ts)
     {
         using result_type =
@@ -242,18 +269,24 @@ namespace hpx::resiliency::experimental {
             HPX_FORWARD(Ts, ts)...);
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f exactly n times. Verify the result
-    // of those invocations using the given predicate pred. Run all the valid
-    // results against a user provided voting function. Return the valid output.
-    // clang-format off
-    template <typename Executor, typename Vote, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::traits::is_one_way_executor_v<Executor> ||
-            hpx::traits::is_two_way_executor_v<Executor>
-        )>
-    // clang-format on
-    decltype(auto) tag_invoke(async_replicate_vote_t, Executor&& exec,
+    /// \brief ADL hook for async_replicate_vote CPO with executor.
+    ///
+    /// Asynchronously launches \a f exactly \a n times on \a exec, runs
+    /// valid results through \a vote. Validation uses the default
+    /// exception check.
+    ///
+    /// \param tag   CPO tag (async_replicate_vote_t).
+    /// \param exec  Executor to run \a f on.
+    /// \param n     Number of replicated invocations.
+    /// \param vote  Voting function selecting among valid results.
+    /// \param f     Callable to invoke asynchronously.
+    /// \param ts    Arguments forwarded to \a f.
+    ///
+    /// \returns future with the voted-upon result.
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename Vote, typename F,
+        typename... Ts>
+        requires(one_way_executor<Executor> || two_way_executor<Executor>)
+    decltype(auto) hpx_invoke(async_replicate_vote_t, Executor&& exec,
         std::size_t n, Vote&& vote, F&& f, Ts&&... ts)
     {
         using result_type =
@@ -265,15 +298,23 @@ namespace hpx::resiliency::experimental {
             HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f exactly n times. Verify the result
-    // of those invocations using the given predicate pred. Return the first
-    // valid result. clang-format off
-    template <typename Executor, typename Pred, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(hpx::traits::is_one_way_executor_v<Executor> ||
-            hpx::traits::is_two_way_executor_v<Executor>)>
-    // clang-format on
-    decltype(auto) tag_invoke(async_replicate_validate_t, Executor&& exec,
+    /// \brief ADL hook for async_replicate_validate CPO with executor.
+    ///
+    /// Asynchronously launches \a f exactly \a n times on \a exec,
+    /// validates results with \a pred. Returns the first valid result.
+    ///
+    /// \param tag   CPO tag (async_replicate_validate_t).
+    /// \param exec  Executor to run \a f on.
+    /// \param n     Number of replicated invocations.
+    /// \param pred  Predicate validating each invocation result.
+    /// \param f     Callable to invoke asynchronously.
+    /// \param ts    Arguments forwarded to \a f.
+    ///
+    /// \returns future with the first valid result.
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename Pred, typename F,
+        typename... Ts>
+        requires(one_way_executor<Executor> || two_way_executor<Executor>)
+    decltype(auto) hpx_invoke(async_replicate_validate_t, Executor&& exec,
         std::size_t n, Pred&& pred, F&& f, Ts&&... ts)
     {
         using result_type =
@@ -285,18 +326,22 @@ namespace hpx::resiliency::experimental {
             HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f exactly n times. Verify
-    // the result of those invocations by checking for exception.
-    // Return the first valid result.
-    // clang-format off
-    template <typename Executor, typename F, typename... Ts,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::traits::is_one_way_executor_v<Executor> ||
-            hpx::traits::is_two_way_executor_v<Executor>
-        )>
-    // clang-format on
-    decltype(auto) tag_invoke(
+    /// \brief ADL hook for async_replicate CPO with executor.
+    ///
+    /// Asynchronously launches \a f exactly \a n times on \a exec.
+    /// Validates by checking for exceptions. Returns the first valid
+    /// result.
+    ///
+    /// \param tag   CPO tag (async_replicate_t).
+    /// \param exec  Executor to run \a f on.
+    /// \param n     Number of replicated invocations.
+    /// \param f     Callable to invoke asynchronously.
+    /// \param ts    Arguments forwarded to \a f.
+    ///
+    /// \returns future with the first non-throwing result.
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename F, typename... Ts>
+        requires(one_way_executor<Executor> || two_way_executor<Executor>)
+    decltype(auto) hpx_invoke(
         async_replicate_t, Executor&& exec, std::size_t n, F&& f, Ts&&... ts)
     {
         using result_type =

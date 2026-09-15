@@ -11,8 +11,7 @@
 #include <hpx/include/parallel_move.hpp>
 #include <hpx/include/partitioned_vector_predef.hpp>
 #include <hpx/include/runtime.hpp>
-#include <hpx/parallel/segmented_algorithms/detail/transfer.hpp>
-
+#include <hpx/modules/segmented_algorithms.hpp>
 #include <hpx/modules/testing.hpp>
 
 #include <cstddef>
@@ -194,6 +193,6 @@ int main()
     move_tests<int>(43, 42);
     move_tests<std::string>("test", "not_test");
 
-    return 0;
+    return hpx::util::report_errors();
 }
 #endif

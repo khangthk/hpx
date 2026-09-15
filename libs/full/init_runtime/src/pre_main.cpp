@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -9,32 +9,28 @@
 
 #if defined(HPX_HAVE_DISTRIBUTED_RUNTIME)
 
-#include <hpx/agas/addressing_service.hpp>
-#include <hpx/collectives/barrier.hpp>
-#include <hpx/collectives/detail/barrier_node.hpp>
-#include <hpx/collectives/latch.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/init_runtime/pre_main.hpp>
+#include <hpx/modules/agas.hpp>
+#include <hpx/modules/collectives.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/logging.hpp>
-#include <hpx/parcelset/message_handler_fwd.hpp>
-#include <hpx/performance_counters/agas_counter_types.hpp>
-#include <hpx/performance_counters/parcelhandler_counter_types.hpp>
-#include <hpx/performance_counters/threadmanager_counter_types.hpp>
-#include <hpx/runtime_components/console_logging.hpp>
-#include <hpx/runtime_configuration/runtime_mode.hpp>
-#include <hpx/runtime_distributed.hpp>
-#include <hpx/runtime_distributed/applier.hpp>
-#include <hpx/runtime_distributed/runtime_fwd.hpp>
-#include <hpx/runtime_distributed/runtime_support.hpp>
-#include <hpx/runtime_local/runtime_local_fwd.hpp>
-#include <hpx/runtime_local/shutdown_function.hpp>
+#include <hpx/modules/parcelset.hpp>
+#include <hpx/modules/performance_counters.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/runtime_configuration.hpp>
+#include <hpx/modules/runtime_distributed.hpp>
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/supervision.hpp>
+
+#include <hpx/init_runtime/pre_main.hpp>
 
 #include <string>
 #include <vector>
 
-namespace hpx { namespace detail {
+#include <hpx/config/warnings_prefix.hpp>
+
+namespace hpx::detail {
 
     static void garbage_collect_non_blocking()
     {
@@ -55,6 +51,13 @@ namespace hpx { namespace detail {
         agas_client.register_server_instances();
         lbt_ << "(2nd stage) pre_main: registered AGAS client-side "
                 "performance counter types";
+
+#if defined(HPX_HAVE_SUPERVISION)
+        auto const& supervision_manager =
+            supervision::get_supervision_manager();
+        supervision_manager.register_server_instance();
+        lbt_ << "(2nd stage) pre_main: registered supervision infrastructure";
+#endif
 
         get_runtime_distributed().register_counter_types();
         lbt_ << "(2nd stage) pre_main: registered runtime performance "
@@ -99,7 +102,7 @@ namespace hpx { namespace detail {
 
         using components::stubs::runtime_support;
 
-        naming::resolver_client& agas_client = naming::get_agas_client();
+        agas::addressing_service& agas_client = naming::get_agas_client();
         runtime& rt = get_runtime();
 
         int exit_code = 0;
@@ -158,6 +161,16 @@ namespace hpx { namespace detail {
                         "barriers";
             }
 
+#if !defined(HPX_COMPUTE_DEVICE_CODE)
+            // create predefined communicator, but only if locality is not
+            // connecting late
+            if (hpx::get_config_entry("hpx.runtime_mode",
+                    get_runtime_mode_name(runtime_mode::console)) !=
+                get_runtime_mode_name(runtime_mode::connect))
+            {
+                hpx::collectives::detail::create_global_communicator();
+            }
+
             // create our global barrier...
             hpx::distributed::barrier::get_global_barrier() =
                 hpx::distributed::barrier::create_global_barrier();
@@ -197,6 +210,7 @@ namespace hpx { namespace detail {
             // component tables are populated.
             distributed::barrier::synchronize();
             lbt_ << "(5th stage) pre_main: passed 5th stage boot barrier";
+#endif
         }
 
         // Enable logging. Even if we terminate at this point we will see all
@@ -239,11 +253,21 @@ namespace hpx { namespace detail {
 
     void post_main()
     {
+#if defined(HPX_HAVE_SUPERVISION)
+        hpx::error_code ec;    // swallow exceptions
+        hpx::supervision::get_supervision_manager().tidy(ec);
+#endif
+#if !defined(HPX_COMPUTE_DEVICE_CODE)
+        // destroy predefined communicators
+        hpx::collectives::detail::reset_global_communicator();
+        hpx::collectives::detail::reset_local_communicator();
+        hpx::collectives::detail::reset_world_channel_communicator();
+        hpx::collectives::detail::reset_cached_channel_communicators();
+
         // simply destroy global barrier
-        auto& b = hpx::distributed::barrier::get_global_barrier();
-        b[0].detach();
-        b[1].detach();
+        hpx::distributed::barrier::get_global_barrier().detach();
+#endif
     }
-}}    // namespace hpx::detail
+}    // namespace hpx::detail
 
 #endif

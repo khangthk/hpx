@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,17 +8,15 @@
 
 #include <hpx/config.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/modules/itt_notify.hpp>
+
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/synchronization.hpp>
+
 #include <hpx/performance_counters/counters_fwd.hpp>
 #include <hpx/performance_counters/performance_counter_set.hpp>
-#include <hpx/runtime_local/interval_timer.hpp>
-#include <hpx/synchronization/mutex.hpp>
 
 #include <cstddef>
 #include <cstdint>
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-#include <map>
-#endif
 #include <string>
 #include <vector>
 
@@ -27,7 +25,7 @@
 namespace hpx::util {
 
     ///////////////////////////////////////////////////////////////////////////
-    class HPX_EXPORT query_counters
+    HPX_CXX_EXPORT class HPX_EXPORT query_counters
     {
         // avoid warning about using this in member initializer list
         query_counters* this_()
@@ -88,19 +86,19 @@ namespace hpx::util {
             performance_counters::counter_values_array const& value);
 
         template <typename Stream>
-        static void print_name_csv(Stream& out, std::string const& name);
+        void print_name_csv(Stream& out, std::string const& name);
 
         template <typename Stream>
-        static void print_value_csv(Stream* out,
+        void print_value_csv(Stream* out,
             performance_counters::counter_info const& infos,
             performance_counters::counter_value const& value);
         template <typename Stream>
-        static void print_value_csv(Stream* out,
+        void print_value_csv(Stream* out,
             performance_counters::counter_info const& infos,
             performance_counters::counter_values_array const& value);
 
         template <typename Stream>
-        static void print_name_csv_short(Stream& out, std::string const& name);
+        void print_name_csv_short(Stream& out, std::string const& name);
 
     private:
         using mutex_type = hpx::mutex;
@@ -118,10 +116,6 @@ namespace hpx::util {
         bool counter_types_;
 
         interval_timer timer_;
-
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-        std::map<std::string, util::itt::counter> itt_counters_;
-#endif
     };
 }    // namespace hpx::util
 

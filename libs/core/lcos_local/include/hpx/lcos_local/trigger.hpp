@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,15 +8,14 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/datastructures/detail/intrusive_list.hpp>
-#include <hpx/functional/bind_front.hpp>
 #include <hpx/lcos_local/conditional_trigger.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/synchronization/no_mutex.hpp>
-#include <hpx/synchronization/spinlock.hpp>
-#include <hpx/thread_support/unlock_guard.hpp>
-#include <hpx/type_support/assert_owns_lock.hpp>
+#include <hpx/modules/synchronization.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <mutex>
@@ -25,7 +24,7 @@
 namespace hpx::lcos::local {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Mutex = hpx::spinlock>
+    HPX_CXX_CORE_EXPORT template <typename Mutex = hpx::spinlock>
     struct base_trigger
     {
     protected:
@@ -55,7 +54,7 @@ namespace hpx::lcos::local {
           , generation_(rhs.generation_)
           , conditions_(HPX_MOVE(rhs.conditions_))
         {
-            rhs.generation_ = std::size_t(-1);
+            rhs.generation_ = static_cast<std::size_t>(-1);
         }
 
         base_trigger& operator=(base_trigger&& rhs) noexcept
@@ -66,7 +65,7 @@ namespace hpx::lcos::local {
                 mtx_ = mutex_type();
                 promise_ = HPX_MOVE(rhs.promise_);
                 generation_ = rhs.generation_;
-                rhs.generation_ = std::size_t(-1);
+                rhs.generation_ = static_cast<std::size_t>(-1);
                 conditions_ = HPX_MOVE(rhs.conditions_);
             }
             return *this;
@@ -77,8 +76,8 @@ namespace hpx::lcos::local {
         {
             bool triggered = false;
             error_code rc(throwmode::lightweight);
-            condition_list_entry* next = nullptr;
-            for (auto* c = conditions_.front(); c != nullptr; c = next)
+            condition_list_entry* next = conditions_.front();
+            for (auto* c = next; c != nullptr; c = next)
             {
                 // item me be deleted during processing
                 next = c->next;
@@ -99,7 +98,7 @@ namespace hpx::lcos::local {
         {
             std::lock_guard<mutex_type> l(mtx_);
 
-            HPX_ASSERT(generation_ != std::size_t(-1));
+            HPX_ASSERT(generation_ != static_cast<std::size_t>(-1));
             ++generation_;
 
             trigger_conditions(ec);    // re-check/trigger condition, if needed
@@ -123,7 +122,7 @@ namespace hpx::lcos::local {
                 ec = make_success_code();
 
             promise_.set_value();    // fire event
-            promise_ = promise<void>();
+            promise_ = hpx::promise<void>();
 
             if (&ec != &throws)
                 ec = make_success_code();
@@ -132,9 +131,9 @@ namespace hpx::lcos::local {
         }
 
     private:
-        bool test_condition(std::size_t generation_value) noexcept
+        bool test_condition(std::size_t const generation_value) const noexcept
         {
-            return !(generation_value > generation_);
+            return generation_value <= generation_;
         }
 
         struct manage_condition
@@ -212,7 +211,7 @@ namespace hpx::lcos::local {
         std::size_t next_generation()
         {
             std::lock_guard<mutex_type> l(mtx_);
-            HPX_ASSERT(generation_ != std::size_t(-1));
+            HPX_ASSERT(generation_ != static_cast<std::size_t>(-1));
             std::size_t retval = ++generation_;
 
             trigger_conditions();    // re-check/trigger condition, if needed
@@ -237,7 +236,7 @@ namespace hpx::lcos::local {
     // Note: This type is not thread-safe. It has to be protected from
     //       concurrent access by different threads by the code using instances
     //       of this type.
-    struct trigger : public base_trigger<hpx::no_mutex>
+    HPX_CXX_CORE_EXPORT struct trigger : public base_trigger<hpx::no_mutex>
     {
     private:
         using base_type = base_trigger<hpx::no_mutex>;

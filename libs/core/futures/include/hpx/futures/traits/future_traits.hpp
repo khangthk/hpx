@@ -7,31 +7,23 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/futures/future_fwd.hpp>
 #include <hpx/futures/traits/is_future.hpp>
 
 #include <type_traits>
-
-namespace hpx {
-
-    template <typename R>
-    class future;
-
-    template <typename R>
-    class shared_future;
-}    // namespace hpx
 
 namespace hpx::traits {
 
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
 
-        template <typename Future, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename Future, typename Enable = void>
         struct future_traits_customization_point
         {
         };
     }    // namespace detail
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct future_traits : detail::future_traits_customization_point<T>
     {
     };
@@ -72,11 +64,11 @@ namespace hpx::traits {
         using result_type = void;
     };
 
-    template <typename Future>
+    HPX_CXX_CORE_EXPORT template <typename Future>
     using future_traits_t = typename future_traits<Future>::type;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Future, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Future, typename Enable = void>
     struct is_future_void : std::false_type
     {
     };
@@ -87,6 +79,6 @@ namespace hpx::traits {
     {
     };
 
-    template <typename Future>
+    HPX_CXX_CORE_EXPORT template <typename Future>
     inline constexpr bool is_future_void_v = is_future_void<Future>::value;
 }    // namespace hpx::traits

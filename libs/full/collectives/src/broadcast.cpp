@@ -1,4 +1,4 @@
-//  Copyright (c) 2024 Hartmut Kaiser
+//  Copyright (c) 2024-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -16,7 +16,7 @@ namespace hpx::traits::communication {
     // shared libraries.
     char const* communicator_data<broadcast_tag>::name() noexcept
     {
-        static const char* name = "broadcast";
+        static char const* name = "broadcast";
         return name;
     }
 }    // namespace hpx::traits::communication

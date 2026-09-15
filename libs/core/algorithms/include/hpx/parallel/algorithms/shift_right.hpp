@@ -44,7 +44,10 @@ namespace hpx {
     ///
     /// \returns  The \a shift_right algorithm returns \a FwdIter.
     ///           The \a shift_right algorithm returns an iterator to the
-    ///           end of the resulting range.
+    ///           beginning of the resulting range. Specifically:
+    ///           If \a n is 0 or \a n >= (last - first), does nothing and
+    ///           returns \a first and \a last respectively.
+    ///           Otherwise returns \a first + n.
     ///
     template <typename FwdIter, typename Size>
     FwdIter shift_right(FwdIter first, FwdIter last, Size n);
@@ -95,7 +98,10 @@ namespace hpx {
     ///           \a parallel_task_policy and
     ///           returns \a FwdIter otherwise.
     ///           The \a shift_right algorithm returns an iterator to the
-    ///           end of the resulting range.
+    ///           beginning of the resulting range. Specifically:
+    ///           If \a n is 0, does nothing and returns \a first.
+    ///           If \a n >= (last - first), does nothing and returns \a last.
+    ///           Otherwise returns \a first + n.
     ///
     template <typename ExPolicy, typename FwdIter, typename Size>
     typename hpx::parallel::util::detail::algorithm_result<ExPolicy, FwdIter>
@@ -107,17 +113,19 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/async_local/dataflow.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/modules/async_local.hpp>
+#include <hpx/modules/concepts.hpp>
 #include <hpx/modules/execution.hpp>
-#include <hpx/pack_traversal/unwrap.hpp>
-
-#include <hpx/executors/execution_policy.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/pack_traversal.hpp>
 #include <hpx/parallel/algorithms/copy.hpp>
+#include <hpx/parallel/algorithms/detail/advance_and_get_distance.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/reverse.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
+#include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/result_types.hpp>
 #include <hpx/parallel/util/transfer.hpp>
 
@@ -128,47 +136,91 @@ namespace hpx {
 #include <utility>
 
 namespace hpx::parallel {
+
     ///////////////////////////////////////////////////////////////////////////
     // shift_right
     namespace detail {
 
-        template <typename ExPolicy, typename FwdIter, typename Sent>
-        hpx::future<FwdIter> shift_right_helper(
-            ExPolicy policy, FwdIter first, Sent last, FwdIter new_first)
+        HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename FwdIter,
+            typename Sent, typename Size>
+        decltype(auto) shift_right_helper(
+            ExPolicy policy, FwdIter first, Sent last, Size n)
         {
-            using non_seq = std::false_type;
-
-            auto p = hpx::execution::parallel_task_policy()
-                         .on(policy.executor())
-                         .with(policy.parameters());
+            constexpr bool has_scheduler_executor =
+                hpx::execution_policy_has_scheduler_executor_v<ExPolicy>;
 
             detail::reverse<FwdIter> r;
-            return dataflow(
-                [=](hpx::future<FwdIter>&& f1) mutable -> hpx::future<FwdIter> {
-                    f1.get();
 
-                    hpx::future<FwdIter> f = r.call2(p, non_seq(), first, last);
-                    return f.then(
-                        [=](hpx::future<FwdIter>&& f) mutable -> FwdIter {
-                            f.get();
-                            return new_first;
-                        });
-                },
-                r.call2(p, non_seq(), first, new_first));
+            // Handle the [alg.shift] edge cases inside the implementation by
+            // clamping the reverse ranges, so the dispatch (parallel()) keeps a
+            // single homogeneous return type and no unique_any_sender is needed.
+            auto fin = first;
+            auto const dist = static_cast<std::size_t>(
+                detail::advance_and_get_distance(fin, last));
+            bool const noop = static_cast<std::size_t>(n) >= dist;
+            // C++20 [alg.shift]: n==0 -> do nothing, return first;
+            //                    n>=dist -> do nothing, return last.
+            // Both degenerate cases collapse to empty-range reverses below.
+            FwdIter const rev1_end = noop ? first : std::next(first, dist - n);
+            FwdIter const rev2_end = noop ? first : fin;
+            FwdIter const ret = noop ? fin : std::next(first, n);
+
+            if constexpr (!has_scheduler_executor)
+            {
+                using non_seq = std::false_type;
+
+                auto p = hpx::execution::parallel_task_policy()
+                             .on(policy.executor())
+                             .with(policy.parameters());
+
+                hpx::future<FwdIter> result = dataflow(
+                    [=](hpx::future<FwdIter>&& f1) mutable
+                        -> hpx::future<FwdIter> {
+                        f1.get();
+
+                        hpx::future<FwdIter> f =
+                            r.call2(p, non_seq(), first, rev2_end);
+                        return f.then(
+                            [=](hpx::future<FwdIter>&& f) mutable -> FwdIter {
+                                f.get();
+                                return ret;
+                            });
+                    },
+                    r.call2(p, non_seq(), first, rev1_end));
+                return result;
+            }
+            else
+            {
+                // sender-based path: compose reverses using sender
+                // primitives
+                namespace ex = hpx::execution::experimental;
+
+                // Both reverses use FwdIter-typed ends, so their sender types
+                // match and the pipeline stays homogeneous.
+                static_assert(
+                    std::is_same_v<decltype(r.call(policy, first, rev1_end)),
+                        decltype(r.call(policy, first, rev2_end))>);
+
+                return r.call(policy, first, rev1_end) |
+                    ex::let_value([=](FwdIter /*unused*/) mutable {
+                        return r.call(policy, first, rev2_end);
+                    }) |
+                    ex::then([=](FwdIter) mutable -> FwdIter { return ret; });
+            }
         }
 
         // Sequential shift_right implementation borrowed from
         // https://github.com/danra/shift_proposal
 
-        template <typename I>
+        HPX_CXX_CORE_EXPORT template <typename I>
         using difference_type_t =
             typename std::iterator_traits<I>::difference_type;
 
-        template <typename I>
+        HPX_CXX_CORE_EXPORT template <typename I>
         using iterator_category_t =
             typename std::iterator_traits<I>::iterator_category;
 
-        template <typename I, typename Tag, typename = void>
+        HPX_CXX_CORE_EXPORT template <typename I, typename Tag, typename = void>
         inline constexpr bool is_category = false;
 
         template <typename I, typename Tag>
@@ -176,7 +228,7 @@ namespace hpx::parallel {
             std::enable_if_t<
                 std::is_convertible_v<iterator_category_t<I>, Tag>>> = true;
 
-        template <typename FwdIter>
+        HPX_CXX_CORE_EXPORT template <typename FwdIter>
         constexpr FwdIter sequential_shift_right(FwdIter first, FwdIter last,
             difference_type_t<FwdIter> n, std::size_t dist)
         {
@@ -204,7 +256,7 @@ namespace hpx::parallel {
                 for (;;)
                 {
                     for (auto mid = first; mid != result;
-                         ++lead, void(++trail), ++mid)
+                        ++lead, void(++trail), ++mid)
                     {
                         if (lead == last)
                         {
@@ -213,13 +265,13 @@ namespace hpx::parallel {
                                 HPX_MOVE(trail));
                             return result;
                         }
-                        std::iter_swap(mid, trail);
+                        std::ranges::iter_swap(mid, trail);
                     }
                 }
             }
         }
 
-        template <typename FwdIter2>
+        HPX_CXX_CORE_EXPORT template <typename FwdIter2>
         struct shift_right : public algorithm<shift_right<FwdIter2>, FwdIter2>
         {
             constexpr shift_right() noexcept
@@ -234,9 +286,15 @@ namespace hpx::parallel {
             {
                 auto dist =
                     static_cast<std::size_t>(detail::distance(first, last));
-                if (n <= 0 || static_cast<std::size_t>(n) >= dist)
+                // C++20 [alg.shift]: if n is 0, do nothing and return first.
+                if (n == 0)
                 {
                     return first;
+                }
+                // C++20 [alg.shift]: if n >= dist, do nothing and return last.
+                if (static_cast<std::size_t>(n) >= dist)
+                {
+                    return std::next(first, dist);
                 }
 
                 auto last_iter = detail::advance_to_sentinel(first, last);
@@ -245,21 +303,15 @@ namespace hpx::parallel {
             }
 
             template <typename ExPolicy, typename Sent, typename Size>
-            static typename util::detail::algorithm_result<ExPolicy,
-                FwdIter2>::type
-            parallel(ExPolicy&& policy, FwdIter2 first, Sent last, Size n)
+            static decltype(auto) parallel(
+                ExPolicy&& policy, FwdIter2 first, Sent last, Size n)
             {
-                auto dist =
-                    static_cast<std::size_t>(detail::distance(first, last));
-                if (n <= 0 || static_cast<std::size_t>(n) >= dist)
-                {
-                    return parallel::util::detail::algorithm_result<ExPolicy,
-                        FwdIter2>::get(HPX_MOVE(first));
-                }
-
-                auto new_first = std::next(first, dist - n);
+                // Edge cases (n==0, n>=dist) are handled inside
+                // shift_right_helper, so this dispatch keeps a single return
+                // type and needs no type erasure.
                 return util::detail::algorithm_result<ExPolicy, FwdIter2>::get(
-                    shift_right_helper(policy, first, last, new_first));
+                    shift_right_helper(
+                        HPX_FORWARD(ExPolicy, policy), first, last, n));
             }
         };
         /// \endcond
@@ -270,41 +322,38 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::shift_right
-    inline constexpr struct shift_right_t final
-      : hpx::functional::detail::tag_fallback<shift_right_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct shift_right_t final
+      : hpx::detail::tag_dispatch<shift_right_t,
+            hpx::detail::tag_parallel_algorithm<shift_right_t>>
     {
-    private:
+        template <typename FwdIter, typename Size>
         // clang-format off
-        template <typename FwdIter, typename Size,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<FwdIter> &&
                 std::is_integral_v<Size>
-            )>
+            )
         // clang-format on
-        friend FwdIter tag_fallback_invoke(
-            shift_right_t, FwdIter first, FwdIter last, Size n)
+        static FwdIter invoke_default(FwdIter first, FwdIter last, Size n)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Requires at least forward iterator.");
 
             return hpx::parallel::detail::shift_right<FwdIter>().call(
                 hpx::execution::seq, first, last, n);
         }
 
+        template <typename ExPolicy, typename FwdIter, typename Size>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter, typename Size,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter> &&
                 std::is_integral_v<Size>
-            )>
+            )
         // clang-format on
-        friend typename hpx::parallel::util::detail::algorithm_result<ExPolicy,
-            FwdIter>::type
-        tag_fallback_invoke(shift_right_t, ExPolicy&& policy, FwdIter first,
-            FwdIter last, Size n)
+        static decltype(auto) invoke_default(
+            ExPolicy&& policy, FwdIter first, FwdIter last, Size n)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Requires at least forward iterator.");
 
             return hpx::parallel::detail::shift_right<FwdIter>().call(

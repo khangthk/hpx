@@ -52,13 +52,13 @@ std::uint64_t fibonacci(std::uint64_t n)
         n2.get();    // wait for the Futures to return their values
 }
 
-using hpx::naming::id_type;
+using hpx::id_type;
 using hpx::performance_counters::counter_value;
 using hpx::performance_counters::get_counter;
 using hpx::performance_counters::performance_counter;
 using hpx::performance_counters::status_is_valid;
 static bool counters_initialized = false;
-static const char* counter_name = "/threadqueue{{locality#{}/total}}/length";
+static char const* counter_name = "/threadqueue{{locality#{}/total}}/length";
 
 performance_counter get_counter()
 {

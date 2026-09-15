@@ -99,6 +99,57 @@ used CMake options.
    Enable APEX integration. `APEX <https://uo-oaciss.github.io/apex/quickstarthpx/>`_ can be used to profile |hpx|
    applications. In particular, it provides information about individual tasks in the |hpx| runtime.
 
+.. option:: HPX_WITH_TRACY
+
+   Enable |tracy|_ integration. Tracy shows task lifecycle, work stealing, suspension, and (with
+   :option:`HPX_WITH_PARCEL_PROFILING`) distributed parcel events. See :ref:`optimizing_with_tracy` for
+   build and attach instructions.
+
+.. option:: HPX_WITH_ITTNOTIFY
+
+   Enable |ittnotify|_ integration. Requires VTune or any other |ittnotify|
+   provider; point ``Amplifier_ROOT`` at the install (the name is legacy;
+   it accepts any ITTNotify installation).
+
+.. option:: HPX_WITH_PARCEL_PROFILING
+
+   Enable per-parcel profiling data. Adds per-parcel identifier and timestamp fields (creation time,
+   start time, parcel id) that are carried on the wire and surfaced to whichever tracing backend is
+   enabled. Defaults to ``ON`` when :option:`HPX_WITH_APEX` is on, ``OFF`` otherwise.
+
+.. option:: HPX_WITH_TRACING_LIFECYCLE_EVENTS
+
+   Emit per-task lifecycle events (staged, created, executing, yielded, suspended, resumed, completed,
+   deleted). Defaults to ``ON``. Turn ``OFF`` to compile out the per-task hooks and their runtime
+   connection check when profiling a workload where only causal or work-stealing events matter. The
+   saving applies on Tracy builds; the other backends already treat these hooks as no-ops.
+
+.. option:: HPX_WITH_TRACING_CAUSAL_EVENTS
+
+   Emit causal-chain events (``future_fulfilled``, ``future_exception_set``, ``continuation_run``,
+   ``continuation_finished``, ``handle_on_completed_fired``). Defaults to ``ON``. Turning this ``OFF``
+   also elides the active-continuations counter update in ``continuation_run`` /
+   ``continuation_finished``. The saving applies on Tracy builds; the other backends already treat
+   these hooks as no-ops.
+
+.. option:: HPX_WITH_TRACING_WORK_STEALING_EVENTS
+
+   Emit the work-stealing signal when a worker steals a task from another worker. Defaults to ``ON``.
+   Turn ``OFF`` when profiling a workload with heavy work stealing where the signal itself is not
+   being consumed. The saving applies on Tracy builds; the other backends already treat this hook as
+   a no-op.
+
+.. option:: HPX_WITH_TRACING_SAMPLE_RATE
+
+   1-in-N sampling rate for the per-task lifecycle events on Tracy builds. Defaults to ``1``
+   (every task sampled). This sets the initial rate; the runtime value can be overridden
+   via the ``hpx.tracing.sample_rate`` INI entry (see :ref:`ini_hpx_tracing`). Must be a
+   positive integer; the CMake configure step rejects non-integer or non-positive values.
+   Only the lifecycle events are sampled - causal events fire unconditionally so the
+   causal-chain view stays intact at any rate. ``task_staged`` is also unconditional
+   because it fires before per-task state exists to consult. Other backends already treat
+   lifecycle hooks as no-ops.
+
 .. option:: HPX_WITH_GENERIC_CONTEXT_COROUTINES
 
    Enable Boost. Context for task context switching. It must be enabled for non-x86 architectures such as ARM and Power.
@@ -110,7 +161,8 @@ used CMake options.
 
 .. option:: HPX_WITH_CXX_STANDARD
 
-   Set a specific C++ standard version e.g. ``HPX_WITH_CXX_STANDARD=20``. The default and minimum value is 17.
+   Set a specific C++ standard version e.g. ``HPX_WITH_CXX_STANDARD=23``.
+   The default and minimum value is ``20``. Possible values are ``20``, ``23``, or ``26``.
 
 .. option:: HPX_WITH_EXAMPLES
 
@@ -119,6 +171,10 @@ used CMake options.
 .. option:: HPX_WITH_TESTS
 
    Build tests.
+
+.. option:: HPX_WITH_DEBUG_POSTFIX
+
+   Set the postfix for debug libraries. The default is ``d``. This variable is used to set ``CMAKE_DEBUG_POSTFIX`` and is only relevant for Debug builds or multi-configuration generators. The default rarely needs to be changed. It ensures that generated debug binaries have a different name than release binaries, which is important to avoid ABI problems when both debug and release binaries are installed on the same system.
 
 For a complete list of available |cmake|_ variables that influence the build of
 |hpx|, see :ref:`cmake_variables`.
@@ -151,6 +207,38 @@ Available build types are:
    build type as you used to build |hpx|. For CMake builds, this means that
    the ``CMAKE_BUILD_TYPE`` variables have to match and for projects not using
    |cmake|_, the ``HPX_DEBUG`` macro has to be set in debug mode.
+
+.. _cmake_presets:
+
+Using CMake Presets
+===================
+
+|hpx| provides a ``CMakePresets.json`` file which includes a variety of pre-defined build configurations.
+These presets allow you to easily configure the build for common scenarios without needing to manually specify multiple CMake variables.
+
+To use a preset, you can use the ``--preset`` option with CMake:
+
+.. code-block:: shell-session
+
+    $ cmake --preset <preset-name>
+    $ cmake --build --preset <preset-name>
+
+Some of the available presets include:
+
+* ``default``: Standard release build with tests and examples enabled.
+* ``minimal``: Minimal build with only core features (no tests, examples, or tools).
+* ``full``: Full build with all standard features enabled.
+* ``debug``: Debug build with symbols and debug-optimized settings.
+* ``performance``: Build optimized for performance analysis with APEX profiling.
+* ``cuda``: Build with CUDA support (requires CUDA toolkit).
+* ``sycl``: Build with SYCL support (requires compatible compiler).
+* ``sanitizer-address``: Build with AddressSanitizer enabled.
+
+For a full list of available presets, you can run:
+
+.. code-block:: shell-session
+
+    $ cmake --list-presets
 
 .. _build_recipes:
 
@@ -248,10 +336,10 @@ Windows
 
 To build |hpx| under Windows 10 x64 with Visual Studio 2015:
 
-* Download the CMake V3.18.1 installer (or latest version) from `here
-  <https://blog.kitware.com/cmake-3-18-1-available-for-download/>`__
+* Download the CMake V3.19 installer (or latest version) from `here
+  <https://blog.kitware.com/cmake-3-19-0-available-for-download/>`__
 * Download the hwloc V1.11.0 (or the latest version) from `here
-  <http://www.open-mpi.org/software/hwloc/v1.11/downloads/hwloc-win64-build-1.11.0.zip>`__
+  <https://www.open-mpi.org/software/hwloc/v2.11/>`__
   and unpack it.
 * Download the latest Boost libraries from `here
   <https://www.boost.org/users/download/>`__ and unpack them.

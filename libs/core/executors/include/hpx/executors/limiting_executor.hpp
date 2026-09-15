@@ -1,4 +1,5 @@
 //  Copyright (c) 2017-2018 John Biddiscombe
+//  Copyright (c) 2020-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,14 +8,12 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/concepts/has_member_xxx.hpp>
-#include <hpx/execution/traits/executor_traits.hpp>
-#include <hpx/execution_base/execution.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/functional/detail/invoke.hpp>
-#include <hpx/functional/experimental/scope_exit.hpp>
-#include <hpx/threading_base/print.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -31,15 +30,16 @@
 namespace hpx::execution::experimental {
 
     // by convention the title is 7 chars (for alignment)
-    using print_on = hpx::debug::enable_print<false>;
-    static constexpr print_on lim_debug("LIMEXEC");
+    HPX_CXX_CORE_EXPORT using print_on = hpx::debug::enable_print<false>;
+    inline constexpr print_on lim_debug("LIMEXEC");
 
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
+
         HPX_HAS_MEMBER_XXX_TRAIT_DEF(in_flight_estimate)
     }    // namespace detail
 
-    template <typename BaseExecutor>
+    HPX_CXX_CORE_EXPORT template <typename BaseExecutor>
     struct limiting_executor
     {
         // --------------------------------------------------------------------
@@ -159,6 +159,14 @@ namespace hpx::execution::experimental {
           , upper_threshold_(upper)
           , block_(block_on_destruction)
         {
+            if (lower > upper)
+            {
+                HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
+                    "limiting_executor::limiting_executor",
+                    "lower threshold ({}) must not exceed upper "
+                    "threshold ({})",
+                    lower, upper);
+            }
         }
 
         limiting_executor(std::size_t lower, std::size_t upper,
@@ -169,6 +177,14 @@ namespace hpx::execution::experimental {
           , upper_threshold_(upper)
           , block_(block_on_destruction)
         {
+            if (lower > upper)
+            {
+                HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
+                    "limiting_executor::limiting_executor",
+                    "lower threshold ({}) must not exceed upper "
+                    "threshold ({})",
+                    lower, upper);
+            }
         }
 
         // --------------------------------------------------------------------
@@ -186,38 +202,32 @@ namespace hpx::execution::experimental {
             return *this;
         }
 
-    private:
+    public:
         // --------------------------------------------------------------------
         // OneWayExecutor interface
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::sync_execute_t,
-            limiting_executor const& exec, F&& f, Ts&&... ts)
+        decltype(auto) sync_execute(F&& f, Ts&&... ts) const
         {
-            return hpx::parallel::execution::sync_execute(exec.executor_,
-                throttling_wrapper<F>(exec, exec.executor_, HPX_FORWARD(F, f)),
+            return hpx::parallel::execution::sync_execute(executor_,
+                throttling_wrapper<F>(*this, executor_, HPX_FORWARD(F, f)),
                 HPX_FORWARD(Ts, ts)...);
         }
 
         // --------------------------------------------------------------------
         // TwoWayExecutor interface
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_execute_t, limiting_executor& exec,
-            F&& f, Ts&&... ts)
+        decltype(auto) async_execute(F&& f, Ts&&... ts)
         {
-            return hpx::parallel::execution::async_execute(exec.executor_,
-                throttling_wrapper<F>(exec, exec.executor_, HPX_FORWARD(F, f)),
+            return hpx::parallel::execution::async_execute(executor_,
+                throttling_wrapper<F>(*this, executor_, HPX_FORWARD(F, f)),
                 HPX_FORWARD(Ts, ts)...);
         }
 
         template <typename F, typename Future, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::then_execute_t, limiting_executor& exec,
-            F&& f, Future&& predecessor, Ts&&... ts)
+        decltype(auto) then_execute(F&& f, Future&& predecessor, Ts&&... ts)
         {
-            return hpx::parallel::execution::then_execute(exec.executor_,
-                throttling_wrapper<F>(exec, exec.executor_, HPX_FORWARD(F, f)),
+            return hpx::parallel::execution::then_execute(executor_,
+                throttling_wrapper<F>(*this, executor_, HPX_FORWARD(F, f)),
                 HPX_FORWARD(Future, predecessor), HPX_FORWARD(Ts, ts)...);
         }
 
@@ -226,39 +236,33 @@ namespace hpx::execution::experimental {
         // NonBlockingOneWayExecutor (adapted) interface
         // --------------------------------------------------------------------
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(hpx::parallel::execution::post_t,
-            limiting_executor& exec, F&& f, Ts&&... ts)
+        void post(F&& f, Ts&&... ts)
         {
-            hpx::parallel::execution::post(exec.executor_,
-                throttling_wrapper<F>(exec, exec.executor_, HPX_FORWARD(F, f)),
+            hpx::parallel::execution::post(executor_,
+                throttling_wrapper<F>(*this, executor_, HPX_FORWARD(F, f)),
                 HPX_FORWARD(Ts, ts)...);
         }
 
         // --------------------------------------------------------------------
         // BulkTwoWayExecutor interface
-        template <typename F, typename S, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(!std::is_integral_v<S>)>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_async_execute_t,
-            limiting_executor& exec, F&& f, S const& shape, Ts&&... ts)
+        template <typename F, typename S, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_async_execute(F&& f, S const& shape, Ts&&... ts)
         {
-            return hpx::parallel::execution::bulk_async_execute(exec.executor_,
+            return hpx::parallel::execution::bulk_async_execute(executor_,
                 shape,
-                throttling_wrapper<F>(exec, exec.executor_, HPX_FORWARD(F, f)),
+                throttling_wrapper<F>(*this, executor_, HPX_FORWARD(F, f)),
                 HPX_FORWARD(Ts, ts)...);
         }
 
         // --------------------------------------------------------------------
-        template <typename F, typename S, typename Future, typename... Ts,
-            HPX_CONCEPT_REQUIRES_(!std::is_integral_v<S>)>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::bulk_then_execute_t,
-            limiting_executor& exec, F&& f, S const& shape,
-            Future&& predecessor, Ts&&... ts)
+        template <typename F, typename S, typename Future, typename... Ts>
+            requires(!std::is_integral_v<S>)
+        decltype(auto) bulk_then_execute(
+            F&& f, S const& shape, Future&& predecessor, Ts&&... ts)
         {
-            return hpx::parallel::execution::bulk_then_execute(exec.executor_,
-                shape,
-                throttling_wrapper<F>(exec, exec.executor_, HPX_FORWARD(F, f)),
+            return hpx::parallel::execution::bulk_then_execute(executor_, shape,
+                throttling_wrapper<F>(*this, executor_, HPX_FORWARD(F, f)),
                 HPX_FORWARD(Future, predecessor), HPX_FORWARD(Ts, ts)...);
         }
 
@@ -279,8 +283,16 @@ namespace hpx::execution::experimental {
             hpx::util::yield_while([&]() { return (count_ > 0); });
         }
 
-        void set_threshold(std::size_t lower, std::size_t upper) noexcept
+        void set_threshold(std::size_t lower, std::size_t upper)
         {
+            if (lower > upper)
+            {
+                HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
+                    "limiting_executor::set_threshold",
+                    "lower threshold ({}) must not exceed upper "
+                    "threshold ({})",
+                    lower, upper);
+            }
             lower_threshold_ = lower;
             upper_threshold_ = upper;
         }
@@ -312,7 +324,7 @@ namespace hpx::execution::experimental {
     };
 }    // namespace hpx::execution::experimental
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     // --------------------------------------------------------------------
     // simple forwarding implementations of executor traits
@@ -358,6 +370,6 @@ namespace hpx::parallel::execution {
       : is_scheduler_executor<std::decay_t<BaseExecutor>>
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 #include <hpx/config/warnings_suffix.hpp>

@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <iomanip>
@@ -35,6 +36,10 @@ HPX_CORE_EXPORT char** freebsd_environ = nullptr;
 #include <winsock2.h>
 #endif
 
+// Used to wrap function call parameters to prevent evaluation
+// when debugging is disabled
+#define HPX_DP_LAZY(Expr, printer) printer.eval([&] { return Expr; })
+
 // ------------------------------------------------------------
 /// \cond NODETAIL
 namespace hpx::debug {
@@ -45,24 +50,25 @@ namespace hpx::debug {
     namespace detail {
 
         template <typename Int>
-        HPX_CORE_EXPORT void print_dec(std::ostream& os, Int const& v, int N)
+        void print_dec(std::ostream& os, Int const& v, int N)
         {
             os << std::right << std::setfill('0') << std::setw(N)
                << std::noshowbase << std::dec << v;
         }
 
-        template HPX_CORE_EXPORT void print_dec(
-            std::ostream&, std::int16_t const&, int);
-        template HPX_CORE_EXPORT void print_dec(
-            std::ostream&, std::int32_t const&, int);
-        template HPX_CORE_EXPORT void print_dec(
-            std::ostream&, std::int64_t const&, int);
-        template HPX_CORE_EXPORT void print_dec(
-            std::ostream&, std::uint64_t const&, int);
+        template void print_dec(std::ostream&, std::int16_t const&, int);
+        template void print_dec(std::ostream&, std::uint16_t const&, int);
+        template void print_dec(std::ostream&, std::int32_t const&, int);
+        template void print_dec(std::ostream&, std::uint32_t const&, int);
+        template void print_dec(std::ostream&, std::int64_t const&, int);
+        template void print_dec(std::ostream&, std::uint64_t const&, int);
+#if defined(__APPLE__)
+        template void print_dec(std::ostream&, long const&, int);
+        template void print_dec(std::ostream&, unsigned long const&, int);
+#endif
 
-        template HPX_CORE_EXPORT void print_dec(
-            std::ostream&, std::atomic<int> const&, int);
-        template HPX_CORE_EXPORT void print_dec(
+        template void print_dec(std::ostream&, std::atomic<int> const&, int);
+        template void print_dec(
             std::ostream&, std::atomic<unsigned int> const&, int);
     }    // namespace detail
 
@@ -214,6 +220,11 @@ namespace hpx::debug {
             }
             os << detail::hostname_print_helper();
         }
+
+        void display_to_cout(std::string const& str)
+        {
+            std::cout << str;
+        }
     }    // namespace detail
 
     // ------------------------------------------------------------------
@@ -238,8 +249,8 @@ namespace hpx::debug {
            << " CRC32:" << hpx::debug::hex<8>(crc32(p.addr_, p.len_)) << "\n";
 
         auto const max_value =
-            (std::min)(static_cast<std::size_t>(
-                           std::ceil(static_cast<double>(p.len_) / 8.0)),
+            (std::min) (static_cast<std::size_t>(
+                            std::ceil(static_cast<double>(p.len_) / 8.0)),
                 static_cast<std::size_t>(128));
         for (std::size_t i = 0; i < max_value; i++)
         {
@@ -256,52 +267,58 @@ namespace hpx::debug {
         // ------------------------------------------------------------------
         [[nodiscard]] char const* hostname_print_helper::get_hostname() const
         {
-            static bool initialized = false;
-            static char hostname_[32] = {'\0'};
-            if (!initialized)
-            {
-                initialized = true;
+            // The buffer is filled on first use only. Initialization of a
+            // function-local static is thread-safe (C++11), so concurrent
+            // first calls from worker threads cannot race, and every later
+            // call costs a single guard check.
+            static char const* const hostname = [this]() {
+                // Static storage duration: the cached pointer below stays
+                // valid for the whole lifetime of the program.
+                static char buffer[32] = {'\0'};
 #if !defined(__FreeBSD__)
-                gethostname(hostname_, static_cast<std::size_t>(12));
+                gethostname(buffer, static_cast<std::size_t>(12));
 #endif
-                int const rank = guess_rank();
+                int const rank = this->guess_rank();
                 if (rank >= 0)
                 {
-#if defined(HPX_GCC_VERSION) && HPX_GCC_VERSION >= 110000
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wrestrict"
-#endif
-                    std::string const temp =
-                        "(" + std::to_string(guess_rank()) + ")";
-#if defined(HPX_GCC_VERSION) && HPX_GCC_VERSION >= 110000
-#pragma GCC diagnostic pop
-#endif
-                    std::strcat(hostname_, temp.c_str());
+                    std::size_t const len = std::strlen(buffer);
+                    std::snprintf(
+                        buffer + len, sizeof(buffer) - len, "(%d)", rank);
                 }
-            }
-            return hostname_;
+                return buffer;
+            }();
+            return hostname;
         }
 
-        [[nodiscard]] int hostname_print_helper::guess_rank() const
+        [[nodiscard]] int hostname_print_helper::guess_rank() const noexcept
         {
-#if defined(__FreeBSD__)
-            char** env = freebsd_environ;
-#else
-            char** env = environ;
-#endif
-            std::vector<std::string> const env_strings{//-V826
-                "_RANK=", "_NODEID="};
-            for (char** current = env; *current; ++current)
+            try
             {
-                auto e = std::string(*current);
-                for (auto const& s : env_strings)
+#if defined(__FreeBSD__)
+                char** env = freebsd_environ;
+#else
+                char** env = environ;
+#endif
+                std::vector<std::string> const env_strings{//-V826
+                    "_RANK=", "_NODEID="};
+                for (char** current = env; *current; ++current)
                 {
-                    auto const pos = e.find(s);
-                    if (pos != std::string::npos)
+                    auto e = std::string(*current);
+                    for (auto const& s : env_strings)
                     {
-                        return std::stoi(e.substr(pos + s.size(), 5));
+                        auto const pos = e.find(s);
+                        if (pos != std::string::npos)
+                        {
+                            return std::stoi(e.substr(pos + s.size(), 5));
+                        }
                     }
                 }
+            }
+            // NOLINTNEXTLINE(bugprone-empty-catch)
+            catch (...)
+            {
+                // Silently ignore malformed environment variables;
+                // returning -1 disables the rank suffix.
             }
             return -1;
         }

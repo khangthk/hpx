@@ -44,8 +44,13 @@ foreach(jacobi_smp_application ${jacobi_smp_applications})
   add_hpx_executable(
     ${jacobi_smp_application} INTERNAL_FLAGS MODULE jacobi_smp
     SOURCES ${sources} ${${jacobi_smp_application}_FLAGS}
-    FOLDER "Examples/JacobiSMP"
+    FOLDER "Examples/JacobiSMP" ${HPX_WITH_CXX_MODULES_OPTION}
   )
+
+  # see #6579
+  if(Boost_VERSION_STRING VERSION_LESS "1.79.0")
+    target_compile_definitions(${jacobi_smp_application} PRIVATE NOMINMAX)
+  endif()
 
   add_hpx_example_target_dependencies("jacobi_smp" ${jacobi_smp_application})
 

@@ -297,6 +297,128 @@ While the options ``--hpx:list-counters`` and ``--hpx:list-counter-infos`` give
 a short list of all available counters, the full documentation for those can
 be found in the section :ref:`counters`.
 
+.. _hpx_top:
+
+HPX-Top
+-------
+
+**HPX-Top** is a real-time, terminal-based dashboard designed for monitoring the
+health and performance of distributed |hpx| applications. Inspired by tools like
+``htop`` and ``btop``, it provides a high-level overview of system utilization,
+network flow, and internal runtime metrics.
+
+.. figure:: ../_static/images/hpx_top.png
+   :alt: HPX-Top Dashboard Screenshot
+   :align: center
+   :width: 100%
+
+   HPX-Top Real-time Performance Dashboard
+
+Features
+~~~~~~~~
+
+* **Locality-Aware Monitoring**: Automatically detects and displays metrics for
+  all localities in a running distributed application.
+* **Thread Pool Utilization**: Visualizes real-time usage of worker threads with
+  instantaneous counts and historical sparkline graphs.
+* **Parcel Throughput**: Tracks incoming and outgoing parcels, helping to identify
+  network-bound bottlenecks or communication hotspots.
+* **AGAS Health Monitor**: Displays cache hit and miss rates for the Application
+  Global Address Space (AGAS), crucial for diagnosing naming service bottlenecks.
+
+Usage
+~~~~~
+
+HPX-Top is implemented as a Python script that acts as a wrapper around your |hpx|
+application. It automatically configures the necessary performance counters and
+output formats.
+
+The tool requires the ``rich`` Python library for rendering the terminal UI:
+
+.. code-block:: shell-session
+
+   $ pip install rich
+
+To monitor an |hpx| application, launch it through ``hpx-top.py``:
+
+.. code-block:: shell-session
+
+   $ python3 tools/hpx-top.py ./your_application --hpx:threads=4 [other HPX flags]
+
+You can also run HPX-Top in mock mode to explore the interface without a running
+|hpx| application:
+
+.. code-block:: shell-session
+
+   $ python3 tools/hpx-top.py --mock
+
+Technical Details
+~~~~~~~~~~~~~~~~~
+
+The tool leverages |hpx|'s built-in performance counter framework. It launches the
+target application with specific flags (``--hpx:print-counter-interval`` and
+``--hpx:print-counter-format=csv-short``) and parses the standard output in a
+non-blocking background thread to update the TUI.
+
+.. _hpx_stat_viewer:
+
+HPX Smart Telemetry (hpx_stat_viewer)
+-------------------------------------
+
+**HPX Smart Telemetry** (``hpx_stat_viewer.py``) is an intelligent, lightweight
+performance dashboard designed to identify performance anomalies in real-time.
+While ``hpx-top`` provides a broad system overview, ``hpx_stat_viewer`` focuses on
+deep-dive analysis of specific metrics with built-in heuristic alerting.
+
+.. figure:: ../_static/images/hpx_stat_viewer.png
+   :alt: HPX Smart Telemetry Dashboard Screenshot
+   :align: center
+   :width: 100%
+
+   HPX Smart Telemetry Dashboard with Anomaly Detection
+
+Features
+~~~~~~~~
+
+* **Heuristic Anomaly Detection**: Uses an Exponential Moving Average (EMA) to
+  monitor counter trends. It automatically flags sudden spikes (+150%) or drops
+  (-60%) with prominent visual alerts like ``[⚡ SPIKE]`` and ``[⚠️ DROP]``.
+* **Live History Sparklines**: Displays 10-tick historical trend graphs next to
+  every metric, helping developers distinguish between momentary noise and
+  persistent bottlenecks.
+* **Smart Filtering and Grouping**: Supports regex-based counter filtering and
+  automatically groups metrics by locality for large-scale distributed runs.
+* **Zero-Dependency Core**: Requires no external TUI libraries, making it highly
+  portable for various terminal environments.
+
+Usage
+~~~~~
+
+``hpx_stat_viewer.py`` reads HPX counter data from standard input in ``csv-short``
+transient format. This allows it to be used for both live monitoring and
+post-mortem analysis of log files.
+
+To monitor a live application with smart filtering:
+
+.. code-block:: shell-session
+
+   $ ./your_hpx_app --hpx:print-counter-interval=500 --hpx:print-counter-format=csv-short ... | \
+     python3 tools/hpx_stat_viewer.py --filter "threads|utilization"
+
+To replay an offline performance log for analysis:
+
+.. code-block:: shell-session
+
+   $ python3 tools/hpx_stat_viewer.py --replay your_hpx_counters.csv --speed 0.5
+
+Technical Details
+~~~~~~~~~~~~~~~~~
+
+The dashboard implements a thread-safe parser that handles HPX's CSV-short format.
+The anomaly detection engine uses a smoothing factor of 0.4 for its EMA calculations,
+balancing responsiveness with stability. It is officially integrated into the HPX installation
+rules under the ``tools`` component.
+
 A simple example
 ----------------
 
@@ -564,7 +686,7 @@ functions of the created client component instance should be called::
     hpx::cout << count.get_value<int>().get() << std::endl;
 
 For more information about the client component type, see
-:cpp:class:`hpx::performance_counters::performance_counter`
+:hpx:class:`hpx::performance_counters::performance_counter`
 
 .. note::
 
@@ -633,7 +755,7 @@ requests the counter data of this performance counter.
 
 The next step in exposing this counter to the runtime system is to register the
 function as a new raw counter type using the |hpx| API function
-:cpp:func:`hpx::performance_counters::install_counter_type`. A counter type
+:hpx:func:`hpx::performance_counters::install_counter_type`. A counter type
 represents certain common characteristics of counters, like their counter type
 name and any associated description information. The following snippet shows an
 example of how to register the function ``some_performance_data``, which is shown
@@ -658,7 +780,7 @@ Now it is possible to instantiate a new counter instance based on the naming
 scheme ``"/test{locality#*/total}/data"`` where ``*`` is a zero-based integer
 index identifying the :term:`locality` for which the counter instance should be
 accessed. The function
-:cpp:func:`hpx::performance_counters::install_counter_type` enables users to
+:hpx:func:`hpx::performance_counters::install_counter_type` enables users to
 instantiate exactly one counter instance for each :term:`locality`. Repeated
 requests to instantiate such a counter will return the same instance, i.e., the
 instance created for the first request.
@@ -667,7 +789,7 @@ If this counter needs to be accessed using the standard |hpx| command line
 options, the registration has to be performed during application startup, before
 ``hpx_main`` is executed. The best way to achieve this is to register an |hpx|
 startup function using the API function
-:cpp:func:`hpx::register_startup_function` before calling ``hpx::init`` to
+:hpx:func:`hpx::register_startup_function` before calling ``hpx::init`` to
 initialize the runtime system::
 
     int main(int argc, char* argv[])
@@ -1377,7 +1499,8 @@ system and application performance.
        where:
 
        ``<cache_statistics>`` is one of the following: ``cache/insertions``,
-       ``cache/evictions``, ``cache/hits``, ``cache/misses``
+       ``cache/evictions``, ``cache/hits``, ``cache/misses``,
+       ``cache/reclaims``
 
        ``<connection_type>`` is one of the following: ``tcp``, ``mpi``
    * * Counter instance formatting
@@ -1392,6 +1515,81 @@ system and application performance.
        type on the given :term:`locality` (see ``<cache_statistics``, e.g.
        ``ache/insertions``, ``cache/evictions``, ``cache/hits``,
        ``cache/misses`` or``cache/reclaims``.
+
+       The performance counters for the connection type ``mpi`` are available
+       only if the compile time constant ``HPX_HAVE_PARCELPORT_MPI`` was defined
+       while compiling the |hpx| core library (which is not defined by default).
+       The corresponding cmake configuration constant is
+       ``HPX_WITH_PARCELPORT_MPI``.
+
+       Please see :ref:`cmake_variables` for more details.
+
+.. list-table:: :term:`Parcel` layer performance counter ``/parcelport/count/<connection_type>/cache-reservation-failures``
+   :widths: 20 80
+
+   * * Counter type
+     * ``/parcelport/count/<connection_type>/cache-reservation-failures``
+
+       where ``<connection_type>`` is one of the following: ``tcp``, ``mpi``
+   * * Counter instance formatting
+     * ``locality#*/total``
+
+       where ``*`` is the :term:`locality` id of the :term:`locality` the counter
+       should be queried for. The :term:`locality` id is a (zero based) number
+       identifying the :term:`locality`.
+   * * Description
+     * Returns the cumulative number of times ``get_or_reserve()`` returned
+       ``false`` because every connection slot in the connection cache was
+       already checked out (pool saturation). This is distinct from ordinary
+       cache misses, which occur whenever a new connection to a :term:`locality`
+       is first created and do not cause parcel deferral. A non-zero and
+       growing value of this counter means that outgoing parcels are being
+       silently queued until a connection is reclaimed; raising
+       ``hpx.max_connections`` or ``hpx.max_connections_per_locality`` in the
+       ini configuration will relieve the saturation.
+
+       When pool exhaustion is detected, |hpx| also emits a warning-level log
+       message (throttled to at most once every five seconds) of the form:
+       ``parcelport connection cache exhausted: N/M connections in use, K
+       deferred reservation(s) since last reset``.
+
+       The performance counters for the connection type ``mpi`` are available
+       only if the compile time constant ``HPX_HAVE_PARCELPORT_MPI`` was defined
+       while compiling the |hpx| core library (which is not defined by default).
+       The corresponding cmake configuration constant is
+       ``HPX_WITH_PARCELPORT_MPI``.
+
+       Please see :ref:`cmake_variables` for more details.
+
+.. list-table:: :term:`Parcel` layer performance counters ``/parcelport/count/<connection_type>/cache-connections`` and ``/parcelport/count/<connection_type>/cache-max-connections``
+   :widths: 20 80
+
+   * * Counter type
+     * ``/parcelport/count/<connection_type>/cache-connections``
+
+       ``/parcelport/count/<connection_type>/cache-max-connections``
+
+       where ``<connection_type>`` is one of the following: ``tcp``, ``mpi``
+   * * Counter instance formatting
+     * ``locality#*/total``
+
+       where ``*`` is the :term:`locality` id of the :term:`locality` the counter
+       should be queried for. The :term:`locality` id is a (zero based) number
+       identifying the :term:`locality`.
+   * * Description
+     * ``cache-connections`` returns the current number of connections tracked
+       by the connection cache for the given connection type on the given
+       :term:`locality`. This includes both connections that are currently
+       checked out and connections that are idle and available for reuse.
+
+       ``cache-max-connections`` returns the configured upper limit on the
+       total number of connections the cache is allowed to hold. This value is
+       fixed at startup and corresponds to the ``hpx.max_connections`` ini key.
+
+       Together these two counters give the pool utilisation ratio. If
+       ``cache-connections`` is consistently equal to ``cache-max-connections``
+       and ``cache-reservation-failures`` is increasing, the connection pool is
+       saturated and the limit should be raised.
 
        The performance counters for the connection type ``mpi`` are available
        only if the compile time constant ``HPX_HAVE_PARCELPORT_MPI`` was defined
@@ -3411,6 +3609,54 @@ optionally, ``Tau_ROOT=$PATH_TO_TAU`` to your |cmake|_ configuration. In
 addition, you can override the tag used for |apex|_ with the
 :option:`HPX_WITH_APEX_TAG` option. Please see the |apex_hpx_doc|_ for detailed
 instructions on using |apex|_ with |hpx|.
+
+.. _optimizing_with_tracy:
+
+Tracy integration
+=================
+
+|hpx| provides integration with the |tracy|_ profiler, which offers
+per-thread zone tracking, message logs, and fiber support. Enable it with
+:option:`HPX_WITH_TRACY`\ ``=ON`` during |cmake|_ configuration.
+
+Tracy can be supplied via a system install (point ``Tracy_ROOT`` at the install
+tree) or fetched by CMake at configure time by adding
+``HPX_WITH_FETCH_TRACY=ON``. The version fetched is pinned by
+``HPX_WITH_TRACY_TAG``, which defaults to ``v0.14.1``. When Tracy is
+fetched, |hpx| forces ``TRACY_ENABLE``, ``TRACY_ON_DEMAND`` and
+``TRACY_FIBERS`` on the built client. A system-supplied Tracy must have
+been built with the same three options; Tracy 0.14 mangles its exported
+profiler symbol based on the active define set, so a mismatch fails at
+link time rather than producing a silent inconsistency at runtime.
+
+To profile a distributed run, additionally enable
+:option:`HPX_WITH_PARCEL_PROFILING`\ ``=ON`` so per-parcel identifiers are
+carried on the wire and the ``send_parcel`` / ``recv_parcel`` /
+``parcel_scheduled`` events can be correlated across localities by parcel id.
+
+Event classes can be compiled out individually to reduce the tracing cost
+when only a subset of the timeline is being investigated:
+:option:`HPX_WITH_TRACING_LIFECYCLE_EVENTS`,
+:option:`HPX_WITH_TRACING_CAUSAL_EVENTS`, and
+:option:`HPX_WITH_TRACING_WORK_STEALING_EVENTS`. All three default to ``ON``; turning
+one off compiles the wrapper for that class to a no-op, so the runtime
+connection check and the event body do not run (argument evaluation at each
+call site is unchanged). These gates affect the Tracy backend, which is the
+only backend that emits these classes today; the APEX, ITT-Notify and empty
+backends already treat all three as no-ops.
+
+:option:`HPX_WITH_TRACING_SAMPLE_RATE` sets the initial 1-in-N sampling
+rate for the per-task lifecycle events instead of gating them off
+entirely. The rate can be overridden at runtime via the
+``hpx.tracing.sample_rate`` INI entry (for example
+``--hpx:ini=hpx.tracing.sample_rate=10``); values below 1 are clamped to
+1. Causal events are not sampled and continue to fire every time.
+``task_staged`` is also unconditional because it fires before per-task
+state exists to consult.
+
+Start ``tracy-profiler`` (or ``tracy-capture`` for headless capture) before
+or during the run. Tracy discovers instrumented processes via UDP broadcast
+on the local network; no port configuration is required for the common case.
 
 References
 ==========

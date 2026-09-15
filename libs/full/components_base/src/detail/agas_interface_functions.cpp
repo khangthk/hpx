@@ -13,9 +13,8 @@
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/naming_base/naming_base.hpp>
-#include <hpx/parcelset_base/parcel_interface.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -29,6 +28,7 @@ namespace hpx::agas::detail {
 
     ///////////////////////////////////////////////////////////////////////////
     bool (*is_console)() = nullptr;
+    bool (*is_connecting)(naming::gid_type const&) = nullptr;
 
     ///////////////////////////////////////////////////////////////////////////
     bool (*register_name)(std::string const& name, naming::gid_type const& gid,

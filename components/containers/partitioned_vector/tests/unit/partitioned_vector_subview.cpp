@@ -6,14 +6,16 @@
 
 #include <hpx/config.hpp>
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
-#include <hpx/collectives/spmd_block.hpp>
-#include <hpx/components/containers/partitioned_vector/partitioned_vector_local_view.hpp>
-#include <hpx/components/containers/partitioned_vector/partitioned_vector_view.hpp>
 #include <hpx/hpx_main.hpp>
+#include <hpx/modules/collectives.hpp>
+#include <hpx/modules/runtime_distributed.hpp>
+#include <hpx/modules/testing.hpp>
+
 #include <hpx/include/partitioned_vector_predef.hpp>
 #include <hpx/include/partitioned_vector_view.hpp>
-#include <hpx/modules/testing.hpp>
-#include <hpx/runtime_distributed/find_all_localities.hpp>
+
+#include <hpx/components/containers/partitioned_vector/partitioned_vector_local_view.hpp>
+#include <hpx/components/containers/partitioned_vector/partitioned_vector_view.hpp>
 
 #include <cstddef>
 #include <string>
@@ -27,11 +29,8 @@
 HPX_REGISTER_PARTITIONED_VECTOR(double)
 #endif
 
-void bulk_test(hpx::lcos::spmd_block block,
-    std::size_t N,
-    std::size_t tile,
-    std::size_t elt_size,
-    std::string vec_name)
+void bulk_test(hpx::lcos::spmd_block block, std::size_t N, std::size_t tile,
+    std::size_t elt_size, std::string vec_name)
 {
     using const_iterator = typename std::vector<double>::const_iterator;
     using vector_type = hpx::partitioned_vector<double>;
@@ -67,7 +66,7 @@ void bulk_test(hpx::lcos::spmd_block block,
                 // Check that dereferencing iterator and const_iterator does not
                 // retrieve the same type
                 HPX_TEST((!std::is_same<decltype(*left_it),
-                          decltype(*right_it)>::value));
+                    decltype(*right_it)>::value));
 
                 // It's a local write operation
                 *left_it = *right_it;
@@ -89,7 +88,7 @@ void bulk_test(hpx::lcos::spmd_block block,
 
                 for (std::size_t jj = j, jj_end = j + tile; jj < jj_end; jj++)
                     for (std::size_t ii = i, ii_end = i + tile; ii < ii_end;
-                         ii++)
+                        ii++)
                     {
                         // It's a Get operation
                         std::vector<double> value =
@@ -114,8 +113,8 @@ int main()
 {
     using vector_type = hpx::partitioned_vector<double>;
 
-    std::size_t N = 40;
-    std::size_t tile = 10;
+    std::size_t N = 20;
+    std::size_t tile = 5;
     std::size_t elt_size = 8;
 
     // (N+1) replaces N for padding purpose
@@ -128,7 +127,7 @@ int main()
     my_vector.register_as(hpx::launch::sync, vec_name);
 
     hpx::future<void> join = hpx::lcos::define_spmd_block(
-        "block", 4, bulk_test_action(), N, tile, elt_size, vec_name);
+        "block", 2, bulk_test_action(), N, tile, elt_size, vec_name);
 
     join.get();
 

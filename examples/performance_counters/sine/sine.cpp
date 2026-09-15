@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,7 +9,7 @@
 #include <hpx/hpx.hpp>
 #include <hpx/include/performance_counters.hpp>
 #include <hpx/include/util.hpp>
-#include <hpx/runtime_local/startup_function.hpp>
+#include <hpx/modules/runtime_local.hpp>
 
 #include <cstdint>
 
@@ -36,7 +36,8 @@ namespace performance_counters { namespace sine {
 
         std::uint64_t up_time =
             hpx::chrono::high_resolution_clock::now() - started_at;
-        return std::int64_t(std::sin(up_time / 1e10) * 100000.);
+        return std::int64_t(
+            std::sin(static_cast<double>(up_time) / 1e10) * 100000.);
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -223,7 +224,8 @@ namespace performance_counters { namespace sine {
             {"/sine/immediate/explicit", counter_type::raw,
                 "returns the current value of a sine wave calculated over "
                 "an arbitrary time line (explicit, hand-rolled version)",
-                HPX_PERFORMANCE_COUNTER_V1, &explicit_sine_counter_creator,
+                hpx::performance_counters::HPX_PERFORMANCE_COUNTER_V1,
+                &explicit_sine_counter_creator,
                 &explicit_sine_counter_discoverer, ""},
             // We assume that valid counter names have the following scheme:
             //
@@ -236,7 +238,7 @@ namespace performance_counters { namespace sine {
                 "returns the current value of a sine wave calculated over "
                 "an arbitrary time line (implicit version, using HPX "
                 "facilities)",
-                HPX_PERFORMANCE_COUNTER_V1,
+                hpx::performance_counters::HPX_PERFORMANCE_COUNTER_V1,
                 hpx::bind(
                     &hpx::performance_counters::locality_raw_counter_creator,
                     _1, &immediate_sine, _2),

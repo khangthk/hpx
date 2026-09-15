@@ -1,4 +1,4 @@
-# Copyright (c) 2022 The STE||AR-Group
+# Copyright (c) 2022-2025 The STE||AR-Group
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -21,6 +21,10 @@ set(example_programs disable_thread_stealing_executor
                      executor_with_thread_hooks
 )
 
+if(HPX_LIKWID_WITH_LIKWID)
+  set(example_programs ${example_programs} executor_using_likwid)
+endif()
+
 foreach(example_program ${example_programs})
   set(sources ${example_program}.cpp)
 
@@ -41,3 +45,9 @@ foreach(example_program ${example_programs})
     )
   endif()
 endforeach()
+
+if(HPX_WITH_CXX_MODULES AND MSVC)
+  foreach(example disable_thread_stealing_executor)
+    target_compile_definitions(${example} PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES)
+  endforeach()
+endif()

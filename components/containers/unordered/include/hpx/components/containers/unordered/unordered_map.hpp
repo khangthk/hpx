@@ -9,21 +9,17 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/traits/is_distribution_policy.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_combinators/wait_all.hpp>
-#include <hpx/components/client_base.hpp>
-#include <hpx/components/get_ptr.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/distribution_policies/container_distribution_policy.hpp>
-#include <hpx/functional/bind_front.hpp>
-#include <hpx/runtime_components/distributed_metadata_base.hpp>
-#include <hpx/runtime_components/new.hpp>
-#include <hpx/runtime_distributed/copy_component.hpp>
-#include <hpx/serialization/serialize.hpp>
-#include <hpx/serialization/unordered_map.hpp>
-#include <hpx/serialization/vector.hpp>
-#include <hpx/type_support/unused.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_combinators.hpp>
+#include <hpx/modules/components.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/distribution_policies.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/runtime_distributed.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <hpx/components/containers/unordered/partition_unordered_map_component.hpp>
 #include <hpx/components/containers/unordered/unordered_map_segmented_iterator.hpp>
@@ -354,7 +350,7 @@ namespace hpx {
             typedef typename base_type::server_component_type::get_action act;
 
             return async(act(), id).then(
-                [HPX_CXX20_CAPTURE_THIS(=)](
+                [=, this](
                     future<server::unordered_map_config_data>&& f) -> void {
                     get_data_helper(id, f.get());
                 });
@@ -435,7 +431,7 @@ namespace hpx {
 
             // create as many partitions as required
             hpx::future<std::vector<bulk_locality_result>> f =
-                policy.template bulk_create<component_type>(num_parts);
+                policy.template bulk_create<false, component_type>(num_parts);
 
             // now initialize our data structures
             init(f.get());
@@ -454,7 +450,7 @@ namespace hpx {
 
             // create as many partitions as required
             hpx::future<std::vector<bulk_locality_result>> f =
-                policy.template bulk_create<component_type>(
+                policy.template bulk_create<false, component_type>(
                     num_parts, bucket_count, hash, equal);
 
             // now initialize our data structures
@@ -492,7 +488,7 @@ namespace hpx {
                 {
                     ptrs.push_back(get_ptr<partition_unordered_map_server>(
                         partitions[i].partition_.get())
-                                       .then(get_ptr_helper{i, partitions}));
+                            .then(get_ptr_helper{i, partitions}));
                 }
             }
 
@@ -506,8 +502,7 @@ namespace hpx {
         {
             this->base_type::connect_to(symbolic_name);
             return this->base_type::share().then(
-                [HPX_CXX20_CAPTURE_THIS(=)](
-                    shared_future<id_type>&& f) -> hpx::future<void> {
+                [=, this](shared_future<id_type>&& f) -> hpx::future<void> {
                     return connect_to_helper(f.get());
                 });
         }

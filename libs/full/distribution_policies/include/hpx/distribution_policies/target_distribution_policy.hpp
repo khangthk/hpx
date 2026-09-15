@@ -1,4 +1,4 @@
-//  Copyright (c) 2014-2023 Hartmut Kaiser
+//  Copyright (c) 2014-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,19 +9,14 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/actions_base_support.hpp>
-#include <hpx/actions_base/traits/extract_action.hpp>
-#include <hpx/actions_base/traits/is_distribution_policy.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/async_distributed/dataflow.hpp>
-#include <hpx/async_distributed/detail/async_implementations_fwd.hpp>
-#include <hpx/async_distributed/detail/post_implementations_fwd.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/promise_local_result.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/runtime_components/create_component_helpers.hpp>
-#include <hpx/serialization/serialization_fwd.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/serialization.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -73,8 +68,8 @@ namespace hpx::components {
         }
 
         /// \cond NOINTERNAL
-        typedef std::pair<hpx::id_type, std::vector<hpx::id_type>>
-            bulk_locality_result;
+        using bulk_locality_result =
+            std::pair<hpx::id_type, std::vector<hpx::id_type>>;
         /// \endcond
 
         /// Create multiple objects on the localities associated by
@@ -90,16 +85,25 @@ namespace hpx::components {
         /// \returns A future holding the list of global addresses which
         ///          represent the newly created objects
         ///
-        template <typename Component, typename... Ts>
+        template <bool WithCount, typename Component, typename... Ts>
         hpx::future<std::vector<bulk_locality_result>> bulk_create(
             std::size_t count, Ts&&... vs) const
         {
             // by default the object will be created on the current
             // locality
             hpx::id_type id = get_next_target();
-            hpx::future<std::vector<hpx::id_type>> f =
-                components::bulk_create_async<Component>(
+
+            hpx::future<std::vector<hpx::id_type>> f;
+            if constexpr (WithCount)
+            {
+                f = components::bulk_create_async<WithCount, Component>(
+                    id, count, 0, HPX_FORWARD(Ts, vs)...);
+            }
+            else
+            {
+                f = components::bulk_create_async<WithCount, Component>(
                     id, count, HPX_FORWARD(Ts, vs)...);
+            }
 
             return f.then(hpx::launch::sync,
                 [id = HPX_MOVE(id)](hpx::future<std::vector<hpx::id_type>>&& f)
@@ -220,14 +224,14 @@ namespace hpx::components {
 
     /// A predefined instance of the \a target_distribution_policy. It will
     /// represent the local locality and will place all items to create here.
-    static target_distribution_policy const target{};
+    HPX_CXX_EXPORT HPX_EXPORT extern target_distribution_policy const target;
 }    // namespace hpx::components
 
 /// \cond NOINTERNAL
 namespace hpx {
 
-    using hpx::components::target;
-    using hpx::components::target_distribution_policy;
+    HPX_CXX_EXPORT using hpx::components::target;
+    HPX_CXX_EXPORT using hpx::components::target_distribution_policy;
 
     template <>
     struct traits::is_distribution_policy<

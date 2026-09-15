@@ -9,16 +9,19 @@
 #include <hpx/config.hpp>
 
 #include <hpx/assert.hpp>
-#include <hpx/async_local/async.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/executors/guided_pool_executor.hpp>
-#include <hpx/functional/bind.hpp>
+#include <hpx/compute_local/macros.hpp>
+#include <hpx/modules/async_local.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/lock_registration.hpp>
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/synchronization.hpp>
 #include <hpx/modules/threadmanager.hpp>
-#include <hpx/runtime_local/runtime_local_fwd.hpp>
-#include <hpx/runtime_local/thread_pool_helpers.hpp>
-#include <hpx/topology/topology.hpp>
-#include <hpx/type_support/construct_at.hpp>
+#include <hpx/modules/topology.hpp>
+#include <hpx/modules/type_support.hpp>
 
+#include <concepts>
 #include <cstddef>
 #include <memory>
 #include <sstream>
@@ -28,32 +31,24 @@
 #include <vector>
 
 #if defined(__linux) || defined(linux) || defined(__linux__)
+#include <iostream>
 #include <linux/unistd.h>
 #include <sys/mman.h>
-#define NUMA_ALLOCATOR_LINUX
-#include <iostream>
 #endif
 
 // Can be used to enable debugging of the allocator page mapping
 //#define NUMA_BINDING_ALLOCATOR_INIT_MEMORY
 
-#if !defined(NUMA_BINDING_ALLOCATOR_DEBUG)
-#if defined(HPX_DEBUG)
-#define NUMA_BINDING_ALLOCATOR_DEBUG false
-#else
-#define NUMA_BINDING_ALLOCATOR_DEBUG false
-#endif
-#endif
-
 namespace hpx {
 
-    static hpx::debug::enable_print<NUMA_BINDING_ALLOCATOR_DEBUG> nba_deb(
-        "NUM_B_A");
-}
+    HPX_CXX_CORE_EXPORT inline hpx::debug::enable_print<
+        NUMA_BINDING_ALLOCATOR_DEBUG>
+        nba_deb("NUM_B_A");
+}    // namespace hpx
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
-    struct numa_binding_allocator_tag
+    HPX_CXX_CORE_EXPORT struct numa_binding_allocator_tag
     {
     };
 
@@ -69,11 +64,11 @@ namespace hpx::parallel::execution {
             return domain;
         }
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 namespace hpx::compute::host {
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct numa_binding_helper
     {
         // After memory has been allocated, this operator will be called for
@@ -147,14 +142,14 @@ namespace hpx::compute::host {
         std::string pool_name_ = "default";
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     using numa_binding_helper_ptr = std::shared_ptr<numa_binding_helper<T>>;
 
     /// The numa_binding_allocator allocates memory using a policy based on
     /// hwloc flags for memory binding. This allocator can be used to request
     /// data that is bound to one or more numa domains via the bitmap mask
     /// supplied
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct numa_binding_allocator
     {
         using value_type = T;
@@ -210,6 +205,7 @@ namespace hpx::compute::host {
 
         // copy constructor using rebind type
         template <typename U>
+            requires(!std::same_as<T, U>)
         numa_binding_allocator(numa_binding_allocator<U> const& rhs)
           : binding_helper_(rhs.binding_helper_)
           , policy_(rhs.policy_)
@@ -344,6 +340,7 @@ namespace hpx::compute::host {
 #endif
                 threads::create_topology().deallocate(p, n * sizeof(T));
             }
+            // NOLINTNEXTLINE(bugprone-empty-catch)
             catch (...)
             {
                 // just ignore errors from create_topology
@@ -376,7 +373,8 @@ namespace hpx::compute::host {
         // @TODO, move this into hpx::topology for cleanliness
         static int get_numa_domain(void* page)
         {
-            HPX_ASSERT((reinterpret_cast<std::size_t>(page) & 4095) == 0);
+            HPX_ASSERT((reinterpret_cast<std::size_t>(page) &
+                           (threads::get_memory_page_size() - 1)) == 0);
 
 #if defined(NUMA_ALLOCATOR_LINUX)
             // This is an optimized version of the hwloc equivalent
@@ -403,7 +401,7 @@ namespace hpx::compute::host {
         {
 #if defined(NUMA_ALLOCATOR_LINUX)
             // @TODO replace with topology::page_size
-            int pagesize = threads::get_memory_page_size();
+            int pagesize = static_cast<int>(threads::get_memory_page_size());
             HPX_ASSERT((std::size_t(addr) & (pagesize - 1)) == 0);
 
             std::size_t count = (len + pagesize - 1) / pagesize;
@@ -432,13 +430,47 @@ namespace hpx::compute::host {
             }
             return temp.str();
 #else
-            return {};
+            // On platforms without NUMA support (e.g., macOS), return a fallback
+            // string with all zeros, assuming a single NUMA domain
+            std::size_t const pagesize = threads::get_memory_page_size();
+            std::size_t const count = (len + pagesize - 1) / pagesize;
+            std::stringstream temp;
+            temp << "Numa page binding for page count " << count << "\n";
+            for (std::size_t i = 0; i < count; i++)
+            {
+                temp << "0";
+            }
+            return temp.str();
 #endif
         }
 
+        /// Touches every page of the allocation starting at \a p so that
+        /// each page is physically bound to the NUMA domain assigned to it
+        /// by \a binding_helper_. One first-touch task per NUMA domain is
+        /// dispatched and the call blocks until all of them complete.
+        ///
+        /// \pre Must be called from an HPX thread. init_mutex serializes
+        /// concurrent calls to this function and is intentionally held
+        /// across hpx::wait_all() below, which is a suspension point that
+        /// may resume the calling HPX thread on a different OS worker
+        /// thread. hpx::mutex (unlike std::mutex) supports this safely, and
+        /// ignore_while_checking silences the HPX lock-checking layer's
+        /// warning about a lock spanning a suspension point.
+        ///
+        /// \param p pointer to the start of the allocation to initialize.
+        /// \param n number of elements to initialize.
         void initialize_pages(pointer p, size_t n) const
         {
-            std::unique_lock<std::mutex> lk(init_mutex);
+            // initialize_pages() is expected to run on an HPX thread. The
+            // mutex is intentionally held across hpx::wait_all(), which may
+            // suspend and later resume the calling HPX thread on a different
+            // OS worker thread.
+            HPX_ASSERT_MSG(threads::get_self_ptr() != nullptr,
+                "numa_binding_allocator::initialize_pages must be "
+                "called from an HPX thread");
+
+            std::unique_lock<hpx::mutex> lk(init_mutex);
+            [[maybe_unused]] hpx::util::ignore_while_checking il(&lk);
 
             threads::hwloc_bitmap_ptr const bitmap =
                 threads::get_thread_manager().get_pool_numa_bitmap(
@@ -448,15 +480,18 @@ namespace hpx::compute::host {
 
             using namespace parallel::execution;
             using allocator_hint_type =
-                pool_numa_hint<numa_binding_allocator_tag>;
+                hpx::execution::experimental::pool_numa_hint<
+                    hpx::execution::experimental::numa_binding_allocator_tag>;
 
             // Warning :low priority tasks are used here, because the scheduler
             // does not steal across numa domains for those tasks, so they are
             // sure to remain on the right queue and be executed on the right
             // domain.
-            guided_pool_executor<allocator_hint_type> numa_executor(
-                &hpx::resource::get_thread_pool(binding_helper_->pool_name()),
-                threads::thread_priority::bound);
+            hpx::execution::experimental::guided_pool_executor<
+                allocator_hint_type>
+                numa_executor(&hpx::resource::get_thread_pool(
+                                  binding_helper_->pool_name()),
+                    threads::thread_priority::bound);
 
             nba_deb.debug("Launching First-Touch tasks");
             // for each numa domain, we must launch a task to 'touch' the memory
@@ -485,9 +520,20 @@ namespace hpx::compute::host {
             nba_deb.debug(debug::str<>("First-Touch"), "Done tasks");
         }
 
+        /// Builds a human-readable, page-by-page description of how the
+        /// allocation starting at \a p is bound across NUMA domains,
+        /// suitable for debug output. init_mutex is held only for the
+        /// duration of this synchronous call; unlike initialize_pages(), no
+        /// suspension point is crossed while it is held.
+        ///
+        /// \param p pointer to the start of the allocation to describe.
+        /// \param helper binding helper describing the array layout used to
+        /// compute per-page offsets.
+        /// \return a formatted string describing the domain binding of each
+        /// page in the allocation.
         std::string display_binding(pointer p, numa_binding_helper_ptr helper)
         {
-            std::unique_lock<std::mutex> lk(init_mutex);
+            std::unique_lock<hpx::mutex> lk(init_mutex);
             //
             std::ostringstream display;
             auto N = helper->array_rank();
@@ -499,9 +545,9 @@ namespace hpx::compute::host {
                 std::size_t Nc = helper->array_size(0);
                 std::size_t const Nr = helper->array_size(1);
                 std::size_t xinc =
-                    (std::min)(helper->display_step(0), pagesize);
+                    (std::min) (helper->display_step(0), pagesize);
                 std::size_t const yinc =
-                    (std::min)(helper->display_step(1), pagesize);
+                    (std::min) (helper->display_step(1), pagesize);
                 std::size_t const xoff = helper->memory_step(0);
                 std::size_t const yoff = helper->memory_step(1);
                 std::size_t m = helper->memory_bytes();
@@ -605,16 +651,17 @@ namespace hpx::compute::host {
                 {
                     HPX_ASSERT((reinterpret_cast<std::size_t>(page_ptr) &
                                    (threads::get_memory_page_size() - 1)) == 0);
-                    // trigger a memory read and rewrite without changing contents
-                    T volatile* vaddr = const_cast<T volatile*>(page_ptr);
-                    *vaddr = *vaddr;
+                    // Write the first byte of the page to trigger first-touch
+                    // without reading uninitialized memory (which would be UB
+                    // for non-trivial T and can be optimized away by the
+                    // compiler even for trivial types).
+                    *reinterpret_cast<char volatile*>(page_ptr) = 0;
 #ifdef NUMA_BINDING_ALLOCATOR_INIT_MEMORY
+                    // show which cpu is actually being used
 #if defined(NUMA_ALLOCATOR_LINUX)
-                    int Vmem =
-                        sched_getcpu();    // show which cpu is actually being used
+                    std::size_t Vmem = sched_getcpu();
 #else
-                    int Vmem =
-                        numa_domain;    // show just the domain we think we're on
+                    std::size_t Vmem = numa_domain;
 #endif
                     pointer elem_ptr = page_ptr;
                     for (size_type j = 0; j < pageN; ++j)
@@ -668,6 +715,11 @@ namespace hpx::compute::host {
         unsigned int flags_;
 
     private:
-        mutable std::mutex init_mutex;
+        // Must be an HPX-aware mutex: initialize_pages() holds this
+        // lock across hpx::wait_all(), which can suspend the calling
+        // HPX thread and resume it on a different OS worker thread.
+        // std::mutex ties lock ownership to the OS thread, so
+        // unlocking after such a migration is undefined behavior.
+        mutable hpx::mutex init_mutex;
     };
 }    // namespace hpx::compute::host

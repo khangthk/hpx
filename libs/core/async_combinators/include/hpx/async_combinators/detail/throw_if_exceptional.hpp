@@ -6,10 +6,7 @@
 
 #pragma once
 
-#include <hpx/futures/detail/future_data.hpp>
-#include <hpx/futures/traits/acquire_shared_state.hpp>
-#include <hpx/futures/traits/future_access.hpp>
-#include <hpx/futures/traits/is_future.hpp>
+#include <hpx/modules/futures.hpp>
 
 #include <array>
 #include <cstddef>
@@ -26,8 +23,8 @@ namespace hpx::detail {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
 #endif
-        auto shared_state = hpx::traits::detail::get_shared_state(f);
-        if (shared_state->has_exception())
+        if (auto shared_state = hpx::traits::detail::get_shared_state(f);
+            shared_state && shared_state->has_exception())
         {
             shared_state->get_result_void();    // throws stored exception
         }
@@ -36,9 +33,9 @@ namespace hpx::detail {
 #endif
     }
 
-    template <typename Future,
-        typename Enable = std::enable_if_t<hpx::traits::is_future_v<Future> ||
-            hpx::traits::is_shared_state_v<Future>>>
+    template <typename Future>
+        requires(hpx::traits::is_future_v<Future> ||
+            hpx::traits::is_shared_state_v<Future>)
     void throw_if_exceptional(Future const& f)
     {
         rethrow_if_needed(f);
@@ -50,6 +47,26 @@ namespace hpx::detail {
         for (auto const& f : values)
         {
             rethrow_if_needed(f);
+        }
+    }
+
+    template <typename Iterator>
+        requires(hpx::traits::is_iterator_v<Iterator>)
+    void throw_if_exceptional(Iterator begin, Iterator end)
+    {
+        for (; begin != end; ++begin)
+        {
+            rethrow_if_needed(*begin);
+        }
+    }
+
+    template <typename Iterator>
+        requires(hpx::traits::is_iterator_v<Iterator>)
+    void throw_if_exceptional(Iterator begin, std::size_t count)
+    {
+        for (; count != 0; (void) ++begin, --count)
+        {
+            rethrow_if_needed(*begin);
         }
     }
 

@@ -26,6 +26,7 @@ include(HPX_AddModule)
 add_hpx_module(
   core affinity
   GLOBAL_HEADER_GEN ON
+  GLOBAL_HEADER_MODULE_GEN ON
   SOURCES ${affinity_sources}
   HEADERS ${affinity_headers}
   COMPAT_HEADERS ${affinity_compat_headers}
@@ -40,3 +41,8 @@ add_hpx_module(
   DEPENDENCIES Hwloc::hwloc
   CMAKE_SUBDIRS tests
 )
+
+# see #6579
+if(MSVC AND Boost_VERSION_STRING VERSION_LESS "1.79.0")
+  target_compile_definitions(hpx_affinity PRIVATE NOMINMAX)
+endif()

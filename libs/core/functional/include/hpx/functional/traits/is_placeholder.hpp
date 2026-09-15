@@ -13,8 +13,11 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/functional/config/defines.hpp>
 
+#if defined(HPX_FUNCTIONAL_HAVE_BOOST_PLACEHOLDERS)
 #include <boost/bind/arg.hpp>
+#endif
 
 #include <functional>
 #include <type_traits>
@@ -35,34 +38,28 @@ namespace hpx {
     template <typename T>
     struct is_placeholder;
 #else
-    template <typename T>
+
+#if defined(HPX_FUNCTIONAL_HAVE_BOOST_PLACEHOLDERS)
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct is_placeholder
       : std::integral_constant<int,
             std::is_placeholder_v<T> != 0 ? std::is_placeholder_v<T> :
                                             boost::is_placeholder<T>::value>
     {
     };
+#else
+    HPX_CXX_CORE_EXPORT template <typename T>
+    struct is_placeholder : std::is_placeholder<T>
+    {
+    };
+#endif
 
     template <typename T>
     struct is_placeholder<T const> : is_placeholder<T>
     {
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr int is_placeholder_v = is_placeholder<T>::value;
 #endif
 }    // namespace hpx
-
-namespace hpx::traits {
-
-    template <typename T>
-    using is_placeholder HPX_DEPRECATED_V(1, 8,
-        "hpx::traits::is_placeholder is deprecated, use "
-        "hpx::is_placeholder instead") = hpx::is_placeholder<T>;
-
-    template <typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::traits::is_placeholder_v is deprecated, use "
-        "hpx::is_placeholder_v instead")
-    inline constexpr bool is_placeholder_v = hpx::is_placeholder_v<T>;
-}    // namespace hpx::traits

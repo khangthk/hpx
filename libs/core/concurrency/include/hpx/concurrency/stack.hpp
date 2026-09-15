@@ -1,5 +1,5 @@
 //  Copyright (C) 2008-2013 Tim Blechmann
-//  Copyright (c) 2022-2023 Hartmut Kaiser
+//  Copyright (c) 2022-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -13,7 +13,7 @@
 #include <hpx/concurrency/detail/copy_payload.hpp>
 #include <hpx/concurrency/detail/freelist_stack.hpp>
 #include <hpx/concurrency/detail/tagged_ptr.hpp>
-#include <hpx/datastructures/tuple.hpp>
+#include <hpx/modules/datastructures.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -56,8 +56,9 @@ namespace hpx::lockfree {
      *  - T must have a copy constructor
      *
      */
-    template <typename T, typename Allocator = std::allocator<T>,
-        std::size_t Capacity = 0, bool IsFixedSize = false>
+    HPX_CXX_CORE_EXPORT template <typename T,
+        typename Allocator = std::allocator<T>, std::size_t Capacity = 0,
+        bool IsFixedSize = false>
     class stack
     {
     private:
@@ -321,7 +322,7 @@ namespace hpx::lockfree {
             catch (...)
             {
                 for (node* current_node = new_top_node;
-                     current_node != nullptr;)
+                    current_node != nullptr;)
                 {
                     node* next = current_node->next;
                     pool.template destruct<Threadsafe>(current_node);
@@ -582,7 +583,7 @@ namespace hpx::lockfree {
         template <typename F>
         bool consume_one(F&& f)
         {
-            tagged_node_handle old_tos = tos.load(std::memory_order_consume);
+            tagged_node_handle old_tos = tos.load(std::memory_order_acquire);
 
             for (;;)
             {
@@ -638,7 +639,7 @@ namespace hpx::lockfree {
         std::size_t consume_all_atomic(F&& f)
         {
             std::size_t element_count = 0;
-            tagged_node_handle old_tos = tos.load(std::memory_order_consume);
+            tagged_node_handle old_tos = tos.load(std::memory_order_acquire);
 
             for (;;)
             {
@@ -692,7 +693,7 @@ namespace hpx::lockfree {
         std::size_t consume_all_atomic_reversed(F&& f)
         {
             std::size_t element_count = 0;
-            tagged_node_handle old_tos = tos.load(std::memory_order_consume);
+            tagged_node_handle old_tos = tos.load(std::memory_order_acquire);
 
             for (;;)
             {
@@ -769,5 +770,12 @@ namespace hpx::lockfree {
         util::cache_aligned_data_derived<std::atomic<tagged_node_handle>> tos;
 
         pool_t pool;
+    };
+
+    HPX_CXX_CORE_EXPORT template <typename T,
+        typename Allocator = std::allocator<T>>
+    class variable_size_stack : public stack<T, Allocator>
+    {
+        using stack<T, Allocator>::stack;
     };
 }    // namespace hpx::lockfree

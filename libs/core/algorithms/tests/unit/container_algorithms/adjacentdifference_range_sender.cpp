@@ -1,6 +1,6 @@
 //  Copyright (c) 2015 Daniel Bourgeois
 //  Copyright (c) 2021 Karame M.Shokooh
-//  Copyright (c) 2022 Hartmut Kaiser
+//  Copyright (c) 2022-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -87,18 +87,13 @@ void test_adjacent_difference_async_direct(Policy l, ExPolicy&& p)
     using scheduler_t = ex::thread_pool_policy_scheduler<Policy>;
 
     auto exec = ex::explicit_scheduler_executor(scheduler_t(l));
-#if defined(HPX_HAVE_STDEXEC)
     auto result = tt::sync_wait(
         hpx::ranges::adjacent_difference(p.on(exec), c, std::begin(d)));
-#else
-    auto result =
-        hpx::ranges::adjacent_difference(p.on(exec), c, std::begin(d)) |
-        tt::sync_wait();
-#endif
 
     std::adjacent_difference(std::begin(c), std::end(c), std::begin(d_ans));
 
     HPX_TEST(std::equal(std::begin(d), std::end(d), std::begin(d_ans)));
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     HPX_TEST(std::end(d) == hpx::get<0>(*result));
 }
 

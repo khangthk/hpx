@@ -1,16 +1,16 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
+#include <hpx/config.hpp>
 #include <hpx/assert.hpp>
+#include <hpx/modules/naming_base.hpp>
+
 #include <hpx/async_distributed/base_lco.hpp>
 #include <hpx/async_distributed/post.hpp>
 #include <hpx/async_distributed/trigger_lco.hpp>
-
-#include <hpx/naming_base/address.hpp>
-#include <hpx/naming_base/id_type.hpp>
 #if defined(HPX_MSVC) && !defined(HPX_DEBUG)
 #include <hpx/async_distributed/base_lco_with_value.hpp>
 #endif
@@ -18,9 +18,11 @@
 #include <exception>
 #include <utility>
 
+#include <hpx/config/warnings_prefix.hpp>
+
 namespace hpx {
 
-    void trigger_lco_event([[maybe_unused]] hpx::id_type const& id,
+    void trigger_lco_event([[maybe_unused]] hpx::id_type id,
         [[maybe_unused]] naming::address&& addr,
         [[maybe_unused]] bool move_credits)
     {
@@ -49,7 +51,7 @@ namespace hpx {
 #endif
     }
 
-    void trigger_lco_event([[maybe_unused]] hpx::id_type const& id,
+    void trigger_lco_event([[maybe_unused]] hpx::id_type id,
         [[maybe_unused]] naming::address&& addr,
         [[maybe_unused]] hpx::id_type const& cont,
         [[maybe_unused]] bool move_credits)
@@ -89,7 +91,7 @@ namespace hpx {
 #endif
     }
 
-    void set_lco_error([[maybe_unused]] hpx::id_type const& id,
+    void set_lco_error([[maybe_unused]] hpx::id_type id,
         [[maybe_unused]] naming::address&& addr,
         [[maybe_unused]] std::exception_ptr const& e,
         [[maybe_unused]] bool move_credits)
@@ -119,10 +121,10 @@ namespace hpx {
 #endif
     }
 
-    void set_lco_error([[maybe_unused]] hpx::id_type const& id,
+    void set_lco_error([[maybe_unused]] hpx::id_type id,
         [[maybe_unused]] naming::address&& addr,
         [[maybe_unused]] std::exception_ptr&& e,
-        [[maybe_unused]] bool move_credits)
+        [[maybe_unused]] bool const move_credits)
     {
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
         using set_action = lcos::base_lco::set_exception_action;
@@ -151,11 +153,11 @@ namespace hpx {
 #endif
     }
 
-    void set_lco_error([[maybe_unused]] hpx::id_type const& id,
+    void set_lco_error([[maybe_unused]] hpx::id_type id,
         [[maybe_unused]] naming::address&& addr,
         [[maybe_unused]] std::exception_ptr const& e,
         [[maybe_unused]] hpx::id_type const& cont,
-        [[maybe_unused]] bool move_credits)
+        [[maybe_unused]] bool const move_credits)
     {
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
         using set_action = lcos::base_lco::set_exception_action;
@@ -192,7 +194,7 @@ namespace hpx {
 #endif
     }
 
-    void set_lco_error([[maybe_unused]] hpx::id_type const& id,
+    void set_lco_error([[maybe_unused]] hpx::id_type id,
         [[maybe_unused]] naming::address&& addr,
         [[maybe_unused]] std::exception_ptr&& e,
         [[maybe_unused]] hpx::id_type const& cont,

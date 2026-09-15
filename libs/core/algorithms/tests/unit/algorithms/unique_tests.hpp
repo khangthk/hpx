@@ -9,9 +9,9 @@
 
 #include <hpx/config.hpp>
 #include <hpx/execution.hpp>
+#include <hpx/modules/algorithms.hpp>
 #include <hpx/modules/testing.hpp>
-#include <hpx/parallel/algorithms/unique.hpp>
-#include <hpx/type_support/unused.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -93,13 +93,13 @@ struct user_defined_type
         return this->val != rand_no;
     }
 
-    static const std::vector<std::string> name_list;
+    static std::vector<std::string> const name_list;
 
     int val;
     std::string name;
 };
 
-const std::vector<std::string> user_defined_type::name_list{
+std::vector<std::string> const user_defined_type::name_list{
     "ABB", "ABC", "ACB", "BASE", "CAA", "CAAA", "CAAB"};
 
 struct random_fill
@@ -395,19 +395,19 @@ void test_unique()
     ////////// Test cases for 'int' type.
     test_unique(
         IteratorTag(), int(),
-        [](const int a, const int b) -> bool { return a == b; }, rand_base);
+        [](int const a, int const b) -> bool { return a == b; }, rand_base);
     test_unique(
         seq, IteratorTag(), int(),
-        [](const int a, const int b) -> bool { return a == b; }, rand_base);
+        [](int const a, int const b) -> bool { return a == b; }, rand_base);
     test_unique(
         par, IteratorTag(), int(),
-        [rand_base](const int a, const int b) -> bool {
+        [rand_base](int const a, int const b) -> bool {
             return a == b && b == rand_base;
         },
         rand_base);
     test_unique(
         par_unseq, IteratorTag(), int(),
-        [](const int a, const int b) -> bool { return a == b; }, rand_base);
+        [](int const a, int const b) -> bool { return a == b; }, rand_base);
 
     ////////// Test cases for user defined type.
     test_unique(
@@ -437,13 +437,13 @@ void test_unique()
     ////////// Asynchronous test cases for 'int' type.
     test_unique_async(
         seq(task), IteratorTag(), int(),
-        [rand_base](const int a, const int b) -> bool {
+        [rand_base](int const a, int const b) -> bool {
             return a == b && b == rand_base;
         },
         rand_base);
     test_unique_async(
         par(task), IteratorTag(), int(),
-        [](const int a, const int b) -> bool { return a == b; }, rand_base);
+        [](int const a, int const b) -> bool { return a == b; }, rand_base);
 
     ////////// Asynchronous test cases for user defined type.
     test_unique_async(
@@ -461,7 +461,7 @@ void test_unique()
     ////////// Corner test cases.
     test_unique(
         par, IteratorTag(), int(),
-        [](const int, const int) -> bool { return true; }, rand_base);
+        [](int const, int const) -> bool { return true; }, rand_base);
     test_unique(
         par_unseq, IteratorTag(), user_defined_type(),
         [](user_defined_type const&, user_defined_type const&) -> bool {
@@ -506,7 +506,6 @@ void test_unique_bad_alloc()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-#if defined(HPX_HAVE_STDEXEC)
 template <typename LnPolicy, typename ExPolicy, typename IteratorTag>
 void test_unique_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
 {
@@ -522,8 +521,8 @@ void test_unique_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
 
     auto exec = ex::explicit_scheduler_executor(scheduler_t(ln_policy));
 
-    const int rand_base = std::rand();
-    auto pred = [](const std::size_t a, const std::size_t b) -> bool {
+    int const rand_base = std::rand();
+    auto pred = [](std::size_t const a, std::size_t const b) -> bool {
         return a == b;
     };
     std::size_t const size = 10007;
@@ -535,7 +534,7 @@ void test_unique_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
         auto snd_result = tt::sync_wait(
             ex::just(iterator(std::begin(c)), iterator(std::end(c)), pred) |
             hpx::unique(ex_policy.on(exec)));
-        auto result = hpx::get<0>(*snd_result);
+        auto result = hpx::get<0>(snd_result.value());
 
         auto solution = std::unique(std::begin(d), std::end(d), pred);
 
@@ -551,7 +550,7 @@ void test_unique_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
         auto snd_result = tt::sync_wait(
             ex::just(iterator(std::begin(c)), iterator(std::begin(c)), pred) |
             hpx::unique(ex_policy.on(exec)));
-        auto result = hpx::get<0>(*snd_result);
+        auto result = hpx::get<0>(snd_result.value());
 
         auto solution = std::unique(std::begin(d), std::begin(d), pred);
 
@@ -567,7 +566,7 @@ void test_unique_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
         auto snd_result = tt::sync_wait(
             ex::just(iterator(std::begin(c)), iterator(++std::begin(c)), pred) |
             hpx::unique(ex_policy.on(exec)));
-        auto result = hpx::get<0>(*snd_result);
+        auto result = hpx::get<0>(snd_result.value());
 
         auto solution = std::unique(std::begin(d), ++std::begin(d), pred);
 
@@ -577,4 +576,3 @@ void test_unique_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
         HPX_TEST(equality);
     }
 }
-#endif

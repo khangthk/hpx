@@ -44,20 +44,21 @@ struct user_defined_type
         return this->name == t.name && this->val == t.val;
     }
 
-    static const std::vector<std::string> name_list;
+    static std::vector<std::string> const name_list;
 
     int val;
     std::string name;
 };
 
-const std::vector<std::string> user_defined_type::name_list{
+std::vector<std::string> const user_defined_type::name_list{
     "ABB", "ABC", "ACB", "BASE", "CAA", "CAAA", "CAAB"};
 
 struct random_fill
 {
-    random_fill(int rand_base, int range)
+    random_fill(std::size_t rand_base, std::size_t range)
       : gen(std::rand())
-      , dist(rand_base - range / 2, rand_base + range / 2)
+      , dist(static_cast<int>(rand_base - range / 2),
+            static_cast<int>(rand_base + range / 2))
     {
     }
 
@@ -184,8 +185,8 @@ void test_remove_async(ExPolicy policy, DataType)
 }
 
 template <typename ExPolicy, typename DataType>
-void test_remove_proj(
-    ExPolicy policy, DataType, int rand_base, bool test_for_remove_if = false)
+void test_remove_proj(ExPolicy policy, DataType, unsigned int rand_base,
+    bool test_for_remove_if = false)
 {
     static_assert(hpx::is_execution_policy<ExPolicy>::value,
         "hpx::is_execution_policy<ExPolicy>::value");
@@ -225,6 +226,59 @@ void test_remove_proj(
 }
 
 template <typename DataType>
+void test_remove_sentinel(DataType)
+{
+    using hpx::get;
+
+    using test_vector = test::test_sentinel_container<std::vector<DataType>,
+        std::forward_iterator_tag>;
+
+    std::size_t const size = 10007;
+    test_vector c(size);
+    std::vector<DataType> d;
+    std::generate(std::begin(c.base()), std::end(c.base()), random_fill(0, 6));
+    d = c.base();
+
+    auto value = DataType(0);
+
+    auto result = hpx::ranges::remove(c, value);
+    auto solution = std::remove(std::begin(d), std::end(d), value);
+
+    bool equality =
+        test::equal(std::begin(c), std::begin(result), std::begin(d), solution);
+
+    HPX_TEST(equality);
+}
+
+template <typename ExPolicy, typename DataType>
+void test_remove_sentinel(ExPolicy policy, DataType)
+{
+    static_assert(hpx::is_execution_policy<ExPolicy>::value,
+        "hpx::is_execution_policy<ExPolicy>::value");
+
+    using hpx::get;
+
+    using test_vector = test::test_sentinel_container<std::vector<DataType>,
+        std::forward_iterator_tag>;
+
+    std::size_t const size = 10007;
+    test_vector c(size);
+    std::vector<DataType> d;
+    std::generate(std::begin(c.base()), std::end(c.base()), random_fill(0, 6));
+    d = c.base();
+
+    auto value = DataType(0);
+
+    auto result = hpx::ranges::remove(policy, c, value);
+    auto solution = std::remove(std::begin(d), std::end(d), value);
+
+    bool equality =
+        test::equal(std::begin(c), std::begin(result), std::begin(d), solution);
+
+    HPX_TEST(equality);
+}
+
+template <typename DataType>
 void test_remove()
 {
     using namespace hpx::execution;
@@ -234,6 +288,11 @@ void test_remove()
     test_remove(par, DataType());
     test_remove(par_unseq, DataType());
 
+    test_remove_sentinel(DataType());
+    test_remove_sentinel(seq, DataType());
+    test_remove_sentinel(par, DataType());
+    test_remove_sentinel(par_unseq, DataType());
+
     test_remove_async(seq(task), DataType());
     test_remove_async(par(task), DataType());
 
@@ -242,7 +301,7 @@ void test_remove()
     test_remove_sent(par_unseq);
 
     // test projection
-    int rand_base = g();
+    unsigned int rand_base = g();
     test_remove_proj(seq, DataType(), rand_base);
     test_remove_proj(seq, DataType(), rand_base, true);
     test_remove_proj(par, DataType(), rand_base);

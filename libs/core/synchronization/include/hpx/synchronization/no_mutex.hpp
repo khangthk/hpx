@@ -17,7 +17,7 @@ namespace hpx {
     /// \c no_mutex class can be used in cases where the shared data between
     /// multiple threads can be accessed simultaneously without causing
     /// inconsistencies.
-    struct no_mutex
+    HPX_CXX_CORE_EXPORT struct no_mutex
     {
         static constexpr void lock() noexcept {}
 
@@ -29,10 +29,3 @@ namespace hpx {
         static constexpr void unlock() noexcept {}
     };
 }    // namespace hpx
-
-namespace hpx::lcos::local {
-
-    using no_mutex HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::no_mutex is deprecated, use hpx::no_mutex instead") =
-        hpx::no_mutex;
-}    // namespace hpx::lcos::local

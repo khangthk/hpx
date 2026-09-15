@@ -1,5 +1,5 @@
 //  Copyright (c) 2021 ETH Zurich
-//  Copyright (c) 2022-2023 Hartmut Kaiser
+//  Copyright (c) 2022-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,11 +9,10 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/errors/error.hpp>
-#include <hpx/errors/throw_exception.hpp>
 #include <hpx/execution_base/completion_signatures.hpp>
 #include <hpx/execution_base/sender.hpp>
-#include <hpx/type_support/construct_at.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <cstring>
@@ -26,21 +25,22 @@
 
 namespace hpx::detail {
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct empty_vtable_type
     {
         static_assert(
             sizeof(T) == 0, "No empty vtable type defined for given type T");
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     using empty_vtable_t = typename empty_vtable_type<T>::type;
 
-#if !defined(HPX_MSVC) && defined(HPX_HAVE_CXX20_TRIVIAL_VIRTUAL_DESTRUCTOR)
-    template <typename T>
+#if !defined(HPX_MSVC) && !defined(__CUDACC__) &&                              \
+    !defined(HPX_COMPUTE_DEVICE_CODE)
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr empty_vtable_t<T> empty_vtable{};
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     T const* get_empty_vtable()
     {
         static_assert(std::is_base_of_v<T, empty_vtable_t<T>>,
@@ -49,7 +49,7 @@ namespace hpx::detail {
         return &empty_vtable<T>;
     }
 #else
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     T const* get_empty_vtable()
     {
         static_assert(std::is_base_of_v<T, empty_vtable_t<T>>,
@@ -60,7 +60,8 @@ namespace hpx::detail {
     }
 #endif
 
-    template <typename Base, std::size_t EmbeddedStorageSize,
+    HPX_CXX_CORE_EXPORT template <typename Base,
+        std::size_t EmbeddedStorageSize,
         std::size_t AlignmentSize = sizeof(void*)>
     class movable_sbo_storage
     {
@@ -78,7 +79,7 @@ namespace hpx::detail {
         //   don't fit in the embedded storage.
         union storage
         {
-            std::aligned_storage_t<embedded_storage_size, alignment_size>
+            hpx::aligned_storage_t<embedded_storage_size, alignment_size>
                 embedded_storage;
             base_type* heap_storage = nullptr;
 
@@ -226,7 +227,8 @@ namespace hpx::detail {
         }
     };
 
-    template <typename Base, std::size_t EmbeddedStorageSize,
+    HPX_CXX_CORE_EXPORT template <typename Base,
+        std::size_t EmbeddedStorageSize,
         std::size_t AlignmentSize = sizeof(void*)>
     class copyable_sbo_storage
       : public movable_sbo_storage<Base, EmbeddedStorageSize, AlignmentSize>
@@ -297,7 +299,7 @@ namespace hpx::detail {
 
 namespace hpx::execution::experimental::detail {
 
-    struct HPX_CORE_EXPORT any_operation_state_base
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT any_operation_state_base
     {
         virtual ~any_operation_state_base() = default;
 
@@ -308,7 +310,7 @@ namespace hpx::execution::experimental::detail {
         virtual void start() & noexcept = 0;
     };
 
-    struct HPX_CORE_EXPORT empty_any_operation_state final
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT empty_any_operation_state final
       : any_operation_state_base
     {
         [[nodiscard]] bool empty() const noexcept override;
@@ -326,7 +328,7 @@ struct hpx::detail::empty_vtable_type<
 
 namespace hpx::execution::experimental::detail {
 
-    template <typename Sender, typename Receiver>
+    HPX_CXX_CORE_EXPORT template <typename Sender, typename Receiver>
     struct any_operation_state_impl final : any_operation_state_base
     {
         std::decay_t<connect_result_t<Sender, Receiver>> operation_state;
@@ -344,15 +346,14 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    class immovable
+    HPX_CXX_CORE_EXPORT class immovable
     {
     public:
         immovable() = default;
         immovable(immovable&&) = delete;
     };
 
-    //    class HPX_CORE_EXPORT any_operation_state : immovable
-    class HPX_CORE_EXPORT any_operation_state : immovable
+    HPX_CXX_CORE_EXPORT class HPX_CORE_EXPORT any_operation_state : immovable
     {
         using base_type = detail::any_operation_state_base;
         template <typename Sender, typename Receiver>
@@ -377,12 +378,10 @@ namespace hpx::execution::experimental::detail {
         any_operation_state& operator=(any_operation_state&&) = delete;
         any_operation_state& operator=(any_operation_state const&) = delete;
 
-        HPX_CORE_EXPORT friend void tag_invoke(
-            hpx::execution::experimental::start_t,
-            any_operation_state& os) noexcept;
+        void start() & noexcept;
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     struct any_receiver_base
     {
         using is_receiver = void;
@@ -398,10 +397,10 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    [[noreturn]] HPX_CORE_EXPORT void throw_bad_any_call(
+    HPX_CXX_CORE_EXPORT [[noreturn]] HPX_CORE_EXPORT void throw_bad_any_call(
         char const* class_name, char const* function_name);
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     struct empty_any_receiver final : any_receiver_base<Ts...>
     {
         void move_into(void*) override
@@ -478,7 +477,7 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     class any_receiver
     {
         using base_type = detail::any_receiver_base<Ts...>;
@@ -491,6 +490,7 @@ namespace hpx::execution::experimental::detail {
 
     public:
         using is_receiver = void;
+        using receiver_concept = hpx::execution::experimental::receiver_t;
 
         template <typename Receiver,
             typename = std::enable_if_t<
@@ -518,14 +518,13 @@ namespace hpx::execution::experimental::detail {
         any_receiver& operator=(any_receiver&&) = default;
         any_receiver& operator=(any_receiver const&) = delete;
 
-        friend void tag_invoke(hpx::execution::experimental::set_value_t,
-            any_receiver&& r, Ts&&... ts) noexcept
+        void set_value(Ts&&... ts) && noexcept
         {
             // We first move the storage to a temporary variable so that this
             // any_receiver is empty after this set_value. Doing
             // HPX_MOVE(storage.get()).set_value(...) would leave us with a
             // non-empty any_receiver holding a moved-from receiver.
-            auto moved_storage = HPX_MOVE(r.storage);
+            auto moved_storage = HPX_MOVE(storage);
 
             // the caller of set_value needs to forward errors to set_error
             try
@@ -539,30 +538,20 @@ namespace hpx::execution::experimental::detail {
             }
         }
 
-        friend void tag_invoke(hpx::execution::experimental::set_error_t,
-            any_receiver&& r, std::exception_ptr ep) noexcept
+        void set_error(std::exception_ptr ep) && noexcept
         {
-            // We first move the storage to a temporary variable so that this
-            // any_receiver is empty after this set_error. Doing
-            // HPX_MOVE(storage.get()).set_error(...) would leave us with a
-            // non-empty any_receiver holding a moved-from receiver.
-            auto moved_storage = HPX_MOVE(r.storage);
+            auto moved_storage = HPX_MOVE(storage);
             HPX_MOVE(moved_storage.get()).set_error(HPX_MOVE(ep));
         }
 
-        friend void tag_invoke(hpx::execution::experimental::set_stopped_t,
-            any_receiver&& r) noexcept
+        void set_stopped() && noexcept
         {
-            // We first move the storage to a temporary variable so that this
-            // any_receiver is empty after this set_stopped. Doing
-            // HPX_MOVE(storage.get()).set_stopped(...) would leave us with a
-            // non-empty any_receiver holding a moved-from receiver.
-            auto moved_storage = HPX_MOVE(r.storage);
+            auto moved_storage = HPX_MOVE(storage);
             HPX_MOVE(moved_storage.get()).set_stopped();
         }
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     struct unique_any_sender_base
     {
         virtual ~unique_any_sender_base() = default;
@@ -575,7 +564,7 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     struct any_sender_base : public unique_any_sender_base<Ts...>
     {
         virtual any_sender_base* clone() const = 0;
@@ -586,7 +575,7 @@ namespace hpx::execution::experimental::detail {
             any_receiver<Ts...>&& receiver) & = 0;
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     struct empty_unique_any_sender final : unique_any_sender_base<Ts...>
     {
         void move_into(void*) override
@@ -606,7 +595,7 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     struct empty_any_sender final : any_sender_base<Ts...>
     {
         void move_into(void*) override
@@ -642,7 +631,7 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    template <typename Sender, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename Sender, typename... Ts>
     struct unique_any_sender_impl final : unique_any_sender_base<Ts...>
     {
         std::decay_t<Sender> sender;
@@ -667,7 +656,7 @@ namespace hpx::execution::experimental::detail {
         }
     };
 
-    template <typename Sender, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename Sender, typename... Ts>
     struct any_sender_impl final : any_sender_base<Ts...>
     {
         std::decay_t<Sender> sender;
@@ -724,7 +713,7 @@ namespace hpx::execution::experimental {
         // any_(unique_)sender is destroyed. This would be problematic since the
         // any_(unique_)sender can hold previously created any_receivers and
         // any_operation_states indirectly.
-        template <typename... Ts>
+        HPX_CXX_CORE_EXPORT template <typename... Ts>
         struct any_sender_static_empty_vtable_helper
         {
             any_sender_static_empty_vtable_helper()
@@ -736,9 +725,9 @@ namespace hpx::execution::experimental {
     }    // namespace detail
 #endif
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     class unique_any_sender
-#if defined(HPX_MSVC) || !defined(HPX_HAVE_CXX20_TRIVIAL_VIRTUAL_DESTRUCTOR)
+#if defined(HPX_MSVC)
       : private detail::any_sender_static_empty_vtable_helper<Ts...>
 #endif
     {
@@ -753,7 +742,7 @@ namespace hpx::execution::experimental {
         storage_type storage{};
 
     public:
-        using is_sender = void;
+        using sender_concept = hpx::execution::experimental::sender_t;
 
         unique_any_sender() = default;
 
@@ -783,39 +772,31 @@ namespace hpx::execution::experimental {
         unique_any_sender& operator=(unique_any_sender&&) = default;
         unique_any_sender& operator=(unique_any_sender const&) = delete;
 
-#if defined(HPX_HAVE_STDEXEC)
-        // TODO: Remove this
-        using completion_signatures =
-            hpx::execution::experimental::completion_signatures<
-                set_value_t(Ts...), set_error_t(std::exception_ptr)>;
-#else
-        // clang-format off
-        template <typename Env>
-        friend auto tag_invoke(get_completion_signatures_t,
-            unique_any_sender const&,
-            Env) noexcept -> completion_signatures<set_value_t(Ts...),
-                              set_error_t(std::exception_ptr)>;
-        // clang-format on
-#endif
+        template <typename Self, typename... Env>
+        static consteval auto get_completion_signatures() noexcept
+            -> hpx::execution::experimental::completion_signatures<set_value_t(
+                                                                       Ts...),
+                set_error_t(std::exception_ptr), set_stopped_t()>
+        {
+            return {};
+        }
 
         template <typename R>
-        friend detail::any_operation_state tag_invoke(
-            hpx::execution::experimental::connect_t, unique_any_sender&& s,
-            R&& r)
+        detail::any_operation_state connect(R&& r) &&
         {
             // We first move the storage to a temporary variable so that this
             // any_sender is empty after this connect. Doing
             // HPX_MOVE(storage.get()).connect(...) would leave us with a
             // non-empty any_sender holding a moved-from sender.
-            auto moved_storage = HPX_MOVE(s.storage);
+            auto moved_storage = HPX_MOVE(storage);
             return HPX_MOVE(moved_storage.get())
                 .connect(detail::any_receiver<Ts...>{HPX_FORWARD(R, r)});
         }
     };
 
-    template <typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename... Ts>
     class any_sender
-#if defined(HPX_MSVC) || !defined(HPX_HAVE_CXX20_TRIVIAL_VIRTUAL_DESTRUCTOR)
+#if defined(HPX_MSVC)
       : private detail::any_sender_static_empty_vtable_helper<Ts...>
 #endif
     {
@@ -830,7 +811,7 @@ namespace hpx::execution::experimental {
         storage_type storage{};
 
     public:
-        using is_sender = void;    // Indicate that any_sender is a sender
+        using sender_concept = hpx::execution::experimental::sender_t;
 
         any_sender() = default;
 
@@ -870,37 +851,30 @@ namespace hpx::execution::experimental {
         any_sender& operator=(any_sender&&) = default;
         any_sender& operator=(any_sender const&) = default;
 
-#if defined(HPX_HAVE_STDEXEC)
-        // TODO: Remove this
-        using completion_signatures =
-            hpx::execution::experimental::completion_signatures<
-                set_value_t(Ts...), set_error_t(std::exception_ptr)>;
-#else
-        // clang-format off
-        template <typename Env>
-        friend auto tag_invoke(get_completion_signatures_t, any_sender const&,
-            Env) noexcept -> completion_signatures<set_value_t(Ts...),
-                              set_error_t(std::exception_ptr)>;
-        // clang-format on
-#endif
+        template <typename Self, typename... Env>
+        static consteval auto get_completion_signatures() noexcept
+            -> hpx::execution::experimental::completion_signatures<set_value_t(
+                                                                       Ts...),
+                set_error_t(std::exception_ptr), set_stopped_t()>
+        {
+            return {};
+        }
 
         template <typename R>
-        friend detail::any_operation_state tag_invoke(
-            hpx::execution::experimental::connect_t, any_sender& s, R&& r)
+        detail::any_operation_state connect(R&& r) &
         {
-            return s.storage.get().connect(
+            return storage.get().connect(
                 detail::any_receiver<Ts...>{HPX_FORWARD(R, r)});
         }
 
         template <typename R>
-        friend detail::any_operation_state tag_invoke(
-            hpx::execution::experimental::connect_t, any_sender&& s, R&& r)
+        detail::any_operation_state connect(R&& r) &&
         {
             // We first move the storage to a temporary variable so that this
             // any_sender is empty after this connect. Doing
             // HPX_MOVE(storage.get()).connect(...) would leave us with a
             // non-empty any_sender holding a moved-from sender.
-            auto moved_storage = HPX_MOVE(s.storage);
+            auto moved_storage = HPX_MOVE(storage);
             return HPX_MOVE(moved_storage.get())
                 .connect(detail::any_receiver<Ts...>{HPX_FORWARD(R, r)});
         }

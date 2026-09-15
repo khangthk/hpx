@@ -10,13 +10,14 @@
 /// required for proper functioning of components in the context of HPX.
 
 #include <hpx/config.hpp>
-#include <hpx/runtime_components/component_factory.hpp>
+#include <hpx/modules/runtime_components.hpp>
 
 #include <hpx/components/containers/unordered/partition_unordered_map_component.hpp>
 #include <hpx/components/containers/unordered/unordered_map.hpp>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 HPX_DISTRIBUTED_METADATA(hpx::server::unordered_map_config_data,
     hpx_server_unordered_map_config_data)
 
 HPX_REGISTER_COMPONENT_MODULE()
-

@@ -1,4 +1,4 @@
-//  Copyright (c) 2016 Hartmut Kaiser
+//  Copyright (c) 2016-2025 Hartmut Kaiser
 //  Copyright (c) 2016 Matthias Kretz
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -46,35 +46,36 @@ namespace hpx::parallel::traits {
     }    // namespace detail
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T, std::size_t N, typename Abi>
+    HPX_CXX_CORE_EXPORT template <typename T, std::size_t N, typename Abi>
     struct vector_pack_type : detail::vector_pack_type<T, N, Abi>
     {
     };
 
     // don't wrap types twice
-    template <typename T, std::size_t N, typename Abi1, typename Abi2>
+    HPX_CXX_CORE_EXPORT template <typename T, std::size_t N, typename Abi1,
+        typename Abi2>
     struct vector_pack_type<Vc::Vector<T, Abi1>, N, Abi2>
     {
         using type = Vc::Vector<T, Abi1>;
     };
 
-    template <typename T, std::size_t N1, typename V, std::size_t W,
-        std::size_t N2, typename Abi>
+    HPX_CXX_CORE_EXPORT template <typename T, std::size_t N1, typename V,
+        std::size_t W, std::size_t N2, typename Abi>
     struct vector_pack_type<Vc::SimdArray<T, N1, V, W>, N2, Abi>
     {
         using type = Vc::SimdArray<T, N1, V, W>;
     };
 
-    template <typename T, std::size_t N, typename Abi>
+    HPX_CXX_CORE_EXPORT template <typename T, std::size_t N, typename Abi>
     struct vector_pack_type<Vc::Scalar::Vector<T>, N, Abi>
     {
         using type = Vc::Scalar::Vector<T>;
     };
 
     ////////////////////////////////////////////////////////////////////
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct vector_pack_mask_type<T,
-        typename std::enable_if_t<Vc::Traits::is_simd_vector<T>::value>>
+        std::enable_if_t<Vc::Traits::is_simd_vector<T>::value>>
     {
         using type = typename T::mask_type;
     };

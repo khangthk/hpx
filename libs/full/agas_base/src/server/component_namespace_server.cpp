@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //  Copyright (c) 2011 Bryce Adelstein-Lelbach
-//  Copyright (c) 2012-2024 Hartmut Kaiser
+//  Copyright (c) 2012-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,15 +8,16 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include <hpx/config.hpp>
-#include <hpx/agas_base/server/component_namespace.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/continuation.hpp>
-#include <hpx/components_base/agas_interface.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/errors.hpp>
 #include <hpx/modules/format.hpp>
-#include <hpx/naming/credit_handling.hpp>
-#include <hpx/timing/scoped_timer.hpp>
-#include <hpx/util/get_and_reset_value.hpp>
-#include <hpx/util/insert_checked.hpp>
+#include <hpx/modules/naming.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/util.hpp>
+
+#include <hpx/agas_base/server/component_namespace.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -25,8 +26,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-// TODO: Remove the use of the name "prefix"
 
 namespace hpx::agas {
 
@@ -48,9 +47,8 @@ namespace hpx::agas::server {
         char const* servicename, error_code& ec)
     {
         // now register this AGAS instance with AGAS :-P
-        instance_name_ = agas::service_name;
-        instance_name_ += servicename;
-        instance_name_ += agas::server::component_namespace_service_name;
+        instance_name_ = agas::service_instance_name(
+            servicename, agas::server::component_namespace_service_name);
 
         // register a gid (not the id) to avoid AGAS holding a reference to this
         // component
@@ -278,7 +276,6 @@ namespace hpx::agas::server {
         return true;
     }    // }}}
 
-    // TODO: catch exceptions
     void component_namespace::iterate_types(
         iterate_types_function_type const& f)
     {    // {{{ iterate implementation
@@ -353,8 +350,8 @@ namespace hpx::agas::server {
             LAGAS_(info).format("component_namespace::get_component_"
                                 "typename, key({1}/{2}), "
                                 "response(no_success)",
-                int(components::get_derived_type(t)),
-                int(components::get_base_type(t)));
+                static_cast<int>(components::get_derived_type(t)),
+                static_cast<int>(components::get_base_type(t)));
 
             return result;
         }
@@ -362,8 +359,8 @@ namespace hpx::agas::server {
         LAGAS_(info).format(
             "component_namespace::get_component_typename, key({1}/{2}), "
             "response({3})",
-            int(components::get_derived_type(t)),
-            int(components::get_base_type(t)), result);
+            static_cast<int>(components::get_derived_type(t)),
+            static_cast<int>(components::get_base_type(t)), result);
 
         return result;
     }    // }}}
@@ -392,7 +389,7 @@ namespace hpx::agas::server {
                 "localities(0)",
                 key);
 
-            return std::uint32_t(0);
+            return static_cast<std::uint32_t>(0);
         }
 
         std::uint32_t num_localities =

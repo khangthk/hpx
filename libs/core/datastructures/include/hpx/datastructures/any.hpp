@@ -1,6 +1,6 @@
 /*=============================================================================
     Copyright (c) 2013 Shuangyang Yang
-    Copyright (c) 2007-2024 Hartmut Kaiser
+    Copyright (c) 2007-2025 Hartmut Kaiser
     Copyright (c) Christopher Diggins 2005
     Copyright (c) Pablo Aguilar 2005
     Copyright (c) Kevlin Henney 2001
@@ -48,7 +48,7 @@ namespace hpx {
     ////////////////////////////////////////////////////////////////////////////
     /// Defines a type of object to be thrown by the value-returning forms of
     /// hpx::any_cast on failure.
-    struct HPX_ALWAYS_EXPORT bad_any_cast : std::bad_cast
+    HPX_CXX_CORE_EXPORT struct HPX_ALWAYS_EXPORT bad_any_cast : std::bad_cast
     {
         /// Constructs a new bad_any_cast object with an implementation-defined
         /// null-terminated byte string which is accessible through what().
@@ -81,11 +81,12 @@ namespace hpx {
 namespace hpx::util::detail::any {
 
     ////////////////////////////////////////////////////////////////////////
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct get_table;
 
     // function pointer table
-    template <typename IArch, typename OArch, typename Char, typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename IArch, typename OArch, typename Char,
+        typename Copyable>
     struct fxn_ptr_table;
 
     template <>
@@ -150,10 +151,11 @@ namespace hpx::util::detail::any {
             std::basic_ostream<Char>&, void* const*) = nullptr;
     };
 
-    ////////////////////////////////////////////////////////////////////////
-    template <typename T, typename Small, typename Char,
-        typename Enable = typename traits::supports_streaming_with_any<T>::type>
-    struct streaming_base;
+    HPX_CXX_CORE_EXPORT    ////////////////////////////////////////////////////////////////////////
+        template <typename T, typename Small, typename Char,
+            typename Enable =
+                typename traits::supports_streaming_with_any<T>::type>
+        struct streaming_base;
 
     // no streaming support
     template <typename T>
@@ -165,6 +167,7 @@ namespace hpx::util::detail::any {
     struct streaming_base<T, std::true_type, void, std::false_type>
     {
     };
+
     template <typename T>
     struct streaming_base<T, std::false_type, void, std::true_type>
     {
@@ -236,7 +239,7 @@ namespace hpx::util::detail::any {
 
     ////////////////////////////////////////////////////////////////////////
     // static functions for small value-types
-    template <typename Small, typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename Small, typename Copyable>
     struct fxns;
 
     template <>
@@ -259,6 +262,7 @@ namespace hpx::util::detail::any {
             }
             static T& construct(void** f)
             {
+                // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                 new (f) T;
                 return *reinterpret_cast<T*>(f);
             }
@@ -282,6 +286,7 @@ namespace hpx::util::detail::any {
             }
             static void clone(void* const* src, void** dest)
             {
+                // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
                 new (dest) T(*reinterpret_cast<T const*>(src));
             }
             static void copy(void* const* src, void** dest)
@@ -451,8 +456,8 @@ namespace hpx::util::detail::any {
     };
 
     ////////////////////////////////////////////////////////////////////////
-    template <typename IArch, typename OArch, typename Vtable, typename Char,
-        typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename IArch, typename OArch,
+        typename Vtable, typename Char, typename Copyable>
     struct fxn_ptr;
 
     template <typename Vtable>
@@ -548,7 +553,7 @@ namespace hpx::util::detail::any {
     };
 
     ////////////////////////////////////////////////////////////////////////
-    template <typename Vtable, typename T>
+    HPX_CXX_CORE_EXPORT template <typename Vtable, typename T>
     struct any_vtable
     {
         static_assert(
@@ -566,7 +571,7 @@ namespace hpx::util::detail::any {
         }
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct get_table
     {
         using is_small =
@@ -589,7 +594,7 @@ namespace hpx::util::detail::any {
     };
 
     ////////////////////////////////////////////////////////////////////////
-    struct empty
+    HPX_CXX_CORE_EXPORT struct empty
     {
         [[nodiscard]] constexpr bool operator==(empty) const noexcept
         {
@@ -601,7 +606,7 @@ namespace hpx::util::detail::any {
         }
     };
 
-    template <typename Char>
+    HPX_CXX_CORE_EXPORT template <typename Char>
     std::basic_istream<Char>& operator>>(std::basic_istream<Char>& i, empty&)
     {
         // If this assertion fires you tried to insert from a std istream
@@ -609,7 +614,7 @@ namespace hpx::util::detail::any {
         // there is no way to figure out what type to extract from the
         // stream.
         // The only way to make this work is to assign an arbitrary
-        // value of the required type to the any instance you want to
+        // value of the required type to the 'any' instance you want to
         // stream to. This assignment has to be executed before the actual
         // call to the operator>>().
         HPX_ASSERT(false &&
@@ -618,7 +623,7 @@ namespace hpx::util::detail::any {
         return i;
     }
 
-    template <typename Char>
+    HPX_CXX_CORE_EXPORT template <typename Char>
     std::basic_ostream<Char>& operator<<(std::basic_ostream<Char>& o, empty)
     {
         return o;
@@ -632,8 +637,8 @@ namespace hpx::util::detail::any {
 namespace hpx::util {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename IArch, typename OArch, typename Char = char,
-        typename Copyable = std::true_type>
+    HPX_CXX_CORE_EXPORT template <typename IArch, typename OArch,
+        typename Char = char, typename Copyable = std::true_type>
     class basic_any;
 
     ////////////////////////////////////////////////////////////////////////////
@@ -670,9 +675,8 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>>)
         explicit basic_any(T&& x,
             std::enable_if_t<std::is_copy_constructible_v<std::decay_t<T>>>* =
                 nullptr)
@@ -686,10 +690,9 @@ namespace hpx::util {
                 HPX_FORWARD(T, x));
         }
 
-        template <typename T, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(std::in_place_type_t<T>, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
                 void, void, std::true_type>())
@@ -701,10 +704,9 @@ namespace hpx::util {
                 HPX_FORWARD(Ts, ts)...);
         }
 
-        template <typename T, typename U, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename U, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(
             std::in_place_type_t<T>, std::initializer_list<U> il, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
@@ -747,6 +749,7 @@ namespace hpx::util {
         static void new_object(void*& object, std::true_type, Ts&&... ts)
         {
             using value_type = std::decay_t<T>;
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
             new (&object) value_type(HPX_FORWARD(Ts, ts)...);
         }
 
@@ -774,10 +777,9 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>> &&
-                    std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>> &&
+                std::is_copy_constructible_v<std::decay_t<T>>)
         basic_any& operator=(T&& rhs)
         {
             basic_any(HPX_FORWARD(T, rhs)).swap(*this);
@@ -865,9 +867,8 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>>)
         explicit basic_any(T&& x,
             std::enable_if_t<std::is_copy_constructible_v<std::decay_t<T>>>* =
                 nullptr)
@@ -881,10 +882,9 @@ namespace hpx::util {
                 HPX_FORWARD(T, x));
         }
 
-        template <typename T, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(std::in_place_type_t<T>, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
                 void, Char, std::true_type>())
@@ -896,10 +896,9 @@ namespace hpx::util {
                 HPX_FORWARD(Ts, ts)...);
         }
 
-        template <typename T, typename U, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename U, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(
             std::in_place_type_t<T>, std::initializer_list<U> il, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
@@ -971,10 +970,9 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>> &&
-                    std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>> &&
+                std::is_copy_constructible_v<std::decay_t<T>>)
         basic_any& operator=(T&& rhs) noexcept
         {
             basic_any(HPX_FORWARD(T, rhs)).swap(*this);
@@ -1056,9 +1054,8 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>>)
         explicit basic_any(T&& x,
             std::enable_if_t<std::is_move_constructible_v<std::decay_t<T>>>* =
                 nullptr)
@@ -1072,10 +1069,9 @@ namespace hpx::util {
                 HPX_FORWARD(T, x));
         }
 
-        template <typename T, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(std::in_place_type_t<T>, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
                 void, void, std::false_type>())
@@ -1087,10 +1083,9 @@ namespace hpx::util {
                 HPX_FORWARD(Ts, ts)...);
         }
 
-        template <typename T, typename U, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename U, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(
             std::in_place_type_t<T>, std::initializer_list<U> il, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
@@ -1116,6 +1111,7 @@ namespace hpx::util {
         static void new_object(void*& object, std::true_type, Ts&&... ts)
         {
             using value_type = std::decay_t<T>;
+            // NOLINTNEXTLINE(bugprone-multi-level-implicit-pointer-conversion)
             new (&object) value_type(HPX_FORWARD(Ts, ts)...);
         }
 
@@ -1136,10 +1132,9 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>> &&
-                    std::is_move_constructible_v<std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>> &&
+                std::is_move_constructible_v<std::decay_t<T>>)
         basic_any& operator=(T&& rhs)
         {
             basic_any(HPX_FORWARD(T, rhs)).swap(*this);
@@ -1218,9 +1213,8 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>>)
         explicit basic_any(T&& x,
             std::enable_if_t<std::is_move_constructible_v<std::decay_t<T>>>* =
                 nullptr)
@@ -1234,10 +1228,9 @@ namespace hpx::util {
                 HPX_FORWARD(T, x));
         }
 
-        template <typename T, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(std::in_place_type_t<T>, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
                 void, Char, std::false_type>())
@@ -1249,10 +1242,9 @@ namespace hpx::util {
                 HPX_FORWARD(Ts, ts)...);
         }
 
-        template <typename T, typename U, typename... Ts,
-            typename Enable = std::enable_if_t<
-                std::is_constructible_v<std::decay_t<T>, Ts...> &&
-                std::is_copy_constructible_v<std::decay_t<T>>>>
+        template <typename T, typename U, typename... Ts>
+            requires(std::is_constructible_v<std::decay_t<T>, Ts...> &&
+                        std::is_copy_constructible_v<std::decay_t<T>>)
         explicit basic_any(
             std::in_place_type_t<T>, std::initializer_list<U> il, Ts&&... ts)
           : table(detail::any::get_table<std::decay_t<T>>::template get<void,
@@ -1298,10 +1290,9 @@ namespace hpx::util {
         }
 
         // Perfect forwarding of T
-        template <typename T,
-            typename Enable =
-                std::enable_if_t<!std::is_same_v<basic_any, std::decay_t<T>> &&
-                    std::is_move_constructible_v<std::decay_t<T>>>>
+        template <typename T>
+            requires(!std::is_same_v<basic_any, std::decay_t<T>> &&
+                std::is_move_constructible_v<std::decay_t<T>>)
         basic_any& operator=(T&& rhs) noexcept
         {
             basic_any(HPX_FORWARD(T, rhs)).swap(*this);
@@ -1360,20 +1351,22 @@ namespace hpx::util {
     ////////////////////////////////////////////////////////////////////////////
     namespace detail::any {
 
-        struct any_cast_support
+        HPX_CXX_CORE_EXPORT struct any_cast_support
         {
             template <typename T, typename IArch, typename OArch, typename Char,
                 typename Copyable>
             static T* call(
                 basic_any<IArch, OArch, Char, Copyable>* operand) noexcept
             {
+                // NOLINTBEGIN(bugprone-casting-through-void)
                 return get_table<T>::is_small::value ?
                     static_cast<T*>(reinterpret_cast<void*>(&operand->object)) :
                     static_cast<T*>(reinterpret_cast<void*>(operand->object));
+                // NOLINTEND(bugprone-casting-through-void)
             }
         };
 
-        struct stream_support
+        HPX_CXX_CORE_EXPORT struct stream_support
         {
             template <typename IArch, typename OArch, typename Char,
                 typename Copyable>
@@ -1395,7 +1388,8 @@ namespace hpx::util {
         };
     }    // namespace detail::any
 
-    template <typename IArch, typename OArch, typename Char, typename Copyable,
+    HPX_CXX_CORE_EXPORT template <typename IArch, typename OArch, typename Char,
+        typename Copyable,
         typename Enable = std::enable_if_t<!std::is_void_v<Char>>>
     std::basic_istream<Char>& operator>>(std::basic_istream<Char>& i,
         basic_any<IArch, OArch, Char, Copyable>& obj)
@@ -1403,7 +1397,8 @@ namespace hpx::util {
         return detail::any::stream_support::stream_in(i, obj);
     }
 
-    template <typename IArch, typename OArch, typename Char, typename Copyable,
+    HPX_CXX_CORE_EXPORT template <typename IArch, typename OArch, typename Char,
+        typename Copyable,
         typename Enable = std::enable_if_t<!std::is_void_v<Char>>>
     std::basic_ostream<Char>& operator<<(std::basic_ostream<Char>& o,
         basic_any<IArch, OArch, Char, Copyable> const& obj)
@@ -1412,7 +1407,8 @@ namespace hpx::util {
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    template <typename IArch, typename OArch, typename Char, typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename IArch, typename OArch, typename Char,
+        typename Copyable>
     void swap(basic_any<IArch, OArch, Char, Copyable>& lhs,
         basic_any<IArch, OArch, Char, Copyable>& rhs) noexcept
     {
@@ -1423,7 +1419,7 @@ namespace hpx::util {
 /// Top level HPX namespace
 namespace hpx {
 
-    template <typename T, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename... Ts>
     util::basic_any<void, void, void, std::true_type> make_any_nonser(
         Ts&&... ts)
     {
@@ -1431,7 +1427,7 @@ namespace hpx {
             std::in_place_type<T>, HPX_FORWARD(Ts, ts)...);
     }
 
-    template <typename T, typename U, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename U, typename... Ts>
     util::basic_any<void, void, void, std::true_type> make_any_nonser(
         std::initializer_list<U> il, Ts&&... ts)
     {
@@ -1439,7 +1435,7 @@ namespace hpx {
             std::in_place_type<T>, il, HPX_FORWARD(Ts, ts)...);
     }
 
-    template <typename T, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename... Ts>
     util::basic_any<void, void, void, std::false_type> make_unique_any_nonser(
         Ts&&... ts)
     {
@@ -1447,7 +1443,7 @@ namespace hpx {
             std::in_place_type<T>, HPX_FORWARD(Ts, ts)...);
     }
 
-    template <typename T, typename U, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename U, typename... Ts>
     util::basic_any<void, void, void, std::false_type> make_unique_any_nonser(
         std::initializer_list<U> il, Ts&&... ts)
     {
@@ -1455,14 +1451,14 @@ namespace hpx {
             std::in_place_type<T>, il, HPX_FORWARD(Ts, ts)...);
     }
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     util::basic_any<void, void, void, std::true_type> make_any_nonser(T&& t)
     {
         return util::basic_any<void, void, void, std::true_type>(
             HPX_FORWARD(T, t));
     }
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     util::basic_any<void, void, void, std::false_type> make_unique_any_nonser(
         T&& t)
     {
@@ -1470,8 +1466,9 @@ namespace hpx {
             HPX_FORWARD(T, t));
     }
 
-    using any_nonser = util::basic_any<void, void, void, std::true_type>;
-    using unique_any_nonser =
+    HPX_CXX_CORE_EXPORT using any_nonser =
+        util::basic_any<void, void, void, std::true_type>;
+    HPX_CXX_CORE_EXPORT using unique_any_nonser =
         util::basic_any<void, void, void, std::false_type>;
 
     /// \brief Performs type-safe access to the contained object.
@@ -1480,8 +1477,8 @@ namespace hpx {
     /// \returns  If operand is not a null pointer, and the \a typeid of the requested
     ///           \a T matches that of the contents of \a operand, a pointer to the value
     ///           contained by \a operand, otherwise a null pointer.
-    template <typename T, typename IArch, typename OArch, typename Char,
-        typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename T, typename IArch, typename OArch,
+        typename Char, typename Copyable>
     T* any_cast(util::basic_any<IArch, OArch, Char, Copyable>* operand) noexcept
     {
         if (operand && operand->type() == typeid(T))
@@ -1492,8 +1489,8 @@ namespace hpx {
     }
 
     /// \copydoc any_cast(util::basic_any<IArch, OArch, Char, Copyable>* operand)
-    template <typename T, typename IArch, typename OArch, typename Char,
-        typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename T, typename IArch, typename OArch,
+        typename Char, typename Copyable>
     T const* any_cast(
         util::basic_any<IArch, OArch, Char, Copyable> const* operand) noexcept
     {
@@ -1508,8 +1505,8 @@ namespace hpx {
     ///
     /// \param operand target any object
     /// \returns static_cast<T>(*std::any_cast<U>(&operand))
-    template <typename T, typename IArch, typename OArch, typename Char,
-        typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename T, typename IArch, typename OArch,
+        typename Char, typename Copyable>
     T any_cast(util::basic_any<IArch, OArch, Char, Copyable>& operand)
     {
         using nonref = std::remove_reference_t<T>;
@@ -1526,8 +1523,8 @@ namespace hpx {
     ///
     /// \param operand target any object
     /// \returns static_cast<T>(*std::any_cast<U>(&operand))
-    template <typename T, typename IArch, typename OArch, typename Char,
-        typename Copyable>
+    HPX_CXX_CORE_EXPORT template <typename T, typename IArch, typename OArch,
+        typename Char, typename Copyable>
     T const& any_cast(
         util::basic_any<IArch, OArch, Char, Copyable> const& operand)
     {
@@ -1543,7 +1540,7 @@ namespace hpx::util {
 
     ////////////////////////////////////////////////////////////////////////////
     // make copyable any
-    template <typename T, typename Char, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Char, typename... Ts>
     basic_any<void, void, Char, std::true_type> make_streamable_any_nonser(
         Ts&&... ts)
     {
@@ -1551,7 +1548,8 @@ namespace hpx::util {
             std::in_place_type<T>, HPX_FORWARD(Ts, ts)...);
     }
 
-    template <typename T, typename Char, typename U, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Char, typename U,
+        typename... Ts>
     basic_any<void, void, Char, std::true_type> make_streamable_any_nonser(
         std::initializer_list<U> il, Ts&&... ts)
     {
@@ -1561,7 +1559,7 @@ namespace hpx::util {
 
     ////////////////////////////////////////////////////////////////////////////
     // make unique_any
-    template <typename T, typename Char, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Char, typename... Ts>
     basic_any<void, void, Char, std::false_type>
     make_streamable_unique_any_nonser(Ts&&... ts)
     {
@@ -1569,7 +1567,8 @@ namespace hpx::util {
             std::in_place_type<T>, HPX_FORWARD(Ts, ts)...);
     }
 
-    template <typename T, typename Char, typename U, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Char, typename U,
+        typename... Ts>
     basic_any<void, void, Char, std::false_type>
     make_streamable_unique_any_nonser(std::initializer_list<U> il, Ts&&... ts)
     {
@@ -1578,14 +1577,14 @@ namespace hpx::util {
     }
 
     // make copyable any
-    template <typename T, typename Char>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Char>
     basic_any<void, void, Char, std::true_type> make_streamable_any_nonser(
         T&& t)
     {
         return basic_any<void, void, Char, std::true_type>(HPX_FORWARD(T, t));
     }
 
-    template <typename T, typename Char>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Char>
     basic_any<void, void, Char, std::false_type>
     make_streamable_unique_any_nonser(T&& t)
     {
@@ -1594,15 +1593,16 @@ namespace hpx::util {
 
     ////////////////////////////////////////////////////////////////////////////
     // better names for copyable any
-    using streamable_any_nonser = basic_any<void, void, char, std::true_type>;
-    using streamable_wany_nonser =
+    HPX_CXX_CORE_EXPORT using streamable_any_nonser =
+        basic_any<void, void, char, std::true_type>;
+    HPX_CXX_CORE_EXPORT using streamable_wany_nonser =
         basic_any<void, void, wchar_t, std::true_type>;
 
     ////////////////////////////////////////////////////////////////////////////
     // better names for unique_any
-    using streamable_unique_any_nonser =
+    HPX_CXX_CORE_EXPORT using streamable_unique_any_nonser =
         basic_any<void, void, char, std::false_type>;
-    using streamable_unique_wany_nonser =
+    HPX_CXX_CORE_EXPORT using streamable_unique_wany_nonser =
         basic_any<void, void, wchar_t, std::false_type>;
 }    // namespace hpx::util
 

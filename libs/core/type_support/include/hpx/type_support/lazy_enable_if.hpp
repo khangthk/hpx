@@ -6,9 +6,11 @@
 
 #pragma once
 
+#include <hpx/config.hpp>
+
 namespace hpx::util {
 
-    template <bool Enable, typename T>
+    HPX_CXX_CORE_EXPORT template <bool Enable, typename T>
     struct lazy_enable_if
     {
     };
@@ -16,6 +18,6 @@ namespace hpx::util {
     template <typename T>
     struct lazy_enable_if<true, T>
     {
-        using type = typename T::type;
+        using type = T::type;
     };
 }    // namespace hpx::util

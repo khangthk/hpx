@@ -15,13 +15,14 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/execution_base/agent_ref.hpp>
-#include <hpx/execution_base/this_thread.hpp>
+#include <hpx/lock_registration/detail/register_locks.hpp>
+#include <hpx/modules/execution_base.hpp>
 #include <hpx/synchronization/spinlock.hpp>
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx {
@@ -30,7 +31,7 @@ namespace hpx {
 
         /// An exclusive-ownership recursive mutex which implements
         /// Boost.Thread's TimedLockable concept.
-        template <typename Mutex = hpx::spinlock>
+        HPX_CXX_CORE_EXPORT template <typename Mutex = hpx::spinlock>
         struct recursive_mutex_impl
         {
         public:
@@ -135,12 +136,5 @@ namespace hpx {
         };
     }    // namespace detail
 
-    using recursive_mutex = detail::recursive_mutex_impl<>;
+    HPX_CXX_CORE_EXPORT using recursive_mutex = detail::recursive_mutex_impl<>;
 }    // namespace hpx
-
-namespace hpx::lcos::local {
-
-    using recursive_mutex HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::recursive_mutex is deprecated, use "
-        "hpx::recursive_mutex instead") = hpx::recursive_mutex;
-}    // namespace hpx::lcos::local

@@ -13,14 +13,14 @@
 #include <hpx/hpx.hpp>
 #include <hpx/hpx_init.hpp>
 
-#include <hpx/functional/bind.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/string_util.hpp>
 #include <hpx/modules/testing.hpp>
-#include <hpx/string_util/classification.hpp>
-#include <hpx/string_util/split.hpp>
 
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <functional>
@@ -99,7 +99,7 @@ void print_results(std::uint64_t cores, double walltime, double warmup_estimate,
         header = false;
         cout << "Delay,Tasks,STasks,OS_Threads,Execution_Time_sec,Warmup_sec";
 
-        for (const auto& counter_shortname : counter_shortnames)
+        for (auto const& counter_shortname : counter_shortnames)
         {
             cout << "," << counter_shortname;
         }
@@ -435,7 +435,7 @@ int hpx_main(variables_map& vm)
                     hpx::string_util::is_any_of(","),
                     hpx::string_util::token_compress_mode::on);
 
-                HPX_TEST_EQ(entry.size(), 2);
+                HPX_TEST_EQ(entry.size(), static_cast<std::size_t>(2));
 
                 counter_shortnames.push_back(entry[0]);
                 counters.push_back(entry[1]);

@@ -1,4 +1,4 @@
-//  Copyright (c) 2014-2023 Hartmut Kaiser
+//  Copyright (c) 2014-2025 Hartmut Kaiser
 //  Copyright (c) 2016 Marcin Copik
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -15,21 +15,21 @@
 namespace hpx::traits {
 
     // new executor framework
-    template <typename Parameters, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Parameters, typename Enable = void>
     struct is_executor_parameters;
 }    // namespace hpx::traits
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     ///////////////////////////////////////////////////////////////////////////
     // Default sequential executor parameters
-    struct sequential_executor_parameters
+    HPX_CXX_CORE_EXPORT struct sequential_executor_parameters
     {
     };
 
     // If an executor exposes 'executor_parameter_type' this type is assumed to
     // represent the default parameters for the given executor type.
-    template <typename Executor, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Executor, typename Enable = void>
     struct extract_executor_parameters
     {
         // by default, assume sequential execution
@@ -43,7 +43,7 @@ namespace hpx::parallel::execution {
         using type = typename Executor::executor_parameters_type;
     };
 
-    template <typename Executor>
+    HPX_CXX_CORE_EXPORT template <typename Executor>
     using extract_executor_parameters_t =
         typename extract_executor_parameters<Executor>::type;
 
@@ -51,7 +51,7 @@ namespace hpx::parallel::execution {
     // If a parameters type exposes an embedded type  'has_variable_chunk_size'
     // it is assumed that the number of loop iterations to combine is different
     // for each of the generated chunks.
-    template <typename Parameters, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Parameters, typename Enable = void>
     struct extract_has_variable_chunk_size : std::false_type
     {
         // by default, assume equally sized chunks
@@ -70,7 +70,7 @@ namespace hpx::parallel::execution {
     {
     };
 
-    template <typename Parameters>
+    HPX_CXX_CORE_EXPORT template <typename Parameters>
     inline constexpr bool extract_has_variable_chunk_size_v =
         extract_has_variable_chunk_size<Parameters>::value;
 
@@ -78,7 +78,7 @@ namespace hpx::parallel::execution {
     // If a parameters type exposes an embedded type 'invokes_testing_function'
     // it is assumed that the parameters object uses the given function to
     // determine the number of chunks to apply.
-    template <typename Parameters, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Parameters, typename Enable = void>
     struct extract_invokes_testing_function : std::false_type
     {
         // by default, assume equally sized chunks
@@ -101,7 +101,7 @@ namespace hpx::parallel::execution {
     {
     };
 
-    template <typename Parameters>
+    HPX_CXX_CORE_EXPORT template <typename Parameters>
     inline constexpr bool extract_invokes_testing_function_v =
         extract_invokes_testing_function<Parameters>::value;
 
@@ -109,7 +109,7 @@ namespace hpx::parallel::execution {
     namespace detail {
 
         /// \cond NOINTERNAL
-        template <typename T>
+        HPX_CXX_CORE_EXPORT template <typename T>
         struct is_executor_parameters : std::false_type
         {
         };
@@ -128,27 +128,35 @@ namespace hpx::parallel::execution {
         /// \endcond
     }    // namespace detail
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct is_executor_parameters
       : detail::is_executor_parameters<std::decay_t<T>>
     {
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr bool is_executor_parameters_v =
         is_executor_parameters<T>::value;
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
-namespace hpx::traits {
+namespace hpx {
 
-    // new executor framework
-    template <typename Parameters, typename Enable>
-    struct is_executor_parameters
-      : parallel::execution::is_executor_parameters<std::decay_t<Parameters>>
-    {
-    };
+    namespace traits {
 
-    template <typename T>
-    inline constexpr bool is_executor_parameters_v =
-        is_executor_parameters<T>::value;
-}    // namespace hpx::traits
+        // new executor framework
+        HPX_CXX_CORE_EXPORT template <typename Parameters, typename Enable>
+        struct is_executor_parameters
+          : hpx::execution::experimental::is_executor_parameters<
+                std::decay_t<Parameters>>
+        {
+        };
+
+        HPX_CXX_CORE_EXPORT template <typename T>
+        inline constexpr bool is_executor_parameters_v =
+            is_executor_parameters<T>::value;
+    }    // namespace traits
+
+    HPX_CXX_CORE_EXPORT template <typename Parameters>
+    concept executor_parameters =
+        hpx::traits::is_executor_parameters_v<Parameters>;
+}    // namespace hpx

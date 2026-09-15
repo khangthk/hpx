@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,20 +9,17 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/traits/is_distribution_policy.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/dataflow.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/functional/bind_back.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/pack_traversal/unwrap.hpp>
-#include <hpx/performance_counters/performance_counter.hpp>
-#include <hpx/runtime_components/create_component_helpers.hpp>
-#include <hpx/serialization/serialization_fwd.hpp>
-#include <hpx/serialization/string.hpp>
-#include <hpx/serialization/vector.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/pack_traversal.hpp>
+#include <hpx/modules/performance_counters.hpp>
+#include <hpx/modules/runtime_components.hpp>
+#include <hpx/modules/serialization.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -35,8 +32,9 @@
 
 namespace hpx::components {
 
-    inline constexpr char const* const default_binpacking_counter_name =
-        "/runtime{locality/total}/count/component@";
+    HPX_CXX_EXPORT inline constexpr char const* const
+        default_binpacking_counter_name =
+            "/runtime{locality/total}/count/component@";
 
     namespace detail {
 
@@ -79,11 +77,11 @@ namespace hpx::components {
             std::vector<hpx::id_type> const& localities_;
         };
 
-        template <typename Component>
+        template <bool WithCount, typename Component>
         struct create_bulk_helper
         {
-            typedef std::pair<hpx::id_type, std::vector<hpx::id_type>>
-                bulk_locality_result;
+            using bulk_locality_result =
+                std::pair<hpx::id_type, std::vector<hpx::id_type>>;
 
             explicit create_bulk_helper(
                 std::vector<hpx::id_type> const& localities)
@@ -102,16 +100,29 @@ namespace hpx::components {
                 std::vector<hpx::future<std::vector<hpx::id_type>>> objs;
                 objs.reserve(localities_.size());
 
+                [[maybe_unused]] std::size_t first = 0;
                 for (std::size_t i = 0; i != to_create.size(); ++i)
                 {
-                    objs.emplace_back(bulk_create_async<Component>(
-                        localities_[i], to_create[i], vs...));
+                    if constexpr (WithCount)
+                    {
+                        std::size_t const local_count = to_create[i];
+                        objs.emplace_back(
+                            bulk_create_async<WithCount, Component>(
+                                localities_[i], local_count, vs...));
+                        first += local_count;
+                    }
+                    else
+                    {
+                        objs.emplace_back(
+                            bulk_create_async<WithCount, Component>(
+                                localities_[i], to_create[i], vs...));
+                    }
                 }
 
                 // consolidate all results
                 return hpx::dataflow(
                     hpx::launch::sync,
-                    [HPX_CXX20_CAPTURE_THIS(=)](
+                    [=, this](
                         std::vector<hpx::future<std::vector<hpx::id_type>>>&&
                             v) mutable -> std::vector<bulk_locality_result> {
                         HPX_ASSERT(localities_.size() == v.size());
@@ -140,7 +151,7 @@ namespace hpx::components {
     /// each of the localities will equalize the number of overall objects of
     /// this type based on a given criteria (by default this criteria is the
     /// overall number of objects of this type).
-    struct binpacking_distribution_policy
+    HPX_CXX_EXPORT struct binpacking_distribution_policy
     {
     public:
         /// Default-construct a new instance of a \a binpacking_distribution_policy.
@@ -238,7 +249,7 @@ namespace hpx::components {
                     naming::get_id_from_locality_id(agas::get_locality_id()),
                     HPX_FORWARD(Ts, vs)...);
             }
-            else if (localities_.size() == 1)
+            if (localities_.size() == 1)
             {
                 return create_async<Component>(
                     localities_.front(), HPX_FORWARD(Ts, vs)...);
@@ -269,7 +280,7 @@ namespace hpx::components {
         /// \returns A future holding the list of global addresses which
         ///          represent the newly created objects
         ///
-        template <typename Component, typename... Ts>
+        template <bool WithCount, typename Component, typename... Ts>
         hpx::future<std::vector<bulk_locality_result>> bulk_create(
             std::size_t count, Ts&&... vs) const
         {
@@ -281,8 +292,9 @@ namespace hpx::components {
                         counter_name_, localities_);
 
                 return values.then(hpx::bind_back(
-                    detail::create_bulk_helper<Component>(localities_), count,
-                    HPX_FORWARD(Ts, vs)...));
+                    detail::create_bulk_helper<WithCount, Component>(
+                        localities_),
+                    count, HPX_FORWARD(Ts, vs)...));
             }
 
             // handle special cases
@@ -291,7 +303,8 @@ namespace hpx::components {
                 localities_.front();
 
             hpx::future<std::vector<hpx::id_type>> f =
-                bulk_create_async<Component>(id, count, HPX_FORWARD(Ts, vs)...);
+                bulk_create_async<WithCount, Component>(
+                    id, count, HPX_FORWARD(Ts, vs)...);
 
             return f.then(hpx::launch::sync,
                 [id = HPX_MOVE(id)](hpx::future<std::vector<hpx::id_type>>&& f)
@@ -360,14 +373,15 @@ namespace hpx::components {
 
     /// A predefined instance of the binpacking \a distribution_policy. It will
     /// represent the local locality and will place all items to create here.
-    static binpacking_distribution_policy const binpacked{};
+    HPX_CXX_EXPORT HPX_EXPORT extern binpacking_distribution_policy const
+        binpacked;
 }    // namespace hpx::components
 
 /// \cond NOINTERNAL
 namespace hpx {
 
-    using hpx::components::binpacked;
-    using hpx::components::binpacking_distribution_policy;
+    HPX_CXX_EXPORT using hpx::components::binpacked;
+    HPX_CXX_EXPORT using hpx::components::binpacking_distribution_policy;
 
     template <>
     struct traits::is_distribution_policy<

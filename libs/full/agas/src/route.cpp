@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Vinay C Amatya
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,24 +8,26 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_NETWORKING)
-#include <hpx/actions_base/plain_action.hpp>
-#include <hpx/agas/addressing_service.hpp>
-#include <hpx/agas_base/route.hpp>
-#include <hpx/agas_base/server/primary_namespace.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/continuation.hpp>
-#include <hpx/async_distributed/detail/post.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/parcelset/parcel.hpp>
-#include <hpx/parcelset_base/detail/parcel_route_handler.hpp>
-#include <hpx/runtime_local/runtime_local.hpp>
-#include <hpx/timing/scoped_timer.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/parcelset.hpp>
+#include <hpx/modules/parcelset_base.hpp>
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/timing.hpp>
+
+#include <hpx/agas/addressing_service.hpp>
 
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <utility>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::detail {
 

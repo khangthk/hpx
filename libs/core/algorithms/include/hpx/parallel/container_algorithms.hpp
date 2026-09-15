@@ -11,12 +11,14 @@
 
 #include <hpx/parallel/container_algorithms/adjacent_find.hpp>
 #include <hpx/parallel/container_algorithms/all_any_none.hpp>
+#include <hpx/parallel/container_algorithms/contains.hpp>
 #include <hpx/parallel/container_algorithms/copy.hpp>
 #include <hpx/parallel/container_algorithms/count.hpp>
 #include <hpx/parallel/container_algorithms/ends_with.hpp>
 #include <hpx/parallel/container_algorithms/equal.hpp>
 #include <hpx/parallel/container_algorithms/fill.hpp>
 #include <hpx/parallel/container_algorithms/find.hpp>
+#include <hpx/parallel/container_algorithms/fold.hpp>
 #include <hpx/parallel/container_algorithms/for_each.hpp>
 #include <hpx/parallel/container_algorithms/for_loop.hpp>
 #include <hpx/parallel/container_algorithms/generate.hpp>

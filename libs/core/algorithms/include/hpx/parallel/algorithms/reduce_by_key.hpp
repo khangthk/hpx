@@ -121,10 +121,11 @@ namespace hpx { namespace experimental {
 #else
 
 #include <hpx/config.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/iterator_support/range.hpp>
-#include <hpx/iterator_support/transform_iterator.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/parallel/algorithms/detail/dispatch.hpp>
+#include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/for_each.hpp>
 #include <hpx/parallel/algorithms/inclusive_scan.hpp>
 #include <hpx/parallel/container_algorithms/copy.hpp>
@@ -140,6 +141,7 @@ namespace hpx { namespace experimental {
 /// \cond NOINTERNAL
 #ifdef EXTRA_DEBUG
 #include <iostream>
+#include <iterator>
 #define DEBUG_REDUCE_BY_KEY(a) std::cout << a
 #else
 #define DEBUG_REDUCE_BY_KEY(a)
@@ -152,7 +154,7 @@ namespace hpx::parallel::detail {
     // -------------------------------------------------------------------
     // simple iterator helper object for access to prev/next items
     // -------------------------------------------------------------------
-    struct reduce_stencil_transformer
+    HPX_CXX_CORE_EXPORT struct reduce_stencil_transformer
     {
         // declare result type as a template
         template <typename T>
@@ -182,7 +184,7 @@ namespace hpx::parallel::detail {
     // -------------------------------------------------------------------
     // transform iterator using reduce_stencil_transformer helper
     // -------------------------------------------------------------------
-    template <typename Iterator,
+    HPX_CXX_CORE_EXPORT template <typename Iterator,
         typename Transformer = detail::reduce_stencil_transformer>
     class reduce_stencil_iterator
       : public hpx::util::transform_iterator<Iterator, Transformer>
@@ -204,7 +206,7 @@ namespace hpx::parallel::detail {
         }
     };
 
-    template <typename Iterator, typename Transformer>
+    HPX_CXX_CORE_EXPORT template <typename Iterator, typename Transformer>
     reduce_stencil_iterator<Iterator, Transformer> make_reduce_stencil_iterator(
         Iterator const& it, Transformer const& t)
     {
@@ -214,7 +216,7 @@ namespace hpx::parallel::detail {
     // -------------------------------------------------------------------
     // state of a reduce by key step
     // -------------------------------------------------------------------
-    struct reduce_key_series_states
+    HPX_CXX_CORE_EXPORT struct reduce_key_series_states
     {
         bool start;    // START of a segment
         bool end;      // END of a segment
@@ -229,8 +231,8 @@ namespace hpx::parallel::detail {
     // -------------------------------------------------------------------
     // callable that actually computes the state using the stencil iterator
     // -------------------------------------------------------------------
-    template <typename Transformer, typename StencilIterType,
-        typename KeyStateIterType, typename Compare>
+    HPX_CXX_CORE_EXPORT template <typename Transformer,
+        typename StencilIterType, typename KeyStateIterType, typename Compare>
     struct reduce_stencil_generate
     {
         using element_type = typename Transformer::template result<Transformer(
@@ -268,19 +270,20 @@ namespace hpx::parallel::detail {
     // -------------------------------------------------------------------
     // Zip iterator has 3 iterators inside
     // Iter1, key type : Iter2, value type : Iter3, state type
-    template <typename ZIter, typename iKey, typename iVal>
+    HPX_CXX_CORE_EXPORT template <typename ZIter, typename iKey, typename iVal>
     constexpr util::in_out_result<iKey, iVal> make_pair_result(
         ZIter zipiter, iKey key_start, iVal val_start)
     {
         // the iterator we want is 'second' part of pair type (from copy_if)
         auto t = zipiter.out.get_iterator_tuple();
         iKey key_end = hpx::get<0>(t);
-        return util::in_out_result<iKey, iVal>{
-            key_end, std::next(val_start, std::distance(key_start, key_end))};
+        return util::in_out_result<iKey, iVal>{key_end,
+            std::next(val_start,
+                hpx::parallel::detail::distance(key_start, key_end))};
     }
 
     // async version that returns future<pair> from future<zip_iterator<blah>>
-    template <typename ZIter, typename iKey, typename iVal>
+    HPX_CXX_CORE_EXPORT template <typename ZIter, typename iKey, typename iVal>
     hpx::future<util::in_out_result<iKey, iVal>> make_pair_result(
         hpx::future<ZIter>&& ziter, iKey key_start, iVal val_start)
     {
@@ -291,7 +294,8 @@ namespace hpx::parallel::detail {
                 auto t = zipiter.second.get_iterator_tuple();
                 iKey key_end = hpx::get<0>(t);
                 return result_type{key_end,
-                    std::next(val_start, std::distance(key_start, key_end))};
+                    std::next(val_start,
+                        hpx::parallel::detail::distance(key_start, key_end))};
             });
     }
 
@@ -301,9 +305,10 @@ namespace hpx::parallel::detail {
     // internal algorithms. Async execution is handled by the wrapper layer that
     // calls this.
     // -------------------------------------------------------------------
-    template <typename ExPolicy, typename RanIter, typename RanIter2,
-        typename FwdIter1, typename FwdIter2, typename Compare, typename Func>
-    static util::in_out_result<FwdIter1, FwdIter2> reduce_by_key_impl(
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename RanIter,
+        typename RanIter2, typename FwdIter1, typename FwdIter2,
+        typename Compare, typename Func>
+    util::in_out_result<FwdIter1, FwdIter2> reduce_by_key_impl(
         ExPolicy&& policy, RanIter key_first, RanIter key_last,
         RanIter2 values_first, FwdIter1 keys_output, FwdIter2 values_output,
         Compare&& comp, Func&& func)
@@ -323,7 +328,8 @@ namespace hpx::parallel::detail {
         using zip_ref = typename zip_iterator<reducebykey_iter,
             keystate_iter_type>::reference;
         //
-        const std::uint64_t number_of_keys = std::distance(key_first, key_last);
+        std::uint64_t const number_of_keys =
+            hpx::parallel::detail::distance(key_first, key_last);
         //
         key_state.assign(number_of_keys, reduce_key_series_states());
         {
@@ -332,9 +338,6 @@ namespace hpx::parallel::detail {
                 make_reduce_stencil_iterator(key_first, r_s_t);
             reducebykey_iter reduce_end =
                 make_reduce_stencil_iterator(key_last, r_s_t);
-
-            // FIXME: handle cases number_of_keys == 0 and
-            //        number_of_keys == 1
 
             if (number_of_keys == 2)
             {
@@ -353,7 +356,8 @@ namespace hpx::parallel::detail {
                 // traversal as there is no prev/next for first/last
                 element_type elem0 = *key_first;
                 element_type elem1 = *std::next(key_first);
-                key_state[0] = reduce_key_series_states(true, elem0 != elem1);
+                key_state[0] =
+                    reduce_key_series_states(true, !comp(elem0, elem1));
                 // middle elements
                 reduce_stencil_generate<reduce_stencil_transformer, RanIter,
                     keystate_iter_type, Compare>
@@ -449,7 +453,7 @@ namespace hpx::parallel::detail {
 
     ///////////////////////////////////////////////////////////////////////
     // reduce_by_key wrapper struct
-    template <typename FwdIter1, typename FwdIter2>
+    HPX_CXX_CORE_EXPORT template <typename FwdIter1, typename FwdIter2>
     struct reduce_by_key
       : public algorithm<reduce_by_key<FwdIter1, FwdIter2>,
             util::in_out_result<FwdIter1, FwdIter2>>
@@ -506,17 +510,17 @@ namespace hpx::experimental {
     }
 #endif
 
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename RanIter,
+        typename RanIter2, typename FwdIter1, typename FwdIter2,
+        typename Compare = std::equal_to<>, typename Func = std::plus<>>
     // clang-format off
-    template <typename ExPolicy, typename RanIter, typename RanIter2,
-        typename FwdIter1, typename FwdIter2,
-        typename Compare = std::equal_to<>, typename Func = std::plus<>,
-        HPX_CONCEPT_REQUIRES_(
+        requires (
             hpx::is_execution_policy_v<ExPolicy> &&
             hpx::traits::is_iterator_v<RanIter> &&
             hpx::traits::is_iterator_v<RanIter2> &&
             hpx::traits::is_iterator_v<FwdIter1> &&
             hpx::traits::is_iterator_v<FwdIter2>
-        )>
+        )
     // clang-format on
     hpx::parallel::util::detail::algorithm_result_t<ExPolicy,
         hpx::parallel::util::in_out_result<FwdIter1, FwdIter2>>
@@ -527,22 +531,30 @@ namespace hpx::experimental {
         using result = hpx::parallel::util::detail::algorithm_result<ExPolicy,
             hpx::parallel::util::in_out_result<FwdIter1, FwdIter2>>;
 
-        static_assert(hpx::traits::is_random_access_iterator_v<RanIter> &&
-                hpx::traits::is_random_access_iterator_v<RanIter2> &&
-                hpx::traits::is_forward_iterator_v<FwdIter1> &&
-                hpx::traits::is_forward_iterator_v<FwdIter2>,
+        static_assert(std::random_access_iterator<RanIter> &&
+                std::random_access_iterator<RanIter2> &&
+                std::forward_iterator<FwdIter1> &&
+                std::forward_iterator<FwdIter2>,
             "iterators : Random_access for inputs and forward for outputs.");
 
-        std::uint64_t const number_of_keys = std::distance(key_first, key_last);
+        std::uint64_t const number_of_keys =
+            hpx::parallel::detail::distance(key_first, key_last);
 
-        if (number_of_keys <= 1)
+        if (number_of_keys == 0)
+        {
+            return result::get(
+                hpx::parallel::util::in_out_result<FwdIter1, FwdIter2>{
+                    keys_output, values_output});
+        }
+
+        if (number_of_keys == 1)
         {
             // we only have a single key/value so that is our output
             *keys_output = *key_first;
             *values_output = *values_first;
             return result::get(
                 hpx::parallel::util::in_out_result<FwdIter1, FwdIter2>{
-                    keys_output, values_output});
+                    ++keys_output, ++values_output});
         }
 
         return hpx::parallel::detail::reduce_by_key<FwdIter1, FwdIter2>().call(

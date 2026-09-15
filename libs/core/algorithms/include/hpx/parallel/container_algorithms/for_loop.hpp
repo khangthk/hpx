@@ -729,31 +729,34 @@ namespace hpx { namespace ranges { namespace experimental {
 #include <hpx/modules/executors.hpp>
 #include <hpx/modules/iterator_support.hpp>
 #include <hpx/modules/type_support.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/for_loop.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 
 #include <cstddef>
+#include <iterator>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
 namespace hpx::ranges::experimental {
 
-    inline constexpr struct for_loop_t final
-      : hpx::detail::tag_parallel_algorithm<for_loop_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct for_loop_t final
+      : hpx::detail::tag_dispatch<for_loop_t,
+            hpx::detail::tag_parallel_algorithm<for_loop_t>>
     {
-    private:
+        template <typename ExPolicy, typename Iter, typename Sent,
+            typename... Args>
         // clang-format off
-        template <typename ExPolicy, typename Iter, typename Sent, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<Iter> &&
-                hpx::traits::is_sentinel_for_v<Sent, Iter>
-            )>
+                std::sentinel_for<Sent, Iter>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy>
-        tag_fallback_invoke(hpx::ranges::experimental::for_loop_t,
-            ExPolicy&& policy, Iter first, Sent last, Args&&... args)
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy>
+        invoke_default(ExPolicy&& policy, Iter first, Sent last, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop must be called with at least a function object");
@@ -765,15 +768,14 @@ namespace hpx::ranges::experimental {
                 HPX_FORWARD(Args, args)...);
         }
 
+        template <typename Iter, typename Sent, typename... Args>
         // clang-format off
-        template <typename Iter, typename Sent, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 hpx::traits::is_iterator_v<Iter> &&
-                hpx::traits::is_sentinel_for_v<Sent, Iter>
-            )>
+                std::sentinel_for<Sent, Iter>
+            )
         // clang-format on
-        friend void tag_fallback_invoke(hpx::ranges::experimental::for_loop_t,
-            Iter first, Sent last, Args&&... args)
+        static void invoke_default(Iter first, Sent last, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop must be called with at least a function object");
@@ -784,17 +786,16 @@ namespace hpx::ranges::experimental {
                 HPX_FORWARD(Args, args)...);
         }
 
+        template <typename ExPolicy, typename R, typename... Args>
         // clang-format off
-        template <typename ExPolicy, typename R, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
-                (hpx::traits::is_range_v<R> ||
-                 hpx::traits::is_range_generator_v<R>)
-            )>
+                (std::ranges::range<R> ||
+                    hpx::traits::is_range_generator_v<R>)
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy>
-        tag_fallback_invoke(hpx::ranges::experimental::for_loop_t,
-            ExPolicy&& policy, R&& rng, Args&&... args)
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy>
+        invoke_default(ExPolicy&& policy, R&& rng, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop must be called with at least a function object");
@@ -817,15 +818,14 @@ namespace hpx::ranges::experimental {
             }
         }
 
+        template <typename Rng, typename... Args>
         // clang-format off
-        template <typename Rng, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_range_v<Rng> ||
+            requires(
+                std::ranges::range<Rng> ||
                 hpx::traits::is_range_generator_v<Rng>
-            )>
+            )
         // clang-format on
-        friend void tag_fallback_invoke(
-            hpx::ranges::experimental::for_loop_t, Rng&& rng, Args&&... args)
+        static void invoke_default(Rng&& rng, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop must be called with at least a function object");
@@ -848,22 +848,22 @@ namespace hpx::ranges::experimental {
         }
     } for_loop{};
 
-    inline constexpr struct for_loop_strided_t final
-      : hpx::detail::tag_parallel_algorithm<for_loop_strided_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct for_loop_strided_t final
+      : hpx::detail::tag_dispatch<for_loop_strided_t,
+            hpx::detail::tag_parallel_algorithm<for_loop_strided_t>>
     {
-    private:
-        // clang-format off
         template <typename ExPolicy, typename Iter, typename Sent, typename S,
-            typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            typename... Args>
+        // clang-format off
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
                 std::is_integral_v<S> &&
                 hpx::traits::is_iterator_v<Iter> &&
-                hpx::traits::is_sentinel_for_v<Sent, Iter>
-            )>
+                std::sentinel_for<Sent, Iter>
+            )
         // clang-format on
-        friend parallel::util::detail::algorithm_result_t<ExPolicy>
-        tag_fallback_invoke(hpx::ranges::experimental::for_loop_strided_t,
+        static parallel::util::detail::algorithm_result_t<ExPolicy>
+        invoke_default(
             ExPolicy&& policy, Iter first, Sent last, S stride, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
@@ -877,17 +877,16 @@ namespace hpx::ranges::experimental {
                 HPX_FORWARD(Args, args)...);
         }
 
+        template <typename Iter, typename Sent, typename S, typename... Args>
         // clang-format off
-        template <typename Iter, typename Sent, typename S, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 std::is_integral_v<S> &&
                 hpx::traits::is_iterator_v<Iter> &&
-                hpx::traits::is_sentinel_for_v<Sent, Iter>
-            )>
+                std::sentinel_for<Sent, Iter>
+            )
         // clang-format on
-        friend void tag_fallback_invoke(
-            hpx::ranges::experimental::for_loop_strided_t, Iter first,
-            Sent last, S stride, Args&&... args)
+        static void invoke_default(
+            Iter first, Sent last, S stride, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop_strided must be called with at least a function "
@@ -899,17 +898,16 @@ namespace hpx::ranges::experimental {
                 HPX_FORWARD(Args, args)...);
         }
 
+        template <typename ExPolicy, typename Rng, typename S, typename... Args>
         // clang-format off
-        template <typename ExPolicy, typename Rng, typename S, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 hpx::is_execution_policy_v<ExPolicy> &&
                 std::is_integral_v<S> &&
-                hpx::traits::is_range_v<Rng>
-            )>
+                std::ranges::range<Rng>
+            )
         // clang-format on
-        friend hpx::parallel::util::detail::algorithm_result_t<ExPolicy>
-        tag_fallback_invoke(hpx::ranges::experimental::for_loop_strided_t,
-            ExPolicy&& policy, Rng&& rng, S stride, Args&&... args)
+        static hpx::parallel::util::detail::algorithm_result_t<ExPolicy>
+        invoke_default(ExPolicy&& policy, Rng&& rng, S stride, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop_strided must be called with at least a function "
@@ -923,16 +921,14 @@ namespace hpx::ranges::experimental {
                 HPX_FORWARD(Args, args)...);
         }
 
+        template <typename Rng, typename S, typename... Args>
         // clang-format off
-        template <typename Rng, typename S, typename... Args,
-            HPX_CONCEPT_REQUIRES_(
+            requires(
                 std::is_integral_v<S> &&
-                hpx::traits::is_range_v<Rng>
-            )>
+                std::ranges::range<Rng>
+            )
         // clang-format on
-        friend void tag_fallback_invoke(
-            hpx::ranges::experimental::for_loop_strided_t, Rng&& rng, S stride,
-            Args&&... args)
+        static void invoke_default(Rng&& rng, S stride, Args&&... args)
         {
             static_assert(sizeof...(Args) >= 1,
                 "for_loop_strided must be called with at least a function "
@@ -946,19 +942,5 @@ namespace hpx::ranges::experimental {
         }
     } for_loop_strided{};
 }    // namespace hpx::ranges::experimental
-
-namespace hpx::ranges {
-
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::ranges::for_loop is deprecated. Please use "
-        "hpx::ranges::experimental::for_loop instead.")
-    inline constexpr hpx::ranges::experimental::for_loop_t for_loop{};
-
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::ranges::for_loop_strided is deprecated. Please use "
-        "hpx::ranges::experimental::for_loop_strided instead.")
-    inline constexpr hpx::ranges::experimental::for_loop_strided_t
-        for_loop_strided{};
-}    // namespace hpx::ranges
 
 #endif    // DOXYGEN

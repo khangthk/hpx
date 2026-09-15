@@ -1,26 +1,27 @@
-//  Copyright (c) 2015-2024 Hartmut Kaiser
+//  Copyright (c) 2015-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
-#include <hpx/futures/detail/future_data.hpp>
-#include <hpx/futures/future.hpp>
-
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/move_only_function.hpp>
 #include <hpx/futures/detail/execute_thread.hpp>
+#include <hpx/futures/detail/future_data.hpp>
+#include <hpx/futures/future.hpp>
 #include <hpx/futures/futures_factory.hpp>
+#include <hpx/modules/async_base.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/logging.hpp>
 #include <hpx/modules/memory.hpp>
+#include <hpx/modules/tracing.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <mutex>
 #include <utility>
@@ -190,10 +191,9 @@ namespace hpx::lcos::detail {
 
         if (s == empty)
         {
-            // the value has already been moved out of this future
-            HPX_THROWS_IF(ec, hpx::error::no_state,
+            HPX_THROWS_IF(ec, hpx::error::future_uncompleted,
                 "future_data_base::get_result",
-                "this future has no valid shared state");
+                "this future was resumed while its state was 'empty'");
             return nullptr;
         }
 
@@ -254,6 +254,12 @@ namespace hpx::lcos::detail {
     template <typename Callback>
     void handle_on_completed_impl(Callback&& on_completed)
     {
+        // Uses handle_on_completed_fired() (a Tracy message) instead of
+        // HPX_TRACING_MARK_EVENT because mark_event calls rename_region which
+        // is silently dropped inside fiber contexts. The message API is
+        // fiber-context-safe and appears in the Tracy Message Log.
+        hpx::tracing::handle_on_completed_fired();
+
         // We need to run the completion on a new thread if we are on a non HPX
         // thread.
         bool const is_hpx_thread = nullptr != hpx::threads::get_self_ptr();
@@ -393,8 +399,14 @@ namespace hpx::lcos::detail {
             std::unique_lock l(mtx_);
             if (state_.load(std::memory_order_relaxed) == empty)
             {
-                threads::thread_restart_state const reason = cond_.wait_until(
-                    l, abs_time, "future_data_base::wait_until", ec);
+                // stop waiting if the future becomes ready
+                hpx::move_only_function<bool()> wait_cond = [this]() {
+                    return state_.load(std::memory_order_acquire) != empty;
+                };
+
+                threads::thread_restart_state const reason =
+                    cond_.wait_until(l, abs_time, HPX_MOVE(wait_cond),
+                        "future_data_base::wait_until", ec);
                 if (ec)
                 {
                     return hpx::future_status::uninitialized;
@@ -415,3 +427,28 @@ namespace hpx::lcos::detail {
         return hpx::future_status::ready;    //-V110
     }
 }    // namespace hpx::lcos::detail
+
+namespace hpx {
+
+    namespace {
+
+        std::atomic<std::int64_t> future_timeout_ms{
+            default_future_timeout.count()};
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    std::chrono::milliseconds get_future_timeout() noexcept
+    {
+        return std::chrono::milliseconds(
+            future_timeout_ms.load(std::memory_order_relaxed));
+    }
+
+    void set_future_timeout(
+        hpx::chrono::steady_duration const& timeout) noexcept
+    {
+        auto const timeout_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                timeout.value());
+        future_timeout_ms.store(timeout_ms.count(), std::memory_order_relaxed);
+    }
+}    // namespace hpx

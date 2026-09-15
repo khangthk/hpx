@@ -1,6 +1,6 @@
 ////////////////////////////////////////////////////////////////////////////////
 //  Copyright (c) 2012 Bryce Adelstein-Lelbach
-//  Copyright (c) 2012-2022 Hartmut Kaiser
+//  Copyright (c) 2012-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,11 +11,9 @@
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/filesystem.hpp>
 #include <hpx/modules/plugin.hpp>
+#include <hpx/modules/string_util.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/prefix/find_prefix.hpp>
-#include <hpx/string_util/classification.hpp>
-#include <hpx/string_util/split.hpp>
-#include <hpx/string_util/tokenizer.hpp>
-#include <hpx/type_support/unused.hpp>
 
 #if defined(HPX_WINDOWS)
 #include <windows.h>
@@ -39,9 +37,9 @@
 
 namespace hpx::util {
 
-    static const char* prefix_ = nullptr;
+    static char const* prefix_ = nullptr;
 
-    void set_hpx_prefix(const char* prefix) noexcept
+    void set_hpx_prefix(char const* prefix) noexcept
     {
         if (prefix_ == nullptr)
         {
@@ -68,14 +66,15 @@ namespace hpx::util {
 
             using hpx::filesystem::path;
 
-            std::string prefix =
-                path(dll.get_directory(ec)).parent_path().string();
+            std::string prefix = hpx::filesystem::to_string(
+                path(dll.get_directory(ec)).parent_path());
 
             if (ec || prefix.empty())
                 return hpx_prefix();
 
             return prefix;
         }
+        // NOLINTNEXTLINE(bugprone-empty-catch)
         catch (std::logic_error const&)
         {
             // just ignore loader problems
@@ -125,7 +124,7 @@ namespace hpx::util {
         using hpx::filesystem::path;
         path const p(get_executable_filename(argv0));
 
-        return p.parent_path().parent_path().string();
+        return hpx::filesystem::to_string(p.parent_path().parent_path());
     }
 
     std::string get_executable_filename(char const* argv0)

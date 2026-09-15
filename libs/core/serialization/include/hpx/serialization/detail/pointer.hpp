@@ -1,6 +1,6 @@
 //  Copyright (c) 2014 Thomas Heller
 //  Copyright (c) 2015 Anton Bikineev
-//  Copyright (c) 2022-2023 Hartmut Kaiser
+//  Copyright (c) 2022-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -9,24 +9,25 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/serialization/access.hpp>
 #include <hpx/serialization/basic_archive.hpp>
 #include <hpx/serialization/detail/non_default_constructible.hpp>
 #include <hpx/serialization/detail/polymorphic_id_factory.hpp>
 #include <hpx/serialization/detail/polymorphic_intrusive_factory.hpp>
 #include <hpx/serialization/detail/polymorphic_nonintrusive_factory.hpp>
+#include <hpx/serialization/macros.hpp>
 #include <hpx/serialization/serialization_fwd.hpp>
 #include <hpx/serialization/string.hpp>
 #include <hpx/serialization/traits/polymorphic_traits.hpp>
-#include <hpx/type_support/extra_data.hpp>
-#include <hpx/type_support/identity.hpp>
-#include <hpx/type_support/lazy_conditional.hpp>
 
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 
 namespace hpx::serialization::detail {
@@ -67,27 +68,33 @@ namespace hpx::util {
 namespace hpx::serialization {
 
     ////////////////////////////////////////////////////////////////////////////
-    HPX_CORE_EXPORT void register_pointer(
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void register_pointer(
         input_archive& ar, std::uint64_t pos, detail::ptr_helper_ptr helper);
 
+    HPX_CXX_CORE_EXPORT
     [[nodiscard]] HPX_CORE_EXPORT detail::ptr_helper& tracked_pointer(
         input_archive& ar, std::uint64_t pos);
 
-    [[nodiscard]] HPX_CORE_EXPORT std::uint64_t track_pointer(
-        output_archive& ar, void const* pos);
+    HPX_CXX_CORE_EXPORT [[nodiscard]] HPX_CORE_EXPORT std::uint64_t
+    track_pointer(output_archive& ar, void const* pos);
 
     ////////////////////////////////////////////////////////////////////////////
     namespace detail {
 
         template <typename Pointer>
-        struct erase_ptr_helper : ptr_helper
+        struct erase_ptr_helper final : ptr_helper
         {
-            using referred_type = typename Pointer::element_type;
+            using referred_type = Pointer::element_type;
 
             erase_ptr_helper(Pointer&& t, Pointer& ptr) noexcept
               : t_(HPX_MOVE(t))
             {
                 ptr = t_;
+            }
+
+            std::type_info const& type() const noexcept override
+            {
+                return typeid(Pointer);
             }
 
             Pointer t_;
@@ -96,7 +103,7 @@ namespace hpx::serialization {
         template <typename Pointer>
         class pointer_input_dispatcher
         {
-            using referred_type = typename Pointer::element_type;
+            using referred_type = Pointer::element_type;
 
             struct intrusive_polymorphic
             {
@@ -106,7 +113,7 @@ namespace hpx::serialization {
                     ar >> name;
 
                     Pointer t(polymorphic_intrusive_factory::instance()
-                                  .create<referred_type>(name));
+                            .create<referred_type>(name));
                     ar >> *t;
                     return t;
                 }
@@ -143,7 +150,7 @@ namespace hpx::serialization {
                 static Pointer call(input_archive& ar)
                 {
                     return Pointer(polymorphic_nonintrusive_factory::instance()
-                                       .load<referred_type>(ar));
+                            .load<referred_type>(ar));
                 }
             };
 
@@ -173,7 +180,7 @@ namespace hpx::serialization {
         template <typename Pointer>
         class pointer_output_dispatcher
         {
-            using referred_type = typename Pointer::element_type;
+            using referred_type = Pointer::element_type;
 
             struct intrusive_polymorphic
             {
@@ -209,7 +216,7 @@ namespace hpx::serialization {
             {
                 static void call(output_archive& ar, Pointer const& ptr)
                 {
-                    using element_type = typename Pointer::element_type;
+                    using element_type = Pointer::element_type;
                     if constexpr (std::is_constructible_v<element_type>)
                     {
                         ar << *ptr;
@@ -276,9 +283,19 @@ namespace hpx::serialization {
                 }
                 else
                 {
+                    auto& tracked = tracked_pointer(ar, pos);
+                    if (tracked.type() != typeid(Pointer))
+                    {
+                        HPX_THROW_EXCEPTION(hpx::error::serialization_error,
+                            "hpx::serialization::serialize_pointer_tracked",
+                            "Unexpected type found in received buffer (actual: "
+                            "{}, expected: {}).",
+                            tracked.type().name(), typeid(Pointer).name());
+                    }
+
                     auto& helper =
                         static_cast<detail::erase_ptr_helper<Pointer>&>(
-                            tracked_pointer(ar, pos));
+                            tracked);
                     ptr = helper.t_;
                 }
             }

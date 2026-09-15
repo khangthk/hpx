@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2011      Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -13,22 +13,25 @@
 #include <hpx/errors/error.hpp>
 
 #include <cstdint>
+#include <exception>
+#include <string>
 
 namespace hpx {
 
     /// \cond NOINTERNAL
     // forward declaration
-    class error_code;
+    HPX_CXX_CORE_EXPORT class HPX_CORE_EXPORT error_code;
 
-    class HPX_ALWAYS_EXPORT exception;
+    HPX_CXX_CORE_EXPORT class HPX_ALWAYS_EXPORT exception;
 
-    struct HPX_ALWAYS_EXPORT thread_interrupted;
+    HPX_CXX_CORE_EXPORT struct HPX_ALWAYS_EXPORT thread_interrupted;
+
+    HPX_CXX_CORE_EXPORT class HPX_CORE_EXPORT exception_list;
     /// \endcond
 
     ///////////////////////////////////////////////////////////////////////////
     /// \brief Encode error category for new error_code.
-    enum class throwmode : std::uint8_t
-    {
+    HPX_CXX_CORE_EXPORT enum class throwmode : std::uint8_t {
         plain = 0,
         rethrow = 1,
 
@@ -46,29 +49,14 @@ namespace hpx {
 #pragma warning(push)
 #pragma warning(disable : 26827)
 #endif
-    constexpr bool operator&(throwmode lhs, throwmode rhs) noexcept
+    HPX_CXX_CORE_EXPORT constexpr bool operator&(
+        throwmode lhs, throwmode rhs) noexcept
     {
         return static_cast<int>(lhs) & static_cast<int>(rhs);
     }
 #if defined(HPX_MSVC)
 #pragma warning(pop)
 #endif
-
-#define HPX_THROWMODE_UNSCOPED_ENUM_DEPRECATION_MSG                            \
-    "The unscoped throwmode names are deprecated. Please use "                 \
-    "throwmode::<mode> instead."
-
-    HPX_DEPRECATED_V(1, 8, HPX_THROWMODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr throwmode plain = throwmode::plain;
-    HPX_DEPRECATED_V(1, 8, HPX_THROWMODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr throwmode rethrow = throwmode::rethrow;
-    HPX_DEPRECATED_V(1, 8, HPX_THROWMODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr throwmode lightweight = throwmode::lightweight;
-    HPX_DEPRECATED_V(1, 8, HPX_THROWMODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr throwmode lightweight_rethrow =
-        throwmode::lightweight_rethrow;
-
-#undef HPX_THROWMODE_UNSCOPED_ENUM_DEPRECATION_MSG
 
     ///////////////////////////////////////////////////////////////////////////
     /// \brief Predefined error_code object used as "throw on error" tag.
@@ -88,7 +76,7 @@ namespace hpx {
     ///
     /// If an error occurs and &ec == &throws, the function throws an exception
     /// of type \a hpx::exception or of a type derived from it. The exception's
-    /// \a get_errorcode() member function returns a reference to an
+    /// \a get_errorcode() member function returns a reference to a
     /// \a hpx::error_code object with the behavior as specified above.
     ///
 #if defined(HPX_COMPUTE_DEVICE_CODE) && !defined(HPX_HAVE_HIP)
@@ -96,8 +84,23 @@ namespace hpx {
     // the compiler.
     extern HPX_DEVICE error_code throws;
 #else
-    HPX_CORE_EXPORT extern error_code throws;
+    HPX_CXX_CORE_EXPORT extern HPX_CORE_EXPORT error_code throws;
 #endif
+
+    /// \cond NOINTERNAL
+    namespace detail {
+
+        ////////////////////////////////////////////////////////////////////////
+        HPX_CXX_CORE_EXPORT template <typename Exception>
+        [[nodiscard]] HPX_CORE_EXPORT std::exception_ptr
+        construct_lightweight_exception(Exception const& e);
+
+        extern template HPX_CORE_EXPORT std::exception_ptr
+        construct_lightweight_exception(hpx::exception_list const&);
+        extern template HPX_CORE_EXPORT std::exception_ptr
+        construct_lightweight_exception(hpx::thread_interrupted const&);
+    }    // namespace detail
+    /// \endcond
 }    // namespace hpx
 
 #include <hpx/errors/throw_exception.hpp>

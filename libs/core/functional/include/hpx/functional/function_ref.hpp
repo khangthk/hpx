@@ -18,6 +18,7 @@
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
 #include <hpx/functional/traits/is_invocable.hpp>
+#include <hpx/modules/tracing.hpp>
 
 #include <cstddef>
 #include <cstring>
@@ -76,7 +77,7 @@ namespace hpx {
         }
 
         template <typename T, typename C>
-        [[nodiscard]] constexpr bool is_empty_function_ptr(T C::*mp) noexcept
+        [[nodiscard]] constexpr bool is_empty_function_ptr(T C::* mp) noexcept
         {
             return mp == nullptr;
         }
@@ -198,14 +199,13 @@ namespace hpx {
 #endif
         }
 
-        [[nodiscard]] util::itt::string_handle get_function_annotation_itt()
-            const
+        [[nodiscard]] hpx::tracing::annotation_handle
+        get_function_annotation_tracing() const
         {
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-            return vptr->get_function_annotation_itt(object);
+#if defined(HPX_HAVE_THREAD_DESCRIPTION)
+            return vptr->get_function_annotation_tracing(object);
 #else
-            static util::itt::string_handle sh;
-            return sh;
+            return {};
 #endif
         }
 
@@ -225,14 +225,6 @@ namespace hpx {
         void* object;
     };
 }    // namespace hpx
-
-namespace hpx::util {
-
-    template <typename Sig>
-    using function_ref HPX_DEPRECATED_V(1, 8,
-        "hpx::util::function_ref is deprecated. Please use hpx::function_ref "
-        "instead.") = hpx::function_ref<Sig>;
-}
 
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
 ///////////////////////////////////////////////////////////////////////////////
@@ -258,16 +250,14 @@ namespace hpx::traits {
         }
     };
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
     template <typename Sig>
-    struct get_function_annotation_itt<hpx::function_ref<Sig>>
+    struct get_function_annotation_tracing<hpx::function_ref<Sig>>
     {
-        [[nodiscard]] static util::itt::string_handle call(
+        [[nodiscard]] static hpx::tracing::annotation_handle call(
             hpx::function_ref<Sig> const& f) noexcept
         {
-            return f.get_function_annotation_itt();
+            return f.get_function_annotation_tracing();
         }
     };
-#endif
 }    // namespace hpx::traits
 #endif

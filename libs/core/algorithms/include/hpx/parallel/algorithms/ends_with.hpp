@@ -20,16 +20,16 @@ namespace hpx {
     /// suffix of the first range defined by [first2, last2)
     ///
     /// \note   Complexity: Linear: at most min(N1, N2) applications of the
-    ///                     predicate and both projections.
+    ///                     predicate.
     ///
     /// \tparam InIter1     The type of the begin source iterators used
     ///                     (deduced). This iterator type must meet the
     ///                     requirements of an input iterator.
     /// \tparam InIter2     The type of the begin destination iterators used
-    ///                     deduced). This iterator type must meet the
+    ///                     (deduced). This iterator type must meet the
     ///                     requirements of a input iterator.
-    /// \tparam Pred        The binary predicate that compares the projected
-    ///                     elements.
+    /// \tparam Pred        The binary predicate that compares the elements.
+    ///                     This defaults to \a hpx::parallel::detail::equal_to.
     ///
     /// \param first1       Refers to the beginning of the source range.
     /// \param last1        Refers to the end of the source range.
@@ -37,8 +37,7 @@ namespace hpx {
     /// \param last2        Refers to the end of the destination range.
     /// \param pred         Specifies the binary predicate function
     ///                     (or function object) which will be invoked for
-    ///                     comparison of the elements in the in two ranges
-    ///                     projected by proj1 and proj2 respectively.
+    ///                     comparison of the elements in the two ranges.
     ///
     /// The assignments in the parallel \a ends_with algorithm invoked
     /// without an execution policy object execute in sequential order
@@ -48,16 +47,17 @@ namespace hpx {
     ///           The \a ends_with algorithm returns a boolean with the
     ///           value true if the second range matches the suffix of the
     ///           first range, false otherwise.
-    template <typename InIter1, typename InIter2, typename Pred>
+    template <typename InIter1, typename InIter2,
+        typename Pred = hpx::parallel::detail::equal_to>
     bool ends_with(InIter1 first1, InIter1 last1, InIter2 first2,
-        InIter2 last2, Pred&& pred);
+        InIter2 last2, Pred&& pred = Pred());
 
     /// Checks whether the second range defined by [first1, last1) matches the
     /// suffix of the first range defined by [first2, last2). Executed
     /// according to the policy.
     ///
     /// \note   Complexity: Linear: at most min(N1, N2) applications of the
-    ///                     predicate and both projections.
+    ///                     predicate.
     ///
     /// \tparam ExPolicy    The type of the execution policy to use (deduced).
     ///                     It describes the manner in which the execution
@@ -67,10 +67,10 @@ namespace hpx {
     ///                     (deduced). This iterator type must meet the
     ///                     requirements of an forward iterator.
     /// \tparam FwdIter2    The type of the begin destination iterators used
-    ///                     deduced). This iterator type must meet the
+    ///                     (deduced). This iterator type must meet the
     ///                     requirements of a forward iterator.
-    /// \tparam Pred        The binary predicate that compares the projected
-    ///                     elements.
+    /// \tparam Pred        The binary predicate that compares the elements.
+    ///                     This defaults to \a ranges::equal_to.
     ///
     /// \param policy       The execution policy to use for the scheduling of
     ///                     the iterations.
@@ -80,6 +80,7 @@ namespace hpx {
     /// \param last2        Refers to the end of the destination range.
     /// \param pred         Specifies the binary predicate function
     ///                     (or function object) which will be invoked for
+    ///                     comparison of the elements in the two ranges.
     ///
     /// The assignments in the parallel \a ends_with algorithm invoked with an
     /// execution policy object of type \a sequenced_policy
@@ -99,11 +100,11 @@ namespace hpx {
     ///           value true if the second range matches the suffix of the
     ///           first range, false otherwise.
     template <typename ExPolicy, typename FwdIter1, typename FwdIter2,
-        typename Pred>
+        typename Pred = ranges::equal_to>
     typename hpx::parallel::util::detail::algorithm_result<ExPolicy,
         bool>::type
     ends_with(ExPolicy&& policy, FwdIter1 first1, FwdIter1 last1,
-        FwdIter2 first2, FwdIter2 last2, Pred&& pred);
+        FwdIter2 first2, FwdIter2 last2, Pred&& pred = Pred());
 
     // clang-format on
 }    // namespace hpx
@@ -111,14 +112,16 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/execution/algorithms/detail/predicates.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/equal.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
-#include <hpx/type_support/identity.hpp>
+#include <hpx/parallel/util/detail/sender_util.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -133,7 +136,7 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        struct ends_with : public algorithm<ends_with, bool>
+        HPX_CXX_CORE_EXPORT struct ends_with : public algorithm<ends_with, bool>
         {
             constexpr ends_with() noexcept
               : algorithm("ends_with")
@@ -205,29 +208,29 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::ends_with
-    inline constexpr struct ends_with_t final
-      : hpx::detail::tag_parallel_algorithm<ends_with_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct ends_with_t final
+      : hpx::detail::tag_dispatch<ends_with_t,
+            hpx::detail::tag_parallel_algorithm<ends_with_t>>
     {
-    private:
-        // clang-format off
         template <typename InIter1, typename InIter2,
-            typename Pred = hpx::parallel::detail::equal_to,
-            HPX_CONCEPT_REQUIRES_(
+            typename Pred = hpx::parallel::detail::equal_to>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<InIter1> &&
                 hpx::traits::is_iterator_v<InIter2> &&
                 hpx::is_invocable_v<Pred,
-                    typename std::iterator_traits<InIter1>::value_type,
-                    typename std::iterator_traits<InIter2>::value_type
+                    hpx::traits::iter_value_t<InIter1>,
+                    hpx::traits::iter_value_t<InIter2>
                 >
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(hpx::ends_with_t, InIter1 first1,
-            InIter1 last1, InIter2 first2, InIter2 last2, Pred pred = Pred())
+        static bool invoke_default(InIter1 first1, InIter1 last1,
+            InIter2 first2, InIter2 last2, Pred pred = Pred())
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter1>,
+            static_assert(std::input_iterator<InIter1>,
                 "Required at least input iterator.");
 
-            static_assert(hpx::traits::is_input_iterator_v<InIter2>,
+            static_assert(std::input_iterator<InIter2>,
                 "Required at least input iterator.");
 
             return hpx::parallel::detail::ends_with().call(hpx::execution::seq,
@@ -235,27 +238,26 @@ namespace hpx {
                 hpx::identity_v);
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter1, typename FwdIter2,
-            typename Pred = ranges::equal_to,
-            HPX_CONCEPT_REQUIRES_(
+            typename Pred = ranges::equal_to>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2> &&
                 hpx::is_invocable_v<Pred,
-                    typename std::iterator_traits<FwdIter1>::value_type,
-                    typename std::iterator_traits<FwdIter2>::value_type
+                    hpx::traits::iter_value_t<FwdIter1>,
+                    hpx::traits::iter_value_t<FwdIter2>
                 >
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::ends_with_t,
-            ExPolicy&& policy, FwdIter1 first1, FwdIter1 last1, FwdIter2 first2,
-            FwdIter2 last2, Pred pred = Pred())
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first1,
+            FwdIter1 last1, FwdIter2 first2, FwdIter2 last2, Pred pred = Pred())
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter1>,
+            static_assert(std::forward_iterator<FwdIter1>,
                 "Required at least forward iterator.");
 
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter2>,
+            static_assert(std::forward_iterator<FwdIter2>,
                 "Required at least forward iterator.");
 
             return hpx::parallel::detail::ends_with().call(

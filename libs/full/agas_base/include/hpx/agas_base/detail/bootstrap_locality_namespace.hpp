@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Bryce Lelbach
-//  Copyright (c) 2012-2021 Hartmut Kaiser
+//  Copyright (c) 2012-2026 Hartmut Kaiser
 //  Copyright (c) 2016 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -9,20 +9,19 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 
 #include <hpx/agas_base/agas_fwd.hpp>
 #include <hpx/agas_base/locality_namespace.hpp>
 #include <hpx/agas_base/server/locality_namespace.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/parcelset_base/locality.hpp>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
-namespace hpx { namespace agas { namespace detail {
+namespace hpx::agas::detail {
 
     struct bootstrap_locality_namespace : locality_namespace
     {
@@ -40,7 +39,7 @@ namespace hpx { namespace agas { namespace detail {
             std::uint64_t count, std::uint32_t num_threads,
             naming::gid_type const& suggested_prefix) override;
 
-        void free(naming::gid_type const& locality) override;
+        bool free(naming::gid_type const& locality) override;
 
         std::vector<std::uint32_t> localities() override;
 
@@ -69,4 +68,4 @@ namespace hpx { namespace agas { namespace detail {
     private:
         server::locality_namespace server_;
     };
-}}}    // namespace hpx::agas::detail
+}    // namespace hpx::agas::detail

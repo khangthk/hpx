@@ -9,10 +9,8 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR)
-#include <hpx/execution/traits/is_execution_policy.hpp>
-#include <hpx/execution/traits/vector_pack_find.hpp>
-#include <hpx/executors/datapar/execution_policy.hpp>
-#include <hpx/functional/tag_invoke.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
 #include <hpx/parallel/algorithms/detail/advance_to_sentinel.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/detail/mismatch.hpp>
@@ -27,25 +25,35 @@
 #include <type_traits>
 #include <utility>
 
-namespace hpx { namespace parallel { namespace detail {
+namespace hpx::parallel::detail {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     struct datapar_mismatch
     {
         template <typename ZipIterator, typename Token, typename F>
         HPX_HOST_DEVICE HPX_FORCEINLINE static void call(std::size_t base_idx,
             ZipIterator it, std::size_t part_count, Token& tok, F&& f)
         {
+            bool cancelled = false;
+            std::size_t cancel_pos = 0;
             util::loop_idx_n<ExPolicy>(base_idx, it, part_count, tok,
-                [&f, &tok](auto t, std::size_t i) mutable -> void {
-                    auto msk = !hpx::invoke(f, hpx::get<0>(t), hpx::get<1>(t));
-                    int offset = hpx::parallel::traits::find_first_of(msk);
-                    if (offset != -1)
+                [&f, &cancelled, &cancel_pos](
+                    auto t, std::size_t i) mutable -> void {
+                    if (!cancelled)
                     {
-                        tok.cancel(i + offset);
+                        auto msk =
+                            !hpx::invoke(f, hpx::get<0>(t), hpx::get<1>(t));
+                        int offset = hpx::parallel::traits::find_first_of(msk);
+                        if (offset != -1)
+                        {
+                            cancelled = true;
+                            cancel_pos = i + offset;
+                        }
                     }
                 });
+            if (cancelled)
+                tok.cancel(cancel_pos);
         }
 
         template <typename Iter1, typename Sent, typename Iter2, typename F>
@@ -68,10 +76,10 @@ namespace hpx { namespace parallel { namespace detail {
         }
     };
 
-    template <typename ExPolicy, typename ZipIterator, typename Token,
-        typename F,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE void tag_invoke(
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename ZipIterator,
+        typename Token, typename F>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE void hpx_invoke(
         sequential_mismatch_t<ExPolicy>, std::size_t base_idx, ZipIterator it,
         std::size_t part_count, Token& tok, F&& f)
     {
@@ -91,17 +99,15 @@ namespace hpx { namespace parallel { namespace detail {
         }
     }
 
-    template <typename ExPolicy, typename Iter1, typename Sent, typename Iter2,
-        typename F,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE auto tag_invoke(
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter1,
+        typename Sent, typename Iter2, typename F>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE auto hpx_invoke(
         sequential_mismatch_t<ExPolicy>, Iter1 first1, Sent last1, Iter2 first2,
         F&& f)
     {
         if constexpr (hpx::parallel::util::detail::iterator_datapar_compatible<
-                          Iter1>::value &&
-            hpx::parallel::util::detail::iterator_datapar_compatible<
-                Iter2>::value)
+                          hpx::util::zip_iterator<Iter1, Iter2>>::value)
         {
             return datapar_mismatch<ExPolicy>::call(
                 first1, last1, first2, HPX_FORWARD(F, f));
@@ -117,7 +123,7 @@ namespace hpx { namespace parallel { namespace detail {
     }
 
     /////////////////////////////////////////////////////////////////////////
-    template <typename ExPolicy>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy>
     struct datapar_mismatch_binary
     {
         template <typename ZipIterator, typename Token, typename F,
@@ -126,18 +132,26 @@ namespace hpx { namespace parallel { namespace detail {
             ZipIterator it, std::size_t part_count, Token& tok, F&& f,
             Proj1&& proj1, Proj2&& proj2)
         {
+            bool cancelled = false;
+            std::size_t cancel_pos = 0;
             util::loop_idx_n<ExPolicy>(base_idx, it, part_count, tok,
-                [&f, &proj1, &proj2, &tok](
+                [&f, &proj1, &proj2, &cancelled, &cancel_pos](
                     auto t, std::size_t i) mutable -> void {
-                    auto msk =
-                        !hpx::invoke(f, hpx::invoke(proj1, hpx::get<0>(t)),
-                            hpx::invoke(proj2, hpx::get<1>(t)));
-                    int offset = hpx::parallel::traits::find_first_of(msk);
-                    if (offset != -1)
+                    if (!cancelled)
                     {
-                        tok.cancel(i + offset);
+                        auto msk =
+                            !hpx::invoke(f, hpx::invoke(proj1, hpx::get<0>(t)),
+                                hpx::invoke(proj2, hpx::get<1>(t)));
+                        int offset = hpx::parallel::traits::find_first_of(msk);
+                        if (offset != -1)
+                        {
+                            cancelled = true;
+                            cancel_pos = i + offset;
+                        }
                     }
                 });
+            if (cancelled)
+                tok.cancel(cancel_pos);
         }
 
         template <typename Iter1, typename Sent1, typename Iter2,
@@ -168,10 +182,10 @@ namespace hpx { namespace parallel { namespace detail {
         }
     };
 
-    template <typename ExPolicy, typename ZipIterator, typename Token,
-        typename F, typename Proj1, typename Proj2,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE void tag_invoke(
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename ZipIterator,
+        typename Token, typename F, typename Proj1, typename Proj2>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE void hpx_invoke(
         sequential_mismatch_binary_t<ExPolicy>, std::size_t base_idx,
         ZipIterator it, std::size_t part_count, Token& tok, F&& f,
         Proj1&& proj1, Proj2&& proj2)
@@ -194,17 +208,16 @@ namespace hpx { namespace parallel { namespace detail {
         }
     }
 
-    template <typename ExPolicy, typename Iter1, typename Sent1, typename Iter2,
-        typename Sent2, typename F, typename Proj1, typename Proj2,
-        HPX_CONCEPT_REQUIRES_(hpx::is_vectorpack_execution_policy_v<ExPolicy>)>
-    HPX_HOST_DEVICE HPX_FORCEINLINE util::in_in_result<Iter1, Iter2> tag_invoke(
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename Iter1,
+        typename Sent1, typename Iter2, typename Sent2, typename F,
+        typename Proj1, typename Proj2>
+        requires(hpx::is_vectorpack_execution_policy_v<ExPolicy>)
+    HPX_HOST_DEVICE HPX_FORCEINLINE util::in_in_result<Iter1, Iter2> hpx_invoke(
         sequential_mismatch_binary_t<ExPolicy>, Iter1 first1, Sent1 last1,
         Iter2 first2, Sent2 last2, F&& f, Proj1&& proj1, Proj2&& proj2)
     {
         if constexpr (hpx::parallel::util::detail::iterator_datapar_compatible<
-                          Iter1>::value &&
-            hpx::parallel::util::detail::iterator_datapar_compatible<
-                Iter2>::value)
+                          hpx::util::zip_iterator<Iter1, Iter2>>::value)
         {
             return datapar_mismatch_binary<ExPolicy>::call2(first1, last1,
                 first2, last2, HPX_FORWARD(F, f), HPX_FORWARD(Proj1, proj1),
@@ -220,5 +233,6 @@ namespace hpx { namespace parallel { namespace detail {
                 HPX_FORWARD(Proj2, proj2));
         }
     }
-}}}    // namespace hpx::parallel::detail
+}    // namespace hpx::parallel::detail
+
 #endif

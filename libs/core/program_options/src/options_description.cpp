@@ -7,11 +7,10 @@
 
 #include <hpx/program_options/config.hpp>
 #include <hpx/assert.hpp>
+#include <hpx/modules/string_util.hpp>
+#include <hpx/program_options/cmdline.hpp>
+#include <hpx/program_options/errors.hpp>
 #include <hpx/program_options/options_description.hpp>
-// FIXME: this is only to get multiple_occurrences class
-// should move that to a separate headers.
-#include <hpx/program_options/parsers.hpp>
-#include <hpx/string_util/tokenizer.hpp>
 
 #include <climits>
 #include <cstdarg>
@@ -33,7 +32,7 @@ namespace hpx::program_options {
         {
             std::basic_string<Char> result;
             for (typename std::basic_string<Char>::size_type i = 0;
-                 i < str.size(); ++i)
+                i < str.size(); ++i)
             {
                 result.append(1, static_cast<Char>(std::tolower(str[i])));
             }
@@ -52,9 +51,24 @@ namespace hpx::program_options {
     }
 
     option_description::option_description(
+        char const* name, std::unique_ptr<value_semantic const> s)
+      : m_value_semantic(s.release())
+    {
+        this->set_names(name);
+    }
+
+    option_description::option_description(
         char const* names, value_semantic const* s, char const* description)
       : m_description(description)
       , m_value_semantic(s)
+    {
+        this->set_names(names);
+    }
+
+    option_description::option_description(char const* names,
+        std::unique_ptr<value_semantic const> s, char const* description)
+      : m_description(description)
+      , m_value_semantic(s.release())
     {
         this->set_names(names);
     }
@@ -90,7 +104,7 @@ namespace hpx::program_options {
                     result = full_match;
                     break;
                 }
-                else if (approx)
+                if (approx)
                 {
                     if (local_long_name.find(local_option) == 0)
                     {
@@ -122,14 +136,15 @@ namespace hpx::program_options {
         {
             std::string const& first_long_name = *m_long_names.begin();
             if (first_long_name.find('*') != std::string::npos)
+            {
                 // The '*' character means we're long_name
                 // matches only part of the input. So, returning
                 // long name will remove some of the information,
                 // and we have to return the option as specified
                 // in the source.
-                return option;
-            else
-                return first_long_name;
+                return option;    // NOLINT(bugprone-return-const-ref-from-parameter)
+            }
+            return first_long_name;
         }
         else
             return m_short_name;
@@ -253,10 +268,15 @@ namespace hpx::program_options {
     {
         // Create untyped semantic which accepts zero tokens: i.e.
         // no value can be specified on command line.
-        // FIXME: does not look exception-safe
+        //
+        // By creating a unique_ptr first, and passing it to the new
+        // option_description constructor that accepts a unique_ptr, we avoid
+        // any possibility of a memory leak if allocation fails.
+        std::unique_ptr<value_semantic const> semantic =
+            std::make_unique<untyped_value>(true);
         std::shared_ptr<option_description> d =
             std::make_shared<option_description>(
-                name, new untyped_value(true), description);
+                name, HPX_MOVE(semantic), description);
 
         owner->add(HPX_MOVE(d));
         return *this;
@@ -480,7 +500,8 @@ namespace hpx::program_options {
                     auto remaining = static_cast<std::size_t>(
                         std::distance(line_begin, par_end));
                     auto line_end = line_begin +
-                        (remaining < line_length ? remaining : line_length);
+                        static_cast<std::ptrdiff_t>(
+                            remaining < line_length ? remaining : line_length);
 
                     // prevent chopped words
                     // Is line_end between two non-space characters?
@@ -599,7 +620,7 @@ namespace hpx::program_options {
                 else
                 {
                     for (std::size_t pad = first_column_width - ss.str().size();
-                         pad > 0; --pad)
+                        pad > 0; --pad)
                     {
                         os.put(' ');
                     }
@@ -620,21 +641,20 @@ namespace hpx::program_options {
             option_description const& opt = *m_options[i];
             std::stringstream ss;
             ss << "  " << opt.format_name() << ' ' << opt.format_parameter();
-            width = (std::max)(width, ss.str().size());
+            width = (std::max) (width, ss.str().size());
         }
 
         /* Get width of groups as well*/
         for (auto const& group : groups)
-            width = (std::max)(width, group->get_option_column_width());
+            width = (std::max) (width, group->get_option_column_width());
 
         /* this is the column were description should start, if first
            column is longer, we go to a new line */
         std::size_t const start_of_description_column =
             m_line_length - m_min_description_length;
 
-        width = (std::min)(width, start_of_description_column - 1);
+        width = (std::min) (width, start_of_description_column - 1);
 
-        /* add an additional space to improve readability */
         ++width;
         return width;
     }

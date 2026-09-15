@@ -14,7 +14,7 @@ namespace hpx::traits {
 
     namespace detail {
 
-        template <typename T, typename Enable = void>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Enable = void>
         struct is_tuple_like_impl : std::false_type
         {
         };
@@ -28,11 +28,11 @@ namespace hpx::traits {
 
     /// Deduces to a true type if the given parameter T has a specific tuple
     /// like size.
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct is_tuple_like : detail::is_tuple_like_impl<std::remove_cv_t<T>>
     {
     };
 
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     inline constexpr bool is_tuple_like_v = is_tuple_like<T>::value;
 }    // namespace hpx::traits

@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2013 Agustin Berge
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -6,7 +6,7 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 /// \file wait_some.hpp
-/// \page hpx::wait_some
+/// \page hpx::wait_some, hpx::wait_some_nothrow, hpx::wait_some_n, hpx::wait_some_n_nothrow
 /// \headerfile hpx/future.hpp
 
 #pragma once
@@ -98,9 +98,6 @@ namespace hpx {
     /// \param futures  [in] An arbitrary number of \a future or \a shared_future
     ///                 objects, possibly holding different types for which
     ///                 \a wait_some should wait.
-    /// \param ec       [in,out] this represents the error status on exit, if
-    ///                 this is pre-initialized to \a hpx#throws the function
-    ///                 will throw on error instead.
     ///
     /// \note The function \a wait_all returns after \a n futures have become
     ///       ready. All input futures are still valid after \a wait_some
@@ -145,17 +142,13 @@ namespace hpx {
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
 #include <hpx/async_combinators/detail/throw_if_exceptional.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/functional/tag_invoke.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/acquire_shared_state.hpp>
-#include <hpx/futures/traits/future_access.hpp>
-#include <hpx/futures/traits/is_future.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/iterator_support.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/thread_support/atomic_count.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <algorithm>
 #include <array>
@@ -339,7 +332,7 @@ namespace hpx {
             bool has_exceptional_results_ = false;
             bool notified_ = false;
 
-            mutable util::cache_line_data<hpx::spinlock> mtx_;
+            mutable util::cache_line_data<hpx::spinlock> mtx_ = {"wait_some"};
             mutable util::cache_line_data<
                 hpx::lcos::local::detail::condition_variable>
                 cond_;
@@ -347,13 +340,17 @@ namespace hpx {
         private:
             friend void intrusive_ptr_add_ref(wait_some* p) noexcept
             {
-                ++p->refcount_;
+                p->refcount_.increment();
             }
 
             friend void intrusive_ptr_release(wait_some* p) noexcept
             {
-                if (0 == --p->refcount_)
+                if (0 == p->refcount_.decrement())
                 {
+                    // The thread that decrements the reference count to zero must
+                    // perform an acquire to ensure that it doesn't start destructing
+                    // the object until all previous writes have drained.
+                    std::atomic_thread_fence(std::memory_order_acquire);
                     delete p;
                 }
             }
@@ -371,8 +368,7 @@ namespace hpx {
     }    // namespace detail
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct wait_some_nothrow_t final
-      : hpx::functional::tag<wait_some_nothrow_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct wait_some_nothrow_t final
     {
     private:
         template <typename Future>
@@ -399,29 +395,6 @@ namespace hpx {
             return (*f)();
         }
 
-        template <typename Future>
-        friend bool tag_invoke(wait_some_nothrow_t, std::size_t n,
-            std::vector<Future> const& values)
-        {
-            return wait_some_nothrow_t::wait_some_nothrow_impl(n, values);
-        }
-
-        template <typename Future>
-        friend HPX_FORCEINLINE bool tag_invoke(
-            wait_some_nothrow_t, std::size_t n, std::vector<Future>& values)
-        {
-            return wait_some_nothrow_t::wait_some_nothrow_impl(
-                n, const_cast<std::vector<Future> const&>(values));
-        }
-
-        template <typename Future>
-        friend HPX_FORCEINLINE bool tag_invoke(
-            wait_some_nothrow_t, std::size_t n, std::vector<Future>&& values)
-        {
-            return wait_some_nothrow_t::wait_some_nothrow_impl(
-                n, const_cast<std::vector<Future> const&>(values));
-        }
-
         template <typename Future, std::size_t N>
         static bool wait_some_nothrow_impl(
             std::size_t n, std::array<Future, N> const& values)
@@ -446,24 +419,47 @@ namespace hpx {
             return (*f)();
         }
 
+    public:
+        template <typename Future>
+        bool operator()(std::size_t n, std::vector<Future> const& values) const
+        {
+            return wait_some_nothrow_t::wait_some_nothrow_impl(n, values);
+        }
+
+        template <typename Future>
+        HPX_FORCEINLINE bool operator()(
+            std::size_t n, std::vector<Future>& values) const
+        {
+            return wait_some_nothrow_t::wait_some_nothrow_impl(
+                n, const_cast<std::vector<Future> const&>(values));
+        }
+
+        template <typename Future>
+        HPX_FORCEINLINE bool operator()(
+            std::size_t n, std::vector<Future>&& values) const
+        {
+            return wait_some_nothrow_t::wait_some_nothrow_impl(
+                n, const_cast<std::vector<Future> const&>(values));
+        }
+
         template <typename Future, std::size_t N>
-        friend bool tag_invoke(wait_some_nothrow_t, std::size_t n,
-            std::array<Future, N> const& values)
+        bool operator()(
+            std::size_t n, std::array<Future, N> const& values) const
         {
             return wait_some_nothrow_t::wait_some_nothrow_impl(n, values);
         }
 
         template <typename Future, std::size_t N>
-        friend HPX_FORCEINLINE bool tag_invoke(wait_some_nothrow_t,
-            std::size_t n, std::array<Future, N>& lazy_values)
+        HPX_FORCEINLINE bool operator()(
+            std::size_t n, std::array<Future, N>& lazy_values) const
         {
             return wait_some_nothrow_t::wait_some_nothrow_impl(
                 n, const_cast<std::array<Future, N> const&>(lazy_values));
         }
 
         template <typename Future, std::size_t N>
-        friend HPX_FORCEINLINE bool tag_invoke(wait_some_nothrow_t,
-            std::size_t n, std::array<Future, N>&& lazy_values)
+        HPX_FORCEINLINE bool operator()(
+            std::size_t n, std::array<Future, N>&& lazy_values) const
         {
             return wait_some_nothrow_t::wait_some_nothrow_impl(
                 n, const_cast<std::array<Future, N> const&>(lazy_values));
@@ -472,8 +468,7 @@ namespace hpx {
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend bool tag_invoke(
-            wait_some_nothrow_t, std::size_t n, Iterator begin, Iterator end)
+        bool operator()(std::size_t n, Iterator begin, Iterator end) const
         {
             auto values = traits::acquire_shared_state<Iterator>()(begin, end);
             auto f = detail::get_wait_some_frame(HPX_MOVE(values), n);
@@ -481,7 +476,7 @@ namespace hpx {
             return (*f)();
         }
 
-        friend bool tag_invoke(wait_some_nothrow_t, std::size_t n)
+        bool operator()(std::size_t n) const
         {
             if (n != 0)
             {
@@ -493,8 +488,7 @@ namespace hpx {
         }
 
         template <typename T>
-        friend bool tag_invoke(
-            wait_some_nothrow_t, std::size_t n, hpx::future<T>&& f)
+        bool operator()(std::size_t n, hpx::future<T>&& f) const
         {
             if (n != 1)
             {
@@ -507,8 +501,7 @@ namespace hpx {
         }
 
         template <typename T>
-        friend bool tag_invoke(
-            wait_some_nothrow_t, std::size_t n, hpx::shared_future<T>&& f)
+        bool operator()(std::size_t n, hpx::shared_future<T>&& f) const
         {
             if (n != 1)
             {
@@ -521,7 +514,7 @@ namespace hpx {
         }
 
         template <typename... Ts>
-        friend bool tag_invoke(wait_some_nothrow_t, std::size_t n, Ts&&... ts)
+        bool operator()(std::size_t n, Ts&&... ts) const
         {
             if (n == 0)
             {
@@ -546,13 +539,10 @@ namespace hpx {
     } wait_some_nothrow{};
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct wait_some_t final
-      : hpx::functional::tag<wait_some_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct wait_some_t final
     {
-    private:
         template <typename Future>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, std::vector<Future> const& values)
+        void operator()(std::size_t n, std::vector<Future> const& values) const
         {
             if (hpx::wait_some_nothrow(n, values))
             {
@@ -561,8 +551,7 @@ namespace hpx {
         }
 
         template <typename Future>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, std::vector<Future>& values)
+        void operator()(std::size_t n, std::vector<Future>& values) const
         {
             if (hpx::wait_some_nothrow(
                     n, const_cast<std::vector<Future> const&>(values)))
@@ -572,8 +561,7 @@ namespace hpx {
         }
 
         template <typename Future>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, std::vector<Future>&& values)
+        void operator()(std::size_t n, std::vector<Future>&& values) const
         {
             if (hpx::wait_some_nothrow(
                     n, const_cast<std::vector<Future> const&>(values)))
@@ -583,8 +571,8 @@ namespace hpx {
         }
 
         template <typename Future, std::size_t N>
-        friend void tag_invoke(wait_some_t, std::size_t n,
-            std::array<Future, N> const& lazy_values)
+        void operator()(
+            std::size_t n, std::array<Future, N> const& lazy_values) const
         {
             if (hpx::wait_some_nothrow(n, lazy_values))
             {
@@ -593,8 +581,7 @@ namespace hpx {
         }
 
         template <typename Future, std::size_t N>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, std::array<Future, N>& lazy_values)
+        void operator()(std::size_t n, std::array<Future, N>& lazy_values) const
         {
             if (hpx::wait_some_nothrow(
                     n, const_cast<std::array<Future, N> const&>(lazy_values)))
@@ -604,8 +591,8 @@ namespace hpx {
         }
 
         template <typename Future, std::size_t N>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, std::array<Future, N>&& lazy_values)
+        void operator()(
+            std::size_t n, std::array<Future, N>&& lazy_values) const
         {
             if (hpx::wait_some_nothrow(
                     n, const_cast<std::array<Future, N> const&>(lazy_values)))
@@ -617,8 +604,7 @@ namespace hpx {
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, Iterator begin, Iterator end)
+        void operator()(std::size_t n, Iterator begin, Iterator end) const
         {
             auto values = traits::acquire_shared_state<Iterator>()(begin, end);
             auto f = detail::get_wait_some_frame(values, n);
@@ -629,7 +615,7 @@ namespace hpx {
             }
         }
 
-        friend void tag_invoke(wait_some_t, std::size_t n)
+        void operator()(std::size_t n) const
         {
             if (n != 0)
             {
@@ -639,7 +625,7 @@ namespace hpx {
         }
 
         template <typename T>
-        friend void tag_invoke(wait_some_t, std::size_t n, hpx::future<T>&& f)
+        void operator()(std::size_t n, hpx::future<T>&& f) const
         {
             if (hpx::wait_some_nothrow(n, HPX_MOVE(f)))
             {
@@ -648,8 +634,7 @@ namespace hpx {
         }
 
         template <typename T>
-        friend void tag_invoke(
-            wait_some_t, std::size_t n, hpx::shared_future<T>&& f)
+        void operator()(std::size_t n, hpx::shared_future<T>&& f) const
         {
             if (hpx::wait_some_nothrow(n, HPX_MOVE(f)))
             {
@@ -658,7 +643,7 @@ namespace hpx {
         }
 
         template <typename... Ts>
-        friend void tag_invoke(wait_some_t, std::size_t n, Ts&&... ts)
+        void operator()(std::size_t n, Ts&&... ts) const
         {
             if (hpx::wait_some_nothrow(n, ts...))
             {
@@ -668,15 +653,12 @@ namespace hpx {
     } wait_some{};
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct wait_some_n_nothrow_t final
-      : hpx::functional::tag<wait_some_n_nothrow_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct wait_some_n_nothrow_t final
     {
-    private:
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend bool tag_invoke(wait_some_n_nothrow_t, std::size_t n,
-            Iterator begin, std::size_t count)
+        bool operator()(std::size_t n, Iterator begin, std::size_t count) const
         {
             auto values =
                 traits::acquire_shared_state<Iterator>()(begin, count);
@@ -687,15 +669,12 @@ namespace hpx {
     } wait_some_n_nothrow{};
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct wait_some_n_t final
-      : hpx::functional::tag<wait_some_n_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct wait_some_n_t final
     {
-    private:
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend void tag_invoke(
-            wait_some_n_t, std::size_t n, Iterator begin, std::size_t count)
+        void operator()(std::size_t n, Iterator begin, std::size_t count) const
         {
             auto values =
                 traits::acquire_shared_state<Iterator>()(begin, count);
@@ -708,126 +687,5 @@ namespace hpx {
         }
     } wait_some_n{};
 }    // namespace hpx
-
-namespace hpx::lcos {
-
-    template <typename Future>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(std::size_t n, std::vector<Future> const& lazy_values,
-        error_code& = throws)
-    {
-        hpx::wait_some(n, lazy_values);
-    }
-
-    template <typename Future>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(
-        std::size_t n, std::vector<Future>& lazy_values, error_code& = throws)
-    {
-        hpx::wait_some(n, const_cast<std::vector<Future> const&>(lazy_values));
-    }
-
-    template <typename Future>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(
-        std::size_t n, std::vector<Future>&& lazy_values, error_code& = throws)
-    {
-        hpx::wait_some(n, const_cast<std::vector<Future> const&>(lazy_values));
-    }
-
-    template <typename Future, std::size_t N>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(std::size_t n, std::array<Future, N> const& lazy_values,
-        error_code& = throws)
-    {
-        hpx::wait_some(n, lazy_values);
-    }
-
-    template <typename Future, std::size_t N>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(
-        std::size_t n, std::array<Future, N>& lazy_values, error_code& = throws)
-    {
-        hpx::wait_some(
-            n, const_cast<std::array<Future, N> const&>(lazy_values));
-    }
-
-    template <typename Future, std::size_t N>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(std::size_t n, std::array<Future, N>&& lazy_values,
-        error_code& = throws)
-    {
-        hpx::wait_some(
-            n, const_cast<std::array<Future, N> const&>(lazy_values));
-    }
-
-    template <typename Iterator,
-        typename Enable =
-            std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(
-        std::size_t n, Iterator begin, Iterator end, error_code& = throws)
-    {
-        hpx::wait_some(n, begin, end);
-    }
-
-    template <typename Iterator,
-        typename Enable =
-            std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    Iterator wait_some_n(
-        std::size_t n, Iterator begin, std::size_t count, error_code& = throws)
-    {
-        return hpx::wait_some(n, begin, count);
-    }
-
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    inline void wait_some(std::size_t n, error_code& = throws)
-    {
-        hpx::wait_some(n);
-    }
-
-    template <typename T>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(std::size_t n, hpx::future<T>&& f, error_code& = throws)
-    {
-        hpx::wait_some(n, HPX_MOVE(f));
-    }
-
-    template <typename T>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(
-        std::size_t n, hpx::shared_future<T>&& f, error_code& = throws)
-    {
-        hpx::wait_some(n, HPX_MOVE(f));
-    }
-
-    template <typename... Ts>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(std::size_t n, error_code&, Ts&&... ts)
-    {
-        hpx::wait_some(n, HPX_FORWARD(Ts, ts)...);
-    }
-
-    template <typename... Ts>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::wait_some is deprecated. Use hpx::wait_some instead.")
-    void wait_some(std::size_t n, Ts&&... ts)
-    {
-        hpx::wait_some(n, HPX_FORWARD(Ts, ts)...);
-    }
-}    // namespace hpx::lcos
 
 #endif    // DOXYGEN

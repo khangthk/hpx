@@ -5,18 +5,20 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/plain_action.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/logging.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/async_colocated/get_colocation_id.hpp>
 #include <hpx/async_colocated/server/destroy_component.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/components_base/detail/agas_interface_functions.hpp>
-#include <hpx/modules/async_distributed.hpp>
-#include <hpx/modules/logging.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/type_support/bit_cast.hpp>
 
 #include <cstddef>
 #include <cstdint>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 HPX_PLAIN_ACTION_ID(hpx::components::server::destroy_component,
     hpx_destroy_component_action, hpx::actions::free_component_action_id)

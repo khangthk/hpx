@@ -9,10 +9,10 @@
 #if defined(HPX_COMMAND_LINE_HANDLING_HAVE_JSON_CONFIGURATION_FILES)
 #include <hpx/command_line_handling_local/json_config_file.hpp>
 #endif
-#include <hpx/datastructures/any.hpp>
-#include <hpx/ini/ini.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/filesystem.hpp>
+#include <hpx/modules/ini.hpp>
 
 #include <cstddef>
 #include <fstream>
@@ -270,8 +270,8 @@ namespace hpx::local::detail {
             util::commandline_error_mode const mode = error_mode &
                 ~util::commandline_error_mode::report_missing_config_file;
 
-            std::vector<std::string> options =
-                read_config_file_options(filename.string(), mode);
+            std::vector<std::string> options = read_config_file_options(
+                hpx::filesystem::to_string(filename), mode);
 
             if (handle_config_file_options(
                     options, desc_cfgfile, vm, ini, mode))
@@ -379,13 +379,14 @@ namespace hpx::local::detail {
                     .style(unix_style)
                     .extra_parser(option_parser(rtcfg, as_bool(mode))),
                 notmode)
-                                          .run());
+                    .run());
 
             // collect unregistered options, if needed
             if (unregistered_options)
             {
                 using hpx::program_options::collect_unrecognized;
-                using hpx::program_options::exclude_positional;
+                using hpx::program_options::collect_unrecognized_mode::
+                    exclude_positional;
                 *unregistered_options =
                     collect_unrecognized(opts.options, exclude_positional);
 
@@ -408,13 +409,14 @@ namespace hpx::local::detail {
                     .style(unix_style)
                     .extra_parser(option_parser(rtcfg, as_bool(mode))),
                 notmode)
-                                          .run());
+                    .run());
 
             // collect unregistered options, if needed
             if (unregistered_options)
             {
                 using hpx::program_options::collect_unrecognized;
-                using hpx::program_options::include_positional;
+                using hpx::program_options::collect_unrecognized_mode::
+                    include_positional;
                 *unregistered_options =
                     collect_unrecognized(opts.options, include_positional);
 
@@ -558,7 +560,8 @@ namespace hpx::local::detail {
                 "on the number of total cores in the system)")
             ("hpx:queuing", value<argument_string>(),
                 "the queue scheduling policy to use, options are "
-                "'local', 'local-priority-fifo','local-priority-lifo', "
+                "'local', 'local-priority-fifo', 'local-priority-fifo-double', "
+                "'local-priority-lifo', "
                 "'abp-priority-fifo', 'abp-priority-lifo', 'static', "
                 "'static-priority', 'local-workrequesting-fifo',"
                 "'local-workrequesting-lifo', and 'local-workrequesting-mc' "
@@ -732,53 +735,14 @@ namespace hpx::local::detail {
         return s;
     }
 
-    void add_as_option(
-        std::string& command_line, std::string const& k, std::string const& v)
-    {
-        command_line += "--" + k;
-        if (!v.empty())
-            command_line += "=" + v;
-    }
-
-    std::string reconstruct_command_line(
-        hpx::program_options::variables_map const& vm)
+    std::string reconstruct_command_line(int argc, char* argv[])
     {
         std::string command_line;
-        for (auto const& v : vm)
+        for (int i = 0; i != argc; ++i)
         {
-            hpx::program_options::any const& value = v.second.value();
-            if (hpx::program_options::any_cast<std::string>(&value))
-            {
-                add_as_option(command_line, v.first,
-                    embed_in_quotes(v.second.as<std::string>()));
-                if (!command_line.empty())
-                    command_line += " ";
-            }
-            else if (hpx::program_options::any_cast<double>(&value))
-            {
-                add_as_option(command_line, v.first,
-                    std::to_string(v.second.as<double>()));
-                if (!command_line.empty())
-                    command_line += " ";
-            }
-            else if (hpx::program_options::any_cast<int>(&value))
-            {
-                add_as_option(
-                    command_line, v.first, std::to_string(v.second.as<int>()));
-                if (!command_line.empty())
-                    command_line += " ";
-            }
-            else if (hpx::program_options::any_cast<std::vector<std::string>>(
-                         &value))
-            {
-                auto const& vec = v.second.as<std::vector<std::string>>();
-                for (std::string const& e : vec)
-                {
-                    add_as_option(command_line, v.first, embed_in_quotes(e));
-                    if (!command_line.empty())
-                        command_line += " ";
-                }
-            }
+            if (!command_line.empty())
+                command_line += " ";
+            command_line += embed_in_quotes(argv[i]);
         }
         return command_line;
     }

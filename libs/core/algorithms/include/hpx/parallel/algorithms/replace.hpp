@@ -474,14 +474,15 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/replace.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
-#include <hpx/type_support/identity.hpp>
 
 #include <algorithm>
 #include <iterator>
@@ -495,7 +496,7 @@ namespace hpx::parallel {
     namespace detail {
         /// \cond NOINTERNAL
 
-        template <typename Iter>
+        HPX_CXX_CORE_EXPORT template <typename Iter>
         struct replace : public algorithm<replace<Iter>, Iter>
         {
             constexpr replace() noexcept
@@ -533,7 +534,7 @@ namespace hpx::parallel {
     namespace detail {
         /// \cond NOINTERNAL
 
-        template <typename Iter>
+        HPX_CXX_CORE_EXPORT template <typename Iter>
         struct replace_if : public algorithm<replace_if<Iter>, Iter>
         {
             constexpr replace_if() noexcept
@@ -570,7 +571,7 @@ namespace hpx::parallel {
     namespace detail {
         /// \cond NOINTERNAL
 
-        template <typename IterPair>
+        HPX_CXX_CORE_EXPORT template <typename IterPair>
         struct replace_copy : public algorithm<replace_copy<IterPair>, IterPair>
         {
             constexpr replace_copy() noexcept
@@ -610,7 +611,7 @@ namespace hpx::parallel {
     namespace detail {
         /// \cond NOINTERNAL
 
-        template <typename IterPair>
+        HPX_CXX_CORE_EXPORT template <typename IterPair>
         struct replace_copy_if
           : public algorithm<replace_copy_if<IterPair>, IterPair>
         {
@@ -649,49 +650,46 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::replace_if
-    inline constexpr struct replace_if_t final
-      : hpx::detail::tag_parallel_algorithm<replace_if_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct replace_if_t final
+      : hpx::detail::tag_dispatch<replace_if_t,
+            hpx::detail::tag_parallel_algorithm<replace_if_t>>
     {
-    private:
+        template <typename Iter, typename Pred,
+            typename T = typename std::iterator_traits<Iter>::value_type>
         // clang-format off
-        template <typename Iter,
-            typename Pred,
-            typename T = typename std::iterator_traits<Iter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<Iter> &&
                 hpx::is_invocable_v<Pred,
                     typename std::iterator_traits<Iter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend void tag_fallback_invoke(hpx::replace_if_t, Iter first,
-            Iter last, Pred pred, T const& new_value)
+        static void invoke_default(
+            Iter first, Iter last, Pred pred, T const& new_value)
         {
-            static_assert(hpx::traits::is_input_iterator_v<Iter>,
-                "Required at least input iterator.");
+            static_assert(
+                std::input_iterator<Iter>, "Required at least input iterator.");
 
             hpx::parallel::detail::replace_if<Iter>().call(
                 hpx::execution::sequenced_policy{}, first, last, HPX_MOVE(pred),
                 new_value, hpx::identity_v);
         }
 
+        template <typename ExPolicy, typename FwdIter, typename Pred,
+            typename T = typename std::iterator_traits<FwdIter>::value_type>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter,
-            typename Pred,
-            typename T = typename std::iterator_traits<FwdIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter> &&
                 hpx::is_invocable_v<Pred,
                     typename std::iterator_traits<FwdIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::replace_if_t,
-            ExPolicy&& policy, FwdIter first, FwdIter last, Pred pred,
-            T const& new_value)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter first,
+            FwdIter last, Pred pred, T const& new_value)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return parallel::util::detail::algorithm_result<ExPolicy>::get(
@@ -703,21 +701,21 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::replace
-    inline constexpr struct replace_t final
-      : hpx::detail::tag_parallel_algorithm<replace_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct replace_t final
+      : hpx::detail::tag_dispatch<replace_t,
+            hpx::detail::tag_parallel_algorithm<replace_t>>
     {
-    private:
-        // clang-format off
         template <typename InIter,
-            typename T = typename std::iterator_traits<InIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<InIter>::value_type>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<InIter>
-            )>
+            )
         // clang-format on
-        friend void tag_fallback_invoke(hpx::replace_t, InIter first,
-            InIter last, T const& old_value, T const& new_value)
+        static void invoke_default(
+            InIter first, InIter last, T const& old_value, T const& new_value)
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter>,
+            static_assert(std::input_iterator<InIter>,
                 "Required at least input iterator.");
 
             typedef typename std::iterator_traits<InIter>::value_type Type;
@@ -728,19 +726,18 @@ namespace hpx {
                 new_value);
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter,
-            typename T = typename std::iterator_traits<FwdIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<FwdIter>::value_type>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::replace_t,
-            ExPolicy&& policy, FwdIter first, FwdIter last, T const& old_value,
-            T const& new_value)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter first,
+            FwdIter last, T const& old_value, T const& new_value)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return hpx::replace_if(
@@ -752,29 +749,29 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::replace_copy_if
-    inline constexpr struct replace_copy_if_t final
-      : hpx::detail::tag_parallel_algorithm<replace_copy_if_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct replace_copy_if_t final
+      : hpx::detail::tag_dispatch<replace_copy_if_t,
+            hpx::detail::tag_parallel_algorithm<replace_copy_if_t>>
     {
-    private:
+        template <typename InIter, typename OutIter, typename Pred,
+            typename T = typename std::iterator_traits<OutIter>::value_type>
         // clang-format off
-        template <typename InIter, typename OutIter,
-            typename Pred,
-            typename T = typename std::iterator_traits<OutIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<InIter> &&
                 hpx::traits::is_iterator_v<OutIter> &&
                 hpx::is_invocable_v<Pred,
                     typename std::iterator_traits<InIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend OutIter tag_fallback_invoke(hpx::replace_copy_if_t, InIter first,
-            InIter last, OutIter dest, Pred pred, T const& new_value)
+        static OutIter invoke_default(InIter first, InIter last, OutIter dest,
+            Pred pred, T const& new_value)
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter>,
+            static_assert(std::input_iterator<InIter>,
                 "Required at least input iterator.");
 
-            static_assert(hpx::traits::is_output_iterator_v<OutIter>,
+            static_assert(std::output_iterator<OutIter,
+                              hpx::traits::iter_value_t<InIter>>,
                 "Required at least output iterator.");
 
             return parallel::util::get_second_element(
@@ -784,27 +781,26 @@ namespace hpx {
                         HPX_MOVE(pred), new_value, hpx::identity_v));
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter1, typename FwdIter2,
             typename Pred,
-            typename T = typename std::iterator_traits<FwdIter2>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<FwdIter2>::value_type>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2> &&
                 hpx::is_invocable_v<Pred,
                     typename std::iterator_traits<FwdIter1>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::replace_copy_if_t,
-            ExPolicy&& policy, FwdIter1 first, FwdIter1 last, FwdIter2 dest,
-            Pred pred, T const& new_value)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first,
+            FwdIter1 last, FwdIter2 dest, Pred pred, T const& new_value)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter1>,
+            static_assert(std::forward_iterator<FwdIter1>,
                 "Required at least forward iterator.");
 
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter2>,
+            static_assert(std::forward_iterator<FwdIter2>,
                 "Required at least forward iterator.");
 
             return parallel::util::get_second_element(
@@ -817,25 +813,26 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::replace_copy
-    inline constexpr struct replace_copy_t final
-      : hpx::detail::tag_parallel_algorithm<replace_copy_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct replace_copy_t final
+      : hpx::detail::tag_dispatch<replace_copy_t,
+            hpx::detail::tag_parallel_algorithm<replace_copy_t>>
     {
-    private:
-        // clang-format off
         template <typename InIter, typename OutIter,
-            typename T = typename std::iterator_traits<OutIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<OutIter>::value_type>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<InIter> &&
                 hpx::traits::is_iterator_v<OutIter>
-            )>
+            )
         // clang-format on
-        friend OutIter tag_fallback_invoke(hpx::replace_copy_t, InIter first,
-            InIter last, OutIter dest, T const& old_value, T const& new_value)
+        static OutIter invoke_default(InIter first, InIter last, OutIter dest,
+            T const& old_value, T const& new_value)
         {
-            static_assert(hpx::traits::is_input_iterator_v<InIter>,
+            static_assert(std::input_iterator<InIter>,
                 "Required at least input iterator.");
 
-            static_assert(hpx::traits::is_output_iterator_v<OutIter>,
+            static_assert(std::output_iterator<OutIter,
+                              hpx::traits::iter_value_t<InIter>>,
                 "Required at least output iterator.");
 
             typedef typename std::iterator_traits<InIter>::value_type Type;
@@ -846,23 +843,23 @@ namespace hpx {
                 new_value);
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter1, typename FwdIter2,
-            typename T = typename std::iterator_traits<FwdIter2>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<FwdIter2>::value_type>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter1> &&
                 hpx::traits::is_iterator_v<FwdIter2>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::replace_copy_t,
-            ExPolicy&& policy, FwdIter1 first, FwdIter1 last, FwdIter2 dest,
-            T const& old_value, T const& new_value)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first,
+            FwdIter1 last, FwdIter2 dest, T const& old_value,
+            T const& new_value)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter1>,
+            static_assert(std::forward_iterator<FwdIter1>,
                 "Required at least forward iterator.");
 
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter2>,
+            static_assert(std::forward_iterator<FwdIter2>,
                 "Required at least forward iterator.");
 
             return hpx::replace_copy_if(

@@ -1,6 +1,6 @@
 //  Copyright (c) 2013-2019 Thomas Heller
 //  Copyright (c) 2008 Peter Dimov
-//  Copyright (c) 2018-2022 Hartmut Kaiser
+//  Copyright (c) 2018-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,14 +8,17 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/errors/throw_exception.hpp>
 #include <hpx/execution_base/agent_base.hpp>
 #include <hpx/execution_base/context_base.hpp>
 #include <hpx/execution_base/this_thread.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/errors.hpp>
 #include <hpx/modules/format.hpp>
-#include <hpx/timing/steady_clock.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/timing.hpp>
 
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -24,9 +27,7 @@
 #include <thread>
 #include <utility>
 
-#if defined(HPX_WINDOWS)
-#include <windows.h>
-#else
+#if !defined(HPX_WINDOWS)
 #ifndef _AIX
 #include <sched.h>
 #else
@@ -36,16 +37,26 @@ extern "C" int sched_yield(void);
 #include <time.h>
 #endif
 
+namespace {
+    // Upper bound on how long any single sleep_for/sleep_until increment blocks
+    // before re-checking wait_cond(). Keeps the fallback agent reasonably
+    // responsive without spinning.
+    constexpr std::chrono::milliseconds default_agent_poll_interval{20};
+}    // namespace
+
 namespace hpx::execution_base {
 
     namespace {
 
-        struct default_context : execution_base::context_base
+        ///////////////////////////////////////////////////////////////////////
+        struct default_context final : execution_base::context_base
         {
-            resource_base const& resource() const noexcept override
+            [[nodiscard]] resource_base const& resource()
+                const noexcept override
             {
                 return resource_;
             }
+
             resource_base resource_;
         };
 
@@ -65,14 +76,18 @@ namespace hpx::execution_base {
             }
 
             void yield(char const* desc) override;
-            void yield_k(std::size_t k, char const* desc) override;
+            bool yield_k(std::size_t k, char const* desc) override;
             void suspend(char const* desc) override;
             void resume(hpx::threads::thread_priority priority,
                 char const* desc) override;
             void abort(char const* desc) override;
-            void sleep_for(hpx::chrono::steady_duration const& sleep_duration,
+            threads::thread_restart_state sleep_for(
+                hpx::chrono::steady_duration const& sleep_duration,
+                hpx::move_only_function<bool()>&& wait_cond,
                 char const* desc) override;
-            void sleep_until(hpx::chrono::steady_time_point const& sleep_time,
+            threads::thread_restart_state sleep_until(
+                hpx::chrono::steady_time_point const& sleep_time,
+                hpx::move_only_function<bool()>&& wait_cond,
                 char const* desc) override;
 
         private:
@@ -96,46 +111,15 @@ namespace hpx::execution_base {
         void default_agent::yield(char const* /* desc */)
         {
 #if defined(HPX_WINDOWS)
-            Sleep(0);
+            hpx::util::win_nanosleep(hpx::util::wait_0ns);
 #else
             sched_yield();
 #endif
         }
 
-        void default_agent::yield_k(std::size_t k, char const* /* desc */)
+        bool default_agent::yield_k(std::size_t const k, char const* /* desc */)
         {
-            if (k < 4)    //-V112
-            {
-            }
-            else if (k < 16)
-            {
-                HPX_SMT_PAUSE;
-            }
-            else if (k < 32 || k & 1)    //-V112
-            {
-#if defined(HPX_WINDOWS)
-                Sleep(0);
-#else
-                sched_yield();
-#endif
-            }
-            else
-            {
-#if defined(HPX_WINDOWS)
-                Sleep(1);
-#else
-                // g++ -Wextra warns on {} or {0}
-                struct timespec rqtp = {0, 0};
-
-                // POSIX says that timespec has tv_sec and tv_nsec
-                // But it doesn't guarantee order or placement
-
-                rqtp.tv_sec = 0;
-                rqtp.tv_nsec = 1000;
-
-                nanosleep(&rqtp, nullptr);
-#endif
-            }
+            return hpx::util::detail::yield_k_backoff(static_cast<unsigned>(k));
         }
 
         void default_agent::suspend(char const* /* desc */)
@@ -185,18 +169,50 @@ namespace hpx::execution_base {
             suspend_cv_.notify_one();
         }
 
-        void default_agent::sleep_for(
+        threads::thread_restart_state default_agent::sleep_for(
             hpx::chrono::steady_duration const& sleep_duration,
-            char const* /* desc */)
+            hpx::move_only_function<bool()>&& wait_cond, char const* desc)
         {
-            std::this_thread::sleep_for(sleep_duration.value());
+            return sleep_until(
+                hpx::chrono::steady_time_point(
+                    std::chrono::steady_clock::now() + sleep_duration.value()),
+                HPX_MOVE(wait_cond), desc);
         }
 
-        void default_agent::sleep_until(
+        threads::thread_restart_state default_agent::sleep_until(
             hpx::chrono::steady_time_point const& sleep_time,
-            char const* /* desc */)
+            hpx::move_only_function<bool()>&& wait_cond, char const* /* desc */)
         {
-            std::this_thread::sleep_until(sleep_time.value());
+            auto const cond = HPX_MOVE(wait_cond);
+            auto const deadline = sleep_time.value();
+            while (true)
+            {
+                if (cond && cond())
+                {
+                    return threads::thread_restart_state::signaled;
+                }
+
+                auto const now = std::chrono::steady_clock::now();
+                if (now >= deadline)
+                {
+                    break;
+                }
+
+                auto const remaining = deadline - now;
+                std::this_thread::sleep_for((std::min) (remaining,
+                    std::chrono::duration_cast<
+                        std::remove_const_t<decltype(remaining)>>(
+                        default_agent_poll_interval)));
+            }
+
+            // final check right at/after the deadline, in case wait_cond became
+            // true during the last sleep increment
+            if (cond && cond())
+            {
+                return threads::thread_restart_state::signaled;
+            }
+
+            return threads::thread_restart_state::timeout;
         }
     }    // namespace
 
@@ -263,9 +279,9 @@ namespace hpx::execution_base {
             agent().yield(desc);
         }
 
-        void yield_k(std::size_t k, char const* desc)
+        bool yield_k(std::size_t k, char const* desc)
         {
-            agent().yield_k(k, desc);
+            return agent().yield_k(k, desc);
         }
 
         void suspend(char const* desc)

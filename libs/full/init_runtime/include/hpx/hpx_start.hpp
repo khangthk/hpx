@@ -1,5 +1,5 @@
 //  Copyright (c)      2018 Mikael Simberg
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,14 +10,15 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/functional/function.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/program_options.hpp>
+#include <hpx/modules/runtime_configuration.hpp>
+#include <hpx/modules/runtime_local.hpp>
+
 #include <hpx/hpx_finalize.hpp>
 #include <hpx/hpx_init_params.hpp>
-#include <hpx/hpx_main_winsocket.hpp>
-#include <hpx/modules/program_options.hpp>
-#include <hpx/runtime_configuration/runtime_mode.hpp>
-#include <hpx/runtime_local/shutdown_function.hpp>
-#include <hpx/runtime_local/startup_function.hpp>
+#include <hpx/hpx_suspend.hpp>
+#include <hpx/hpx_user_main_config.hpp>
 
 #include <cstddef>
 #include <functional>
@@ -57,7 +58,7 @@ namespace hpx {
     ///                     the created runtime system instance will be
     ///                     executed in console or worker mode depending on the
     ///                     command line arguments passed in `argc`/`argv`.
-    ///                     Otherwise it will be executed as specified by the
+    ///                     Otherwise, it will be executed as specified by the
     ///                     parameter\p mode.
     inline bool start(
         std::function<int(hpx::program_options::variables_map&)> f, int argc,
@@ -95,7 +96,7 @@ namespace hpx {
     ///                     the created runtime system instance will be
     ///                     executed in console or worker mode depending on the
     ///                     command line arguments passed in `argc`/`argv`.
-    ///                     Otherwise it will be executed as specified by the
+    ///                     Otherwise, it will be executed as specified by the
     ///                     parameter\p mode.
     inline bool start(std::function<int(int, char**)> f, int argc, char** argv,
         init_params const& params = init_params());
@@ -127,7 +128,7 @@ namespace hpx {
     ///                     the created runtime system instance will be
     ///                     executed in console or worker mode depending on the
     ///                     command line arguments passed in `argc`/`argv`.
-    ///                     Otherwise it will be executed as specified by the
+    ///                     Otherwise, it will be executed as specified by the
     ///                     parameter\p mode.
     inline bool start(
         int argc, char** argv, init_params const& params = init_params());
@@ -164,7 +165,7 @@ namespace hpx {
     ///                     the created runtime system instance will be
     ///                     executed in console or worker mode depending on the
     ///                     command line arguments passed in `argc`/`argv`.
-    ///                     Otherwise it will be executed as specified by the
+    ///                     Otherwise, it will be executed as specified by the
     ///                     parameter\p mode.
     inline bool start(std::nullptr_t f, int argc, char** argv,
         init_params const& params = init_params());
@@ -194,7 +195,11 @@ namespace hpx {
     ///                     runtime system will not support any of the default
     ///                     command line options as described in the section
     ///                     'HPX Command Line Options'.
+#if !defined(HPX_HAVE_STATIC_LINKING)
     inline bool start(init_params const& params = init_params());
+#else
+    bool start(init_params const& params = init_params());
+#endif
 }    // namespace hpx
 
 #if !defined(DOXYGEN)
@@ -202,6 +207,6 @@ namespace hpx {
 // Pull in the implementation of the inlined hpx::init functions if we're not
 // compiling the core HPX library.
 #if !defined(HPX_EXPORTS)
-#include <hpx/hpx_start_impl.hpp>
+#include <hpx/init_runtime/start_impl.hpp>
 #endif
 #endif

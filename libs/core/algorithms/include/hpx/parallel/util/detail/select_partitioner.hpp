@@ -7,14 +7,15 @@
 
 #pragma once
 
-#include <hpx/execution/traits/is_execution_policy.hpp>
+#include <hpx/modules/execution.hpp>
 
 #include <type_traits>
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx::parallel::util::detail {
 
-    template <typename ExPolicy, template <typename...> class Partitioner,
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy,
+        template <typename...> class Partitioner,
         template <typename...> class TaskPartitioner, typename Enable = void>
     struct select_partitioner
     {

@@ -1,6 +1,6 @@
 //  Copyright (c) 2019 National Technology & Engineering Solutions of Sandia,
 //                     LLC (NTESS).
-//  Copyright (c) 2018-2024 Hartmut Kaiser
+//  Copyright (c) 2018-2026 Hartmut Kaiser
 //  Copyright (c) 2018-2019 Adrian Serio
 //  Copyright (c) 2019 Nikunj Gupta
 //
@@ -14,10 +14,10 @@
 #include <hpx/resiliency/resiliency_cpos.hpp>
 #include <hpx/resiliency/util.hpp>
 
-#include <hpx/functional/detail/invoke.hpp>
-#include <hpx/futures/future.hpp>
+#include <hpx/functional/invoke.hpp>
 #include <hpx/modules/async_local.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <exception>
@@ -33,7 +33,8 @@ namespace hpx::resiliency::experimental {
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Result, typename Pred, typename F, typename Tuple>
+        HPX_CXX_CORE_EXPORT template <typename Result, typename Pred,
+            typename F, typename Tuple>
         struct async_replay_helper
           : std::enable_shared_from_this<
                 async_replay_helper<Result, Pred, F, Tuple>>
@@ -96,15 +97,7 @@ namespace hpx::resiliency::experimental {
                             throw abort_replay_exception();
                         }
 
-                        if (n != 0)
-                        {
-                            // return result
-                            return hpx::make_ready_future(HPX_MOVE(result));
-                        }
-
-                        // throw aborting exception as attempts were
-                        // exhausted
-                        throw abort_replay_exception();
+                        return hpx::make_ready_future(HPX_MOVE(result));
                     });
             }
 
@@ -113,7 +106,8 @@ namespace hpx::resiliency::experimental {
             Tuple t_;
         };
 
-        template <typename Result, typename Pred, typename F, typename... Ts>
+        HPX_CXX_CORE_EXPORT template <typename Result, typename Pred,
+            typename F, typename... Ts>
         std::shared_ptr<async_replay_helper<Result, std::decay_t<Pred>,
             std::decay_t<F>, std::tuple<std::decay_t<Ts>...>>>
         make_async_replay_helper(Pred&& pred, F&& f, Ts&&... ts)
@@ -126,13 +120,22 @@ namespace hpx::resiliency::experimental {
         }
     }    // namespace detail
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f. Verify the result of those
-    // invocations using the given predicate pred. Repeat launching on error
-    // exactly n times (except if abort_replay_exception is thrown).
-    template <typename Pred, typename F, typename... Ts>
+    /// \brief ADL hook for async_replay_validate CPO.
+    ///
+    /// Asynchronously launches \a f, validating results with \a pred.
+    /// Repeats on error up to \a n times (aborts on
+    /// abort_replay_exception).
+    ///
+    /// \param tag    CPO tag (async_replay_validate_t).
+    /// \param n      Maximum number of retry attempts.
+    /// \param pred   Predicate validating each invocation result.
+    /// \param f      Callable to invoke asynchronously.
+    /// \param ts     Arguments forwarded to \a f.
+    ///
+    /// \returns future with the first valid result of \a f.
+    HPX_CXX_CORE_EXPORT template <typename Pred, typename F, typename... Ts>
     hpx::future<hpx::util::detail::invoke_deferred_result_t<F, Ts...>>
-    tag_invoke(
+    hpx_invoke(
         async_replay_validate_t, std::size_t n, Pred&& pred, F&& f, Ts&&... ts)
     {
         using result_type =
@@ -144,12 +147,20 @@ namespace hpx::resiliency::experimental {
         return helper->call(n);
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    // Asynchronously launch given function f. Repeat launching on error exactly
-    // n times (except if abort_replay_exception is thrown).
-    template <typename F, typename... Ts>
+    /// \brief ADL hook for async_replay CPO.
+    ///
+    /// Asynchronously launches \a f, repeating on error up to \a n times
+    /// (aborts on abort_replay_exception).
+    ///
+    /// \param tag  CPO tag (async_replay_t).
+    /// \param n    Maximum number of retry attempts.
+    /// \param f    Callable to invoke asynchronously.
+    /// \param ts   Arguments forwarded to \a f.
+    ///
+    /// \returns future with the first successful result of \a f.
+    HPX_CXX_CORE_EXPORT template <typename F, typename... Ts>
     hpx::future<hpx::util::detail::invoke_deferred_result_t<F, Ts...>>
-    tag_invoke(async_replay_t, std::size_t n, F&& f, Ts&&... ts)
+    hpx_invoke(async_replay_t, std::size_t n, F&& f, Ts&&... ts)
     {
         using result_type =
             hpx::util::detail::invoke_deferred_result_t<F, Ts...>;

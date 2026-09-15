@@ -15,6 +15,7 @@ set(tests
     dynamic_bitset5
     flat_map
     flat_set
+    forward_list
     intrusive_list
     is_tuple_like
     serializable_any
@@ -46,4 +47,10 @@ foreach(test ${tests})
   )
 
   add_hpx_unit_test("modules.datastructures" ${test} ${${test}_PARAMETERS})
+
+  # gcc issues false positives for the dynamic_bitset tests
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(${test}_test PRIVATE "-Wno-alloc-size-larger-than")
+  endif()
+
 endforeach()

@@ -7,14 +7,12 @@
 #pragma once
 
 #include <hpx/assert.hpp>
-#include <hpx/debugging/demangle_helper.hpp>
-#include <hpx/debugging/print.hpp>
 #include <hpx/executors/dataflow.hpp>
-#include <hpx/functional/bind_back.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/futures/traits/acquire_shared_state.hpp>
-#include <hpx/futures/traits/is_future_tuple.hpp>
-#include <hpx/threading_base/thread_description.hpp>
+#include <hpx/executors/macros.hpp>
+#include <hpx/modules/debugging.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -26,21 +24,17 @@
 
 #include <hpx/config/warnings_prefix.hpp>
 
-#if !defined(GUIDED_POOL_EXECUTOR_DEBUG)
-#define GUIDED_POOL_EXECUTOR_DEBUG false
-#endif
-
 namespace hpx {
 
     // cppcheck-suppress ConfigurationNotChecked
-    static hpx::debug::enable_print<GUIDED_POOL_EXECUTOR_DEBUG> gpx_deb(
+    inline hpx::debug::enable_print<GUIDED_POOL_EXECUTOR_DEBUG> gpx_deb(
         "GP_EXEC");
 }    // namespace hpx
 
 // --------------------------------------------------------------------
 // pool_numa_hint
 // --------------------------------------------------------------------
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     namespace detail {
         // --------------------------------------------------------------------
@@ -79,7 +73,7 @@ namespace hpx::parallel::execution {
         template <typename T>
         T const& peek_future_result(T const& t)
         {
-            return t;
+            return t;    // NOLINT(bugprone-return-const-ref-from-parameter)
         }
 
         template <typename T,
@@ -152,7 +146,7 @@ namespace hpx::parallel::execution {
                             executor_.stacksize_,
                             hpx::threads::thread_schedule_hint(
                                 hpx::threads::thread_schedule_hint_mode::numa,
-                                domain)));
+                                static_cast<std::int16_t>(domain))));
                 }
                 else
                 {
@@ -161,7 +155,7 @@ namespace hpx::parallel::execution {
                             executor_.stacksize_,
                             hpx::threads::thread_schedule_hint(
                                 hpx::threads::thread_schedule_hint_mode::numa,
-                                domain)));
+                                static_cast<std::int16_t>(domain))));
                 }
 
                 return p.get_future();
@@ -197,10 +191,8 @@ namespace hpx::parallel::execution {
                 int domain = -1;
 #else
                 // get the argument for the numa hint function from the predecessor future
-                int domain =
-                    numa_function_(detail::future_extract_value()(
-                                       HPX_FORWARD(Future, predecessor)),
-                        ts...);
+                int domain = numa_function_(
+                    detail::future_extract_value()(predecessor), ts...);
 #endif
 
                 gpx_deb.debug(debug::str<>("then_schedule"), "domain ", domain);
@@ -224,7 +216,7 @@ namespace hpx::parallel::execution {
                             executor_.stacksize_,
                             hpx::threads::thread_schedule_hint(
                                 hpx::threads::thread_schedule_hint_mode::numa,
-                                domain)));
+                                static_cast<std::int16_t>(domain))));
                 }
                 else
                 {
@@ -233,7 +225,7 @@ namespace hpx::parallel::execution {
                             executor_.stacksize_,
                             hpx::threads::thread_schedule_hint(
                                 hpx::threads::thread_schedule_hint_mode::numa,
-                                domain)));
+                                static_cast<std::int16_t>(domain))));
                 }
 
                 return p.get_future();
@@ -243,22 +235,22 @@ namespace hpx::parallel::execution {
 
     // --------------------------------------------------------------------
     // Template type for a numa domain scheduling hint
-    template <typename... Args>
+    HPX_CXX_CORE_EXPORT template <typename... Args>
     struct pool_numa_hint
     {
     };
 
     // Template type for a core scheduling hint
-    template <typename... Args>
+    HPX_CXX_CORE_EXPORT template <typename... Args>
     struct pool_core_hint
     {
     };
 
     // --------------------------------------------------------------------
-    template <typename H>
+    HPX_CXX_CORE_EXPORT template <typename H>
     struct guided_pool_executor;
 
-    template <typename H>
+    HPX_CXX_CORE_EXPORT template <typename H>
     struct guided_pool_executor_shim;
 
     // --------------------------------------------------------------------
@@ -309,14 +301,13 @@ namespace hpx::parallel::execution {
         {
         }
 
-    private:
+    public:
         // --------------------------------------------------------------------
         // async execute specialized for simple arguments typical
         // of a normal async call with arbitrary arguments
         // --------------------------------------------------------------------
         template <typename F, typename... Ts>
-        friend auto tag_invoke(hpx::parallel::execution::async_execute_t,
-            guided_pool_executor const& exec, F&& f, Ts&&... ts)
+        auto async_execute(F&& f, Ts&&... ts) const
             -> future<hpx::util::detail::invoke_deferred_result_t<F, Ts...>>
         {
             using result_type =
@@ -336,7 +327,7 @@ namespace hpx::parallel::execution {
             return dataflow(launch::sync,
                 detail::pre_execution_async_domain_schedule<
                     guided_pool_executor, pool_numa_hint<Tag>>(
-                    exec, exec.hint_, exec.hp_sync_),
+                    *this, hint_, hp_sync_),
                 HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
@@ -346,9 +337,7 @@ namespace hpx::parallel::execution {
         // --------------------------------------------------------------------
         template <typename F, typename Future, typename... Ts,
             typename = std::enable_if_t<hpx::traits::is_future_v<Future>>>
-        friend auto tag_invoke(hpx::parallel::execution::then_execute_t,
-            guided_pool_executor const& exec, F&& f, Future&& predecessor,
-            Ts&&... ts)
+        auto then_execute(F&& f, Future&& predecessor, Ts&&... ts) const
             -> future<
                 hpx::util::detail::invoke_deferred_result_t<F, Future, Ts...>>
         {
@@ -378,18 +367,18 @@ namespace hpx::parallel::execution {
             // the thread of the predecessor continuation coming ready.
             // the numa_hint_function will be evaluated on that thread and then
             // the real task will be spawned on a new task with hints - as intended
-            return dataflow(
-                launch::sync,
-                [f = HPX_FORWARD(F, f), exec](
-                    Future&& predecessor, Ts&&... /* ts */) mutable {
-                    detail::pre_execution_then_domain_schedule<
-                        guided_pool_executor, pool_numa_hint<Tag>>
-                        pre_exec(exec, exec.hint_, exec.hp_sync_);
+            return HPX_FORWARD(Future, predecessor)
+                .then(hpx::launch::sync,
+                    [f = HPX_FORWARD(F, f), exec = *this,
+                        ... ts = HPX_FORWARD(Ts, ts)](
+                        std::decay_t<Future> predecessor) mutable {
+                        detail::pre_execution_then_domain_schedule<
+                            guided_pool_executor, pool_numa_hint<Tag>>
+                            pre_exec(exec, exec.hint_, exec.hp_sync_);
 
-                    return pre_exec(
-                        HPX_MOVE(f), HPX_FORWARD(Future, predecessor));
-                },
-                HPX_FORWARD(Future, predecessor), HPX_FORWARD(Ts, ts)...);
+                        return pre_exec(HPX_MOVE(f), HPX_MOVE(predecessor),
+                            HPX_MOVE(ts)...);
+                    });
         }
 
         // --------------------------------------------------------------------
@@ -402,10 +391,9 @@ namespace hpx::parallel::execution {
                 OuterFuture<hpx::tuple<InnerFutures...>>>::value>,
             typename = std::enable_if_t<
                 hpx::traits::is_future_tuple_v<hpx::tuple<InnerFutures...>>>>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::then_execute_t,
-            guided_pool_executor const& exec, F&& f,
-            OuterFuture<hpx::tuple<InnerFutures...>>&& predecessor, Ts&&... ts)
+        decltype(auto) then_execute(F&& f,
+            OuterFuture<hpx::tuple<InnerFutures...>>&& predecessor,
+            Ts&&... ts) const
         {
 #ifdef GUIDED_EXECUTOR_DEBUG
             // create a tuple of the unwrapped future values
@@ -434,20 +422,20 @@ namespace hpx::parallel::execution {
 #endif
 
             // Please see notes for previous then_execute function above
-            return dataflow(
-                launch::sync,
-                [f = HPX_FORWARD(F, f), exec](
-                    OuterFuture<hpx::tuple<InnerFutures...>>&& predecessor,
-                    Ts&&... /* ts */) mutable {
-                    detail::pre_execution_then_domain_schedule<
-                        guided_pool_executor, pool_numa_hint<Tag>>
-                        pre_exec(exec, exec.hint_, exec.hp_sync_);
+            return HPX_FORWARD(
+                OuterFuture<hpx::tuple<InnerFutures...>>, predecessor)
+                .then(hpx::launch::sync,
+                    [f = HPX_FORWARD(F, f), exec = *this,
+                        ... ts = HPX_FORWARD(Ts, ts)](
+                        OuterFuture<hpx::tuple<InnerFutures...>>
+                            predecessor) mutable {
+                        detail::pre_execution_then_domain_schedule<
+                            guided_pool_executor, pool_numa_hint<Tag>>
+                            pre_exec(exec, exec.hint_, exec.hp_sync_);
 
-                    return pre_exec(HPX_MOVE(f), HPX_MOVE(predecessor));
-                },
-                std::forward<OuterFuture<hpx::tuple<InnerFutures...>>>(
-                    predecessor),
-                HPX_FORWARD(Ts, ts)...);
+                        return pre_exec(HPX_MOVE(f), HPX_MOVE(predecessor),
+                            HPX_MOVE(ts)...);
+                    });
         }
 
         // --------------------------------------------------------------------
@@ -458,9 +446,8 @@ namespace hpx::parallel::execution {
         template <typename F, typename... InnerFutures,
             typename = std::enable_if_t<
                 hpx::traits::is_future_tuple_v<hpx::tuple<InnerFutures...>>>>
-        friend auto tag_invoke(hpx::parallel::execution::async_execute_t,
-            guided_pool_executor const& exec, F&& f,
-            hpx::tuple<InnerFutures...>&& predecessor)
+        auto async_execute(
+            F&& f, hpx::tuple<InnerFutures...>&& predecessor) const
             -> future<hpx::util::detail::invoke_deferred_result_t<F,
                 hpx::tuple<InnerFutures...>>>
         {
@@ -474,7 +461,7 @@ namespace hpx::parallel::execution {
             auto unwrapped_futures_tuple = hpx::util::map_pack(
                 detail::future_extract_value{}, predecessor);
 
-            int domain = hpx::invoke_fused(exec.hint_, unwrapped_futures_tuple);
+            int domain = hpx::invoke_fused(hint_, unwrapped_futures_tuple);
 #endif
 
 #ifndef GUIDED_EXECUTOR_DEBUG
@@ -500,23 +487,22 @@ namespace hpx::parallel::execution {
                 hpx::util::deferred_call(HPX_FORWARD(F, f),
                     std::forward<hpx::tuple<InnerFutures...>>(predecessor)));
 
-            if (exec.hp_sync_ &&
-                exec.priority_ == hpx::threads::thread_priority::high)
+            if (hp_sync_ && priority_ == hpx::threads::thread_priority::high)
             {
-                p.post(exec.pool_, "guided async",
+                p.post(pool_, "guided async",
                     hpx::launch::sync_policy(
-                        hpx::threads::thread_priority::high, exec.stacksize_,
+                        hpx::threads::thread_priority::high, stacksize_,
                         hpx::threads::thread_schedule_hint(
                             hpx::threads::thread_schedule_hint_mode::numa,
-                            domain)));
+                            static_cast<std::int16_t>(domain))));
             }
             else
             {
-                p.post(exec.pool_, "guided async",
-                    hpx::launch::async_policy(exec.priority_, exec.stacksize_,
+                p.post(pool_, "guided async",
+                    hpx::launch::async_policy(priority_, stacksize_,
                         hpx::threads::thread_schedule_hint(
                             hpx::threads::thread_schedule_hint_mode::numa,
-                            domain)));
+                            static_cast<std::int16_t>(domain))));
             }
             return p.get_future();
         }
@@ -533,7 +519,7 @@ namespace hpx::parallel::execution {
     // guided_pool_executor_shim
     // an executor compatible with scheduled executor API
     // --------------------------------------------------------------------
-    template <typename H>
+    HPX_CXX_CORE_EXPORT template <typename H>
     struct guided_pool_executor_shim
     {
     public:
@@ -561,16 +547,14 @@ namespace hpx::parallel::execution {
         {
         }
 
-    private:
+    public:
         // --------------------------------------------------------------------
         // async
         // --------------------------------------------------------------------
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_execute_t,
-            guided_pool_executor_shim const& exec, F&& f, Ts&&... ts)
+        decltype(auto) async_execute(F&& f, Ts&&... ts) const
         {
-            return exec.async_execute_helper(
+            return async_execute_helper(
                 HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
         }
 
@@ -604,15 +588,13 @@ namespace hpx::parallel::execution {
         // --------------------------------------------------------------------
         template <typename F, typename Future, typename... Ts,
             typename = std::enable_if_t<hpx::traits::is_future_v<Future>>>
-        friend auto tag_invoke(hpx::parallel::execution::then_execute_t,
-            guided_pool_executor_shim const& exec, F&& f, Future&& predecessor,
-            Ts&&... ts)
+        auto then_execute(F&& f, Future&& predecessor, Ts&&... ts) const
             -> future<
                 hpx::util::detail::invoke_deferred_result_t<F, Future, Ts...>>
         {
-            if (exec.guided_)
+            if (guided_)
             {
-                return hpx::parallel::execution::then_execute(exec.guided_exec_,
+                return hpx::parallel::execution::then_execute(guided_exec_,
                     HPX_FORWARD(F, f), HPX_FORWARD(Future, predecessor),
                     HPX_FORWARD(Ts, ts)...);
             }
@@ -627,7 +609,8 @@ namespace hpx::parallel::execution {
 
                 hpx::traits::detail::shared_state_ptr_t<result_type> p =
                     hpx::lcos::detail::make_continuation_exec<result_type>(
-                        HPX_FORWARD(Future, predecessor), exec, HPX_MOVE(func));
+                        HPX_FORWARD(Future, predecessor), *this,
+                        HPX_MOVE(func));
 
                 return hpx::traits::future_access<
                     hpx::future<result_type>>::create(HPX_MOVE(p));
@@ -661,6 +644,6 @@ namespace hpx::parallel::execution {
     struct is_two_way_executor<guided_pool_executor_shim<Hint>> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 #include <hpx/config/warnings_suffix.hpp>

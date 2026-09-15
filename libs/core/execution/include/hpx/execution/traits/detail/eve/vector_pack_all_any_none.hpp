@@ -9,6 +9,9 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR_EVE)
+
+#include <hpx/execution/traits/detail/eve/vector_pack_simd.hpp>
+
 #include <cstddef>
 
 #include <eve/module/core.hpp>
@@ -16,21 +19,21 @@
 namespace hpx::parallel::traits {
 
     ///////////////////////////////////////////////////////////////////////
-    template <typename Mask>
+    HPX_CXX_CORE_EXPORT template <typename Mask>
     HPX_HOST_DEVICE HPX_FORCEINLINE std::size_t all_of(Mask const& msk) noexcept
     {
         return eve::all(msk);
     }
 
     ///////////////////////////////////////////////////////////////////////
-    template <typename Mask>
+    HPX_CXX_CORE_EXPORT template <typename Mask>
     HPX_HOST_DEVICE HPX_FORCEINLINE std::size_t any_of(Mask const& msk) noexcept
     {
         return eve::any(msk);
     }
 
     ///////////////////////////////////////////////////////////////////////
-    template <typename Mask>
+    HPX_CXX_CORE_EXPORT template <typename Mask>
     HPX_HOST_DEVICE HPX_FORCEINLINE std::size_t none_of(
         Mask const& msk) noexcept
     {

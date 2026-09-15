@@ -9,8 +9,8 @@
 
 #include <hpx/config.hpp>
 #include <hpx/execution.hpp>
+#include <hpx/modules/algorithms.hpp>
 #include <hpx/modules/testing.hpp>
-#include <hpx/parallel/algorithms/reduce.hpp>
 
 #include <cstddef>
 #include <iostream>
@@ -22,7 +22,7 @@
 
 #include "test_utils.hpp"
 
-int seed = std::random_device{}();
+unsigned int seed = std::random_device{}();
 std::mt19937 gen(seed);
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -345,7 +345,6 @@ void test_reduce_bad_alloc_async(ExPolicy p, IteratorTag)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#if defined(HPX_HAVE_STDEXEC)
 template <typename LnPolicy, typename ExPolicy, typename IteratorTag>
 void test_reduce_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
 {
@@ -371,7 +370,7 @@ void test_reduce_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
         auto snd_result = tt::sync_wait(
             ex::just(iterator(std::begin(c)), iterator(std::end(c)), val, op) |
             hpx::reduce(ex_policy.on(exec)));
-        int result = hpx::get<0>(*snd_result);
+        int result = hpx::get<0>(snd_result.value());
 
         // verify values
         int expected = std::accumulate(std::begin(c), std::end(c), val, op);
@@ -382,9 +381,8 @@ void test_reduce_sender(LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
         auto snd_result = tt::sync_wait(ex::just(iterator(std::begin(c)),
                                             iterator(std::begin(c)), val, op) |
             hpx::reduce(ex_policy.on(exec)));
-        int result = hpx::get<0>(*snd_result);
+        int result = hpx::get<0>(snd_result.value());
 
         HPX_TEST_EQ(result, val);
     }
 }
-#endif

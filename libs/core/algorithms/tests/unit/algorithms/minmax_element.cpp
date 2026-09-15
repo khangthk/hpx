@@ -25,7 +25,7 @@ void test_minmax_element(IteratorTag)
     typedef std::vector<std::size_t>::iterator base_iterator;
     typedef test::test_iterator<base_iterator, IteratorTag> iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     iterator end(std::end(c));
     base_iterator ref_end(std::end(c));
@@ -49,6 +49,115 @@ void test_minmax_element(IteratorTag)
 
     HPX_TEST_EQ(*ref.first, *r.min);
     HPX_TEST_EQ(*ref.second, *r.max);
+
+    struct set
+    {
+        std::size_t identifier;
+        std::size_t value;
+    };
+
+    typedef typename std::vector<set>::iterator base_set_iterator;
+    typedef test::test_iterator<base_set_iterator, IteratorTag> set_iterator;
+
+    std::vector<set> d = {{0, 100}, {1, 100}, {2, 99}, {3, 99}, {4, 100}};
+
+    set_iterator end2(std::end(d));
+    base_set_iterator ref_end2(std::end(d));
+
+    auto r2 = hpx::minmax_element(set_iterator(std::begin(d)),
+        set_iterator(end2), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    auto ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 99}, {1, 99}, {2, 100}, {3, 100}, {4, 99}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 100}, {1, 99}, {2, 100}, {3, 100}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 100}, {1, 100}, {2, 100}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 100}, {1, 100}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
 }
 
 template <typename ExPolicy, typename IteratorTag>
@@ -60,7 +169,7 @@ void test_minmax_element(ExPolicy policy, IteratorTag)
     typedef std::vector<std::size_t>::iterator base_iterator;
     typedef test::test_iterator<base_iterator, IteratorTag> iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     iterator end(std::end(c));
     base_iterator ref_end(std::end(c));
@@ -85,6 +194,115 @@ void test_minmax_element(ExPolicy policy, IteratorTag)
 
     HPX_TEST_EQ(*ref.first, *r.min);
     HPX_TEST_EQ(*ref.second, *r.max);
+
+    struct set
+    {
+        std::size_t identifier;
+        std::size_t value;
+    };
+
+    typedef typename std::vector<set>::iterator base_set_iterator;
+    typedef test::test_iterator<base_set_iterator, IteratorTag> set_iterator;
+
+    std::vector<set> d = {{0, 100}, {1, 100}, {2, 99}, {3, 99}, {4, 100}};
+
+    set_iterator end2(std::end(d));
+    base_set_iterator ref_end2(std::end(d));
+
+    auto r2 = hpx::minmax_element(policy, set_iterator(std::begin(d)),
+        set_iterator(end2), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    auto ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 99}, {1, 99}, {2, 100}, {3, 100}, {4, 99}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(policy, set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 100}, {1, 99}, {2, 100}, {3, 100}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(policy, set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 100}, {1, 100}, {2, 100}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(policy, set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
+
+    d = {{0, 100}, {1, 100}};
+
+    end2 = set_iterator(std::end(d));
+    ref_end2 = base_set_iterator(std::end(d));
+
+    r2 = hpx::minmax_element(policy, set_iterator(std::begin(d)),
+        set_iterator(std::end(d)), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(r2.min != end2 && r2.max != end2);
+
+    ref2 = std::minmax_element(
+        std::begin(d), std::end(d), [](set const& first, set const& second) {
+            return first.value < second.value;
+        });
+    HPX_TEST(ref2.first != ref_end2 && ref2.second != ref_end2);
+
+    HPX_TEST_EQ(ref2.first->identifier, r2.min->identifier);
+    HPX_TEST_EQ(ref2.second->identifier, r2.max->identifier);
 }
 
 template <typename ExPolicy, typename IteratorTag>
@@ -93,7 +311,7 @@ void test_minmax_element_async(ExPolicy p, IteratorTag)
     typedef std::vector<std::size_t>::iterator base_iterator;
     typedef test::test_iterator<base_iterator, IteratorTag> iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     iterator end(std::end(c));
     base_iterator ref_end(std::end(c));
@@ -149,7 +367,7 @@ void test_minmax_element_exception(IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -208,7 +426,7 @@ void test_minmax_element_exception(ExPolicy policy, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -264,7 +482,7 @@ void test_minmax_element_exception_async(ExPolicy p, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool returned_from_algorithm = false;
@@ -359,7 +577,7 @@ void test_minmax_element_bad_alloc(IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -414,7 +632,7 @@ void test_minmax_element_bad_alloc(ExPolicy policy, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -468,7 +686,7 @@ void test_minmax_element_bad_alloc_async(ExPolicy p, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool returned_from_algorithm = false;

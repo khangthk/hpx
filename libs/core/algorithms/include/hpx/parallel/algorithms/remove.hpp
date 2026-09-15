@@ -214,26 +214,21 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/execution/algorithms/detail/predicates.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
-#include <hpx/iterator_support/zip_iterator.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/detail/find.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/loop.hpp>
 #include <hpx/parallel/util/partitioner.hpp>
 #include <hpx/parallel/util/zip_iterator.hpp>
-#include <hpx/type_support/identity.hpp>
-#include <hpx/type_support/unused.hpp>
-
-#if !defined(HPX_HAVE_CXX17_SHARED_PTR_ARRAY)
-#include <boost/shared_array.hpp>
-#endif
 
 #include <algorithm>
 #include <cstddef>
@@ -249,7 +244,8 @@ namespace hpx::parallel {
     namespace detail {
 
         /// \cond NOINTERNAL
-        template <typename Iter, typename Sent, typename Pred, typename Proj>
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Sent,
+            typename Pred, typename Proj>
         constexpr Iter sequential_remove_if(
             Iter first, Sent last, Pred pred, Proj proj)
         {
@@ -261,13 +257,13 @@ namespace hpx::parallel {
                 for (Iter i = first; ++i != last;)
                     if (!HPX_INVOKE(pred, HPX_INVOKE(proj, *i)))
                     {
-                        *first++ = HPX_MOVE(*i);
+                        *first++ = std::ranges::iter_move(i);
                     }
             }
             return first;
         }
 
-        template <typename FwdIter>
+        HPX_CXX_CORE_EXPORT template <typename FwdIter>
         struct remove_if : public algorithm<remove_if<FwdIter>, FwdIter>
         {
             constexpr remove_if() noexcept
@@ -305,11 +301,7 @@ namespace hpx::parallel {
                         return algorithm_result::get(HPX_MOVE(first));
                 }
 
-#if defined(HPX_HAVE_CXX17_SHARED_PTR_ARRAY)
                 std::shared_ptr<bool[]> flags(new bool[count]);
-#else
-                boost::shared_array<bool> flags(new bool[count]);
-#endif
 
                 using hpx::get;
 
@@ -320,8 +312,8 @@ namespace hpx::parallel {
                               zip_iterator part_begin,
                               std::size_t part_size) -> void {
                     // MSVC complains if pred or proj is captured by ref below
-                    util::loop_n<std::decay_t<ExPolicy>>(part_begin, part_size,
-                        [pred, proj](zip_iterator it) mutable {
+                    util::const_loop_n<std::decay_t<ExPolicy>>(part_begin,
+                        part_size, [pred, proj](zip_iterator it) mutable {
                             bool f = hpx::invoke(
                                 pred, hpx::invoke(proj, get<0>(*it)));
 
@@ -338,12 +330,13 @@ namespace hpx::parallel {
                     if (dest == get<0>(part_begin.get_iterator_tuple()))
                     {
                         // Self-assignment must be detected.
-                        util::loop_n<execution_policy_type>(
+                        util::const_loop_n<execution_policy_type>(
                             part_begin, part_size, [&dest](zip_iterator it) {
                                 if (!get<1>(*it))
                                 {
                                     if (dest != get<0>(it.get_iterator_tuple()))
-                                        *dest++ = HPX_MOVE(get<0>(*it));
+                                        *dest++ = std::ranges::iter_move(
+                                            get<0>(it.get_iterator_tuple()));
                                     else
                                         ++dest;
                                 }
@@ -352,10 +345,11 @@ namespace hpx::parallel {
                     else
                     {
                         // Self-assignment can't be performed.
-                        util::loop_n<execution_policy_type>(
+                        util::const_loop_n<execution_policy_type>(
                             part_begin, part_size, [&dest](zip_iterator it) {
                                 if (!get<1>(*it))
-                                    *dest++ = HPX_MOVE(get<0>(*it));
+                                    *dest++ = std::ranges::iter_move(
+                                        get<0>(it.get_iterator_tuple()));
                             });
                     }
                     return dest;
@@ -375,22 +369,22 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::remove_if
-    inline constexpr struct remove_if_t final
-      : hpx::detail::tag_parallel_algorithm<remove_if_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct remove_if_t final
+      : hpx::detail::tag_dispatch<remove_if_t,
+            hpx::detail::tag_parallel_algorithm<remove_if_t>>
     {
+        template <typename FwdIter, typename Pred>
         // clang-format off
-        template <typename FwdIter,
-            typename Pred, HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::traits::is_iterator_v<FwdIter> &&
                 hpx::is_invocable_v<Pred,
                     typename std::iterator_traits<FwdIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend FwdIter tag_fallback_invoke(
-            hpx::remove_if_t, FwdIter first, FwdIter last, Pred pred)
+        static FwdIter invoke_default(FwdIter first, FwdIter last, Pred pred)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return hpx::parallel::detail::remove_if<FwdIter>().call(
@@ -398,20 +392,20 @@ namespace hpx {
                 hpx::identity_v);
         }
 
+        template <typename ExPolicy, typename FwdIter, typename Pred>
         // clang-format off
-        template <typename ExPolicy, typename FwdIter,
-            typename Pred, HPX_CONCEPT_REQUIRES_(
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter> &&
                 hpx::is_invocable_v<Pred,
                     typename std::iterator_traits<FwdIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::remove_if_t,
+        static decltype(auto) invoke_default(
             ExPolicy&& policy, FwdIter first, FwdIter last, Pred pred)
         {
-            static_assert(hpx::traits::is_forward_iterator_v<FwdIter>,
+            static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
 
             return hpx::parallel::detail::remove_if<FwdIter>().call(
@@ -422,19 +416,19 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::remove
-    inline constexpr struct remove_t final
-      : hpx::detail::tag_parallel_algorithm<remove_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct remove_t final
+      : hpx::detail::tag_dispatch<remove_t,
+            hpx::detail::tag_parallel_algorithm<remove_t>>
     {
-    private:
-        // clang-format off
         template <typename FwdIter,
-            typename T = typename std::iterator_traits<FwdIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<FwdIter>::value_type>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<FwdIter>
-            )>
+            )
         // clang-format on
-        friend FwdIter tag_fallback_invoke(
-            hpx::remove_t, FwdIter first, FwdIter last, T const& value)
+        static FwdIter invoke_default(
+            FwdIter first, FwdIter last, T const& value)
         {
             using Type = typename std::iterator_traits<FwdIter>::value_type;
 
@@ -442,21 +436,23 @@ namespace hpx {
                 [value](Type const& a) -> bool { return value == a; });
         }
 
-        // clang-format off
         template <typename ExPolicy, typename FwdIter,
-            typename T = typename std::iterator_traits<FwdIter>::value_type,
-            HPX_CONCEPT_REQUIRES_(
+            typename T = typename std::iterator_traits<FwdIter>::value_type>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<FwdIter>
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::remove_t,
+        static decltype(auto) invoke_default(
             ExPolicy&& policy, FwdIter first, FwdIter last, T const& value)
         {
             using Type = typename std::iterator_traits<FwdIter>::value_type;
 
             return hpx::remove_if(HPX_FORWARD(ExPolicy, policy), first, last,
-                [value](Type const& a) -> bool { return value == a; });
+                [value](Type const& a) -> bool {
+                    return static_cast<Type>(value) == a;
+                });
         }
     } remove{};
 }    // namespace hpx

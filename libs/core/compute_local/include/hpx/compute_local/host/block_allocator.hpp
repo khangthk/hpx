@@ -1,7 +1,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 //  Copyright (c) 2020 ETH Zurich
 //  Copyright (c) 2016 Thomas Heller
-//  Copyright (c) 2016-2024 Hartmut Kaiser
+//  Copyright (c) 2016-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -12,20 +12,15 @@
 
 #include <hpx/config.hpp>
 
-#include <hpx/allocator_support/detail/new.hpp>
 #include <hpx/compute_local/host/block_executor.hpp>
 #include <hpx/compute_local/host/target.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/executors/restricted_thread_pool_executor.hpp>
-#include <hpx/functional/invoke_fused.hpp>
-#include <hpx/iterator_support/counting_shape.hpp>
-#include <hpx/iterator_support/range.hpp>
-#include <hpx/parallel/container_algorithms/for_each.hpp>
-#include <hpx/parallel/util/adapt_sharing_mode.hpp>
-#include <hpx/parallel/util/cancellation_token.hpp>
-#include <hpx/parallel/util/partitioner_with_cleanup.hpp>
-#include <hpx/topology/topology.hpp>
+#include <hpx/modules/algorithms.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/topology.hpp>
 
 #include <cstddef>
 #include <limits>
@@ -39,7 +34,7 @@ namespace hpx::compute::host {
 
         /// The policy_allocator allocates blocks of memory touched according to
         /// the distribution policy of the given executor.
-        template <typename T, typename Policy,
+        HPX_CXX_CORE_EXPORT template <typename T, typename Policy,
             typename Enable =
                 std::enable_if_t<hpx::is_execution_policy_v<Policy>>>
         struct policy_allocator
@@ -112,6 +107,7 @@ namespace hpx::compute::host {
                 {
                     hpx::threads::create_topology().deallocate(p, n);
                 }
+                // NOLINTNEXTLINE(bugprone-empty-catch)
                 catch (...)
                 {
                     // just ignore errors from create_topology
@@ -125,6 +121,27 @@ namespace hpx::compute::host {
             static size_type max_size() noexcept
             {
                 return (std::numeric_limits<size_type>::max)();
+            }
+
+            template <typename U, typename Iter>
+            static void cleanup_partition(
+                U* p, std::pair<Iter, Iter> r) noexcept
+            {
+                while (r.first != r.second)
+                {
+                    std::destroy_at(p + *r.first);
+                    ++r.first;
+                }
+            }
+
+            template <typename U, typename Iter>
+            static void cleanup_partition(
+                U* p, std::vector<std::pair<Iter, Iter>>& r) noexcept
+            {
+                for (auto& range : r)
+                {
+                    cleanup_partition(p, range);
+                }
             }
 
             // Constructs count objects of type T in allocated uninitialized
@@ -154,16 +171,18 @@ namespace hpx::compute::host {
                     hpx::forward_as_tuple(HPX_FORWARD(Args, args)...);
 
                 decltype(auto) hinted_policy =
-                    parallel::util::adapt_sharing_mode(policy_,
+                    hpx::execution::experimental::adapt_sharing_mode(policy_,
                         hpx::threads::thread_sharing_hint::
                             do_not_share_function);
 
                 cancellation_token tok;
                 partitioner::call(
                     hinted_policy, util::begin(irange), count,
+                    // clang-format off
                     [&arguments, p, &tok](
                         iterator_type it, std::size_t part_size) mutable
-                    -> partition_result_type {
+                        -> partition_result_type {
+                        // clang-format on
                         iterator_type last =
                             parallel::util::loop_with_cleanup_n_with_token(
                                 it, part_size, tok,
@@ -175,7 +194,7 @@ namespace hpx::compute::host {
                                         arguments);
                                 },
                                 // cleanup function, called for all elements of
-                                // current partition which succeeded before
+                                // current partition that succeeded before
                                 // exception
                                 [p](iterator_type it) {
                                     std::destroy_at(p + *it);
@@ -186,15 +205,9 @@ namespace hpx::compute::host {
                     [](auto&&) {
                         // do nothing
                     },
-                    // cleanup function, called for each partition which didn't
+                    // cleanup function, called for each partition that didn't
                     // fail, but only if at least one failed
-                    [p](partition_result_type&& r) -> void {
-                        while (r.first != r.second)
-                        {
-                            std::destroy_at(p + *r.first);
-                            ++r.first;
-                        }
-                    });
+                    [p](auto&& r) -> void { cleanup_partition(p, r); });
             }
 
             // Constructs an object of type T in allocated uninitialized storage
@@ -255,9 +268,9 @@ namespace hpx::compute::host {
     /// std::size_t N = 2048;
     /// vector_type v(N, allocator_type(numa_nodes));
     ///
-    template <typename T,
+    HPX_CXX_CORE_EXPORT template <typename T,
         typename Executor =
-            hpx::parallel::execution::restricted_thread_pool_executor>
+            hpx::execution::experimental::restricted_thread_pool_executor>
     struct block_allocator
       : public detail::policy_allocator<T,
             hpx::execution::detail::parallel_policy_shim<
@@ -298,4 +311,3 @@ namespace hpx::compute::host {
         }
     };
 }    // namespace hpx::compute::host
-// namespace hpx::compute::host

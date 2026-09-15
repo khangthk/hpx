@@ -23,20 +23,27 @@ Prerequisites
 To build the |hpx| documentation, you need recent versions of the following
 packages:
 
-- ``python3``
-- ``sphinx 4.5.0`` (Python package)
+- ``python3`` (3.9 or later)
+- ``sphinx`` 7.2 or later (Python package)
 - ``sphinx-book-theme`` (Python package)
-- ``breathe 4.33.1`` (Python package)
+- ``breathe`` 4.36.0 or later (Python package)
 - ``doxygen``
 - ``sphinxcontrib-bibtex``
 - ``sphinx-copybutton``
 
 If the |python|_ dependencies are not available through your system package
-manager, you can install them using the Python package manager ``pip``:
+manager, you can install them using the Python package manager ``pip``.
+We recommend using a virtual environment:
 
 .. code-block:: bash
 
-   pip install --user "sphinx<5" sphinx-book-theme breathe sphinxcontrib-bibtex sphinx-copybutton
+   mkdir -p build
+   python3 -m venv build/.venv
+   source build/.venv/bin/activate
+   pip install \
+      "sphinx>=7.2" "breathe>=4.36.0" \
+      sphinx-book-theme sphinxcontrib-bibtex \
+      sphinx-copybutton
 
 You may need to set the following CMake variables to make sure CMake can
 find the required dependencies.
@@ -97,3 +104,47 @@ The source code is documented using Doxygen. If you add new API documentation
 either to existing or new source files, make sure that you add the documented
 source files to the ``doxygen_dependencies`` variable in
 ``docs/CMakeLists.txt``.
+
+Adding new API documentation
+============================
+
+When you add new public APIs to |hpx|, follow these guidelines to ensure the
+documentation is correctly generated and easy to use.
+
+Documenting headers
+-------------------
+
+At the top of a new header file, include the standard Doxygen documentation block.
+For example, if the new feature is called `my_new_feature`, you should:
+
+* List the name of the new file under ``\file``.
+* Specify the page name with ``\page`` (e.g., ``hpx::my_new_feature``).
+* Reference the existing header that will include your new file under ``\headerfile``.
+
+.. code-block:: cpp
+
+   /// \file my_new_feature.hpp
+   /// \page hpx::my_new_feature
+   /// \headerfile hpx/existing_header_of_new_feature.hpp
+
+Adding to the public API reference
+----------------------------------
+
+For the documentation to appear in the generated API reference, add your new API to
+``docs/sphinx/api/public_api.rst`` under the appropriate table (usually "Functions") for
+the relevant header (for example, ``hpx/existing_header_of_new_feature.hpp``).
+
+Including examples
+------------------
+
+Do **not** inline examples in the API reference. If you want to provide an example
+of how to use the new API, there are two recommended options:
+
+1. **Documentation page option**
+   Edit an existing relevant manual page to explain the new functionality and include a code example.
+   Use this option if you want to provide additional context about how the API works.
+
+2. **Standalone examples option**
+   Create a separate example under ``docs/sphinx/examples/``. Examples in this directory are
+   typically more comprehensive and executable, making them suitable for richer or more
+   complex scenarios.

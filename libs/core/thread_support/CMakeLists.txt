@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2024 The STE||AR-Group
+# Copyright (c) 2019-2026 The STE||AR-Group
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,7 +7,7 @@
 set(thread_support_headers
     hpx/thread_support/atomic_count.hpp hpx/thread_support/set_thread_name.hpp
     hpx/thread_support/spinlock.hpp hpx/thread_support/thread_specific_ptr.hpp
-    hpx/thread_support/unlock_guard.hpp
+    hpx/thread_support/unlock_guard.hpp hpx/thread_support/win_nanosleep.hpp
 )
 
 # cmake-format: off
@@ -20,15 +20,17 @@ set(thread_support_compat_headers
 )
 # cmake-format: on
 
-set(thread_support_sources set_thread_name.cpp spinlock.cpp)
+set(thread_support_sources set_thread_name.cpp spinlock.cpp win_nanosleep.cpp)
 
 include(HPX_AddModule)
 add_hpx_module(
   core thread_support
   GLOBAL_HEADER_GEN ON
+  GLOBAL_HEADER_MODULE_GEN ON
   SOURCES ${thread_support_sources}
   HEADERS ${thread_support_headers}
   COMPAT_HEADERS ${thread_support_compat_headers}
-  MODULE_DEPENDENCIES hpx_assertion hpx_config hpx_concepts
+  MODULE_DEPENDENCIES hpx_assertion hpx_config hpx_concepts hpx_tracing
+                      hpx_type_support
   CMAKE_SUBDIRS examples tests
 )

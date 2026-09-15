@@ -6,18 +6,22 @@
 # file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 set(benchmarks
+    benchmark_uninitialized_relocate
     benchmark_inplace_merge
     benchmark_is_heap
     benchmark_is_heap_until
     benchmark_merge
+    benchmark_merge_sweep
     benchmark_nth_element
     benchmark_nth_element_parallel
     benchmark_partial_sort
     benchmark_partial_sort_parallel
     benchmark_partition
     benchmark_partition_copy
+    benchmark_reduce_deterministic
     benchmark_remove
     benchmark_remove_if
+    benchmark_reverse
     benchmark_scan_algorithms
     benchmark_unique
     benchmark_unique_copy

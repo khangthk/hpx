@@ -23,7 +23,7 @@ void test_max_element(IteratorTag)
     typedef std::vector<std::size_t>::iterator base_iterator;
     typedef test::test_iterator<base_iterator, IteratorTag> iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     iterator end(std::end(c));
     base_iterator ref_end(std::end(c));
@@ -36,6 +36,8 @@ void test_max_element(IteratorTag)
         std::max_element(std::begin(c), std::end(c), std::less<std::size_t>());
     HPX_TEST(ref != ref_end);
     HPX_TEST_EQ(*ref, *r);
+    HPX_TEST_EQ(std::distance(std::begin(c), ref),
+        std::distance(iterator(std::begin(c)), r));
 
     r = hpx::max_element(iterator(std::begin(c)), iterator(std::end(c)));
     HPX_TEST(r != end);
@@ -43,6 +45,8 @@ void test_max_element(IteratorTag)
     ref = std::max_element(std::begin(c), std::end(c));
     HPX_TEST(ref != ref_end);
     HPX_TEST_EQ(*ref, *r);
+    HPX_TEST_EQ(std::distance(std::begin(c), ref),
+        std::distance(iterator(std::begin(c)), r));
 }
 
 template <typename ExPolicy, typename IteratorTag>
@@ -54,7 +58,7 @@ void test_max_element(ExPolicy policy, IteratorTag)
     typedef std::vector<std::size_t>::iterator base_iterator;
     typedef test::test_iterator<base_iterator, IteratorTag> iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     iterator end(std::end(c));
     base_iterator ref_end(std::end(c));
@@ -67,6 +71,8 @@ void test_max_element(ExPolicy policy, IteratorTag)
         std::max_element(std::begin(c), std::end(c), std::less<std::size_t>());
     HPX_TEST(ref != ref_end);
     HPX_TEST_EQ(*ref, *r);
+    HPX_TEST_EQ(std::distance(std::begin(c), ref),
+        std::distance(iterator(std::begin(c)), r));
 
     r = hpx::max_element(
         policy, iterator(std::begin(c)), iterator(std::end(c)));
@@ -75,6 +81,8 @@ void test_max_element(ExPolicy policy, IteratorTag)
     ref = std::max_element(std::begin(c), std::end(c));
     HPX_TEST(ref != ref_end);
     HPX_TEST_EQ(*ref, *r);
+    HPX_TEST_EQ(std::distance(std::begin(c), ref),
+        std::distance(iterator(std::begin(c)), r));
 }
 
 template <typename ExPolicy, typename IteratorTag>
@@ -83,7 +91,7 @@ void test_max_element_async(ExPolicy p, IteratorTag)
     typedef std::vector<std::size_t>::iterator base_iterator;
     typedef test::test_iterator<base_iterator, IteratorTag> iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     iterator end(std::end(c));
     base_iterator ref_end(std::end(c));
@@ -97,6 +105,8 @@ void test_max_element_async(ExPolicy p, IteratorTag)
         std::max_element(std::begin(c), std::end(c), std::less<std::size_t>());
     HPX_TEST(ref != ref_end);
     HPX_TEST_EQ(*ref, *rit);
+    HPX_TEST_EQ(std::distance(std::begin(c), ref),
+        std::distance(iterator(std::begin(c)), rit));
 
     r = hpx::max_element(p, iterator(std::begin(c)), iterator(std::end(c)));
     rit = r.get();
@@ -105,6 +115,8 @@ void test_max_element_async(ExPolicy p, IteratorTag)
     ref = std::max_element(std::begin(c), std::end(c));
     HPX_TEST(ref != ref_end);
     HPX_TEST_EQ(*ref, *rit);
+    HPX_TEST_EQ(std::distance(std::begin(c), ref),
+        std::distance(iterator(std::begin(c)), rit));
 }
 
 template <typename IteratorTag>
@@ -135,7 +147,7 @@ void test_max_element_exception(IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -194,7 +206,7 @@ void test_max_element_exception(ExPolicy policy, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -250,7 +262,7 @@ void test_max_element_exception_async(ExPolicy p, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool returned_from_algorithm = false;
@@ -345,7 +357,7 @@ void test_max_element_bad_alloc(IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -400,7 +412,7 @@ void test_max_element_bad_alloc(ExPolicy policy, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool caught_exception = false;
@@ -454,7 +466,7 @@ void test_max_element_bad_alloc_async(ExPolicy p, IteratorTag)
     typedef test::decorated_iterator<base_iterator, IteratorTag>
         decorated_iterator;
 
-    std::vector<std::size_t> c = test::random_iota(10007);
+    std::vector<std::size_t> c = test::random_repeat(10007, std::size_t(100));
 
     {
         bool returned_from_algorithm = false;

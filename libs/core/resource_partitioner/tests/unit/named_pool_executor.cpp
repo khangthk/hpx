@@ -21,8 +21,8 @@
 #include <utility>
 #include <vector>
 
-std::size_t const max_threads = (std::min)(
-    std::size_t(4), std::size_t(hpx::threads::hardware_concurrency()));
+std::size_t const max_threads = (std::min) (std::size_t(4),
+    std::size_t(hpx::threads::hardware_concurrency()));
 
 // dummy function we will call using async
 void dummy_task(std::size_t n, std::string const& text)
@@ -57,8 +57,7 @@ int hpx_main()
     }
 
     // Make sure default construction works
-    hpx::execution::parallel_executor exec_default;
-    HPX_UNUSED(exec_default);
+    [[maybe_unused]] hpx::execution::parallel_executor exec_default;
 
     // setup executors for different task priorities on the pools
     // segfaults or exceptions in any of the following will cause

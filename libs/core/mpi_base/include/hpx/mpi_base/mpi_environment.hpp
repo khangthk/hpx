@@ -1,4 +1,5 @@
 //  Copyright (c) 2013-2015 Thomas Heller
+//  Copyright (c)      2024 Jiakun Yan
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -12,8 +13,8 @@
     defined(HPX_HAVE_MODULE_MPI_BASE)
 
 #include <hpx/modules/runtime_configuration.hpp>
+#include <hpx/modules/synchronization.hpp>
 #include <hpx/mpi_base/mpi.hpp>
-#include <hpx/synchronization/spinlock.hpp>
 
 #include <cstdlib>
 #include <string>
@@ -22,7 +23,7 @@
 
 namespace hpx::util {
 
-    struct HPX_CORE_EXPORT mpi_environment
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT mpi_environment
     {
         static bool check_mpi_environment(runtime_configuration const& cfg);
 
@@ -41,6 +42,11 @@ namespace hpx::util {
         static MPI_Comm& communicator() noexcept;
 
         static std::string get_processor_name();
+
+        static MPI_Datatype type_contiguous(size_t nbytes);
+        static MPI_Request isend(
+            void const* address, size_t size, int rank, int tag);
+        static MPI_Request irecv(void* address, size_t size, int rank, int tag);
 
         struct HPX_CORE_EXPORT scoped_lock
         {
@@ -117,12 +123,13 @@ namespace hpx::util {
 
 #include <hpx/config/warnings_prefix.hpp>
 
-namespace hpx { namespace util {
-    struct HPX_CORE_EXPORT mpi_environment
+namespace hpx::util {
+
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT mpi_environment
     {
         static bool check_mpi_environment(runtime_configuration const& cfg);
     };
-}}    // namespace hpx::util
+}    // namespace hpx::util
 
 #include <hpx/config/warnings_suffix.hpp>
 

@@ -13,12 +13,12 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/concurrency/cache_line_data.hpp>
-#include <hpx/lock_registration/detail/register_locks.hpp>
+#include <hpx/modules/concurrency.hpp>
+#include <hpx/modules/lock_registration.hpp>
 #include <hpx/modules/memory.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/synchronization/detail/condition_variable.hpp>
 #include <hpx/synchronization/spinlock.hpp>
-#include <hpx/type_support/assert_owns_lock.hpp>
 
 #include <atomic>
 #include <cstdint>
@@ -77,20 +77,18 @@ namespace hpx::detail {
         bool set_state(shared_state& s1, shared_state& s) noexcept
         {
             ++s.data.tag;
-            return s1.value == state.load(std::memory_order_relaxed).value &&
-                state.compare_exchange_strong(s1, s, std::memory_order_release);
+            return state.compare_exchange_strong(
+                s1, s, std::memory_order_release, std::memory_order_relaxed);
         }
 
         bool set_state(shared_state& s1, shared_state& s,
             std::unique_lock<mutex_type>& lk) noexcept
         {
-            if (s1.value != state.load(std::memory_order_relaxed).value)
-                return false;
-
             ++s.data.tag;
 
             lk = std::unique_lock<mutex_type>(state_change);
-            if (state.compare_exchange_strong(s1, s, std::memory_order_release))
+            if (state.compare_exchange_strong(s1, s, std::memory_order_release,
+                    std::memory_order_relaxed))
                 return true;
 
             lk.unlock();
@@ -101,14 +99,11 @@ namespace hpx::detail {
         {
             while (true)
             {
+                std::unique_lock<mutex_type> lk(state_change);
                 auto s = state.load(std::memory_order_acquire);
                 while (s.data.exclusive || s.data.exclusive_waiting_blocked)
                 {
-                    {
-                        std::unique_lock<mutex_type> lk(state_change);
-                        shared_cond.wait(lk);
-                    }
-
+                    shared_cond.wait(lk);
                     s = state.load(std::memory_order_acquire);
                 }
 
@@ -124,9 +119,9 @@ namespace hpx::detail {
 
         bool try_lock_shared()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 if (s.data.exclusive || s.data.exclusive_waiting_blocked)
                 {
                     return false;
@@ -139,15 +134,16 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
             return true;
         }
 
         void unlock_shared()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 auto s1 = s;
 
                 if (--s.data.shared_count == 0)
@@ -161,7 +157,11 @@ namespace hpx::detail {
                         if (set_state(s1, s, lk))
                         {
                             HPX_ASSERT_OWNS_LOCK(lk);
-                            upgrade_cond.notify_one_no_unlock(lk);
+                            {
+                                [[maybe_unused]] hpx::util::
+                                    ignore_while_checking il(&lk);
+                                upgrade_cond.notify_one_no_unlock(lk);
+                            }
                             release_waiters(lk);
                             break;
                         }
@@ -183,14 +183,15 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
         }
 
         void lock()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 while (s.data.shared_count != 0 || s.data.exclusive)
                 {
                     auto s1 = s;
@@ -213,14 +214,15 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
         }
 
         bool try_lock()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 if (s.data.shared_count || s.data.exclusive)
                 {
                     return false;
@@ -233,15 +235,16 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
             return true;
         }
 
         void unlock()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 auto s1 = s;
 
                 s.data.exclusive = false;
@@ -254,6 +257,7 @@ namespace hpx::detail {
                     release_waiters(lk);
                     break;
                 }
+                s = s1;
             }
         }
 
@@ -261,12 +265,12 @@ namespace hpx::detail {
         {
             while (true)
             {
+                std::unique_lock<mutex_type> lk(state_change);
                 auto s = state.load(std::memory_order_acquire);
                 while (s.data.exclusive || s.data.exclusive_waiting_blocked ||
                     s.data.upgrade)
                 {
                     {
-                        std::unique_lock<mutex_type> lk(state_change);
                         shared_cond.wait(lk);
                     }
 
@@ -275,7 +279,7 @@ namespace hpx::detail {
 
                 auto s1 = s;
 
-                ++s.data.shared_count = true;
+                ++s.data.shared_count;
                 s.data.upgrade = true;
                 if (set_state(s1, s))
                 {
@@ -286,9 +290,9 @@ namespace hpx::detail {
 
         bool try_lock_upgrade()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 if (s.data.exclusive || s.data.exclusive_waiting_blocked ||
                     s.data.upgrade)
                 {
@@ -303,15 +307,16 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
             return true;
         }
 
         void unlock_upgrade()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 auto s1 = s;
 
                 bool release = false;
@@ -336,33 +341,42 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
         }
 
         void unlock_upgrade_and_lock()
         {
+            // Flag to ensure the thread releases shared lock exactly once
+            // even if the upgrade to exclusive fails and it retries the loop
+            bool shared_released = false;
+
             while (true)
             {
+                std::unique_lock<mutex_type> lk(state_change);
                 auto s = state.load(std::memory_order_acquire);
-                auto s1 = s;
-
-                --s.data.shared_count;
-                if (!set_state(s1, s))
+                if (!shared_released)
                 {
-                    continue;
+                    auto s1 = s;
+
+                    --s.data.shared_count;
+                    if (!set_state(s1, s))
+                    {
+                        continue;
+                    }
+                    shared_released = true;
                 }
 
                 s = state.load(std::memory_order_acquire);
                 while (s.data.shared_count != 0)
                 {
                     {
-                        std::unique_lock<mutex_type> lk(state_change);
                         upgrade_cond.wait(lk);
                     }
                     s = state.load(std::memory_order_acquire);
                 }
 
-                s1 = s;
+                auto s1 = s;
 
                 s.data.upgrade = false;
                 s.data.exclusive = true;
@@ -375,9 +389,9 @@ namespace hpx::detail {
 
         void unlock_and_lock_upgrade()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 auto s1 = s;
 
                 s.data.exclusive = false;
@@ -392,14 +406,15 @@ namespace hpx::detail {
                     release_waiters(lk);
                     break;
                 }
+                s = s1;
             }
         }
 
         void unlock_and_lock_shared()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 auto s1 = s;
 
                 s.data.exclusive = false;
@@ -413,16 +428,17 @@ namespace hpx::detail {
                     release_waiters(lk);
                     break;
                 }
+                s = s1;
             }
         }
 
         bool try_unlock_shared_and_lock()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 if (s.data.exclusive || s.data.exclusive_waiting_blocked ||
-                    s.data.upgrade || s.data.shared_count == 1)
+                    s.data.upgrade || s.data.shared_count != 1)
                 {
                     return false;
                 }
@@ -435,15 +451,16 @@ namespace hpx::detail {
                 {
                     break;
                 }
+                s = s1;
             }
             return true;
         }
 
         void unlock_upgrade_and_lock_shared()
         {
+            auto s = state.load(std::memory_order_acquire);
             while (true)
             {
-                auto s = state.load(std::memory_order_acquire);
                 auto s1 = s;
 
                 s.data.exclusive_waiting_blocked = false;
@@ -456,19 +473,25 @@ namespace hpx::detail {
                     release_waiters(lk);
                     break;
                 }
+                s = s1;
             }
         }
 
     private:
         friend void intrusive_ptr_add_ref(shared_mutex_data* p) noexcept
         {
-            ++p->count_;
+            p->count_.increment();
         }
 
         friend void intrusive_ptr_release(shared_mutex_data* p) noexcept
         {
-            if (0 == --p->count_)
+            if (0 == p->count_.decrement())
             {
+                // The thread that decrements the reference count to zero must
+                // perform an acquire to ensure that it doesn't start destructing
+                // the object until all previous writes have drained.
+                std::atomic_thread_fence(std::memory_order_acquire);
+
                 delete p;
             }
         }
@@ -476,7 +499,7 @@ namespace hpx::detail {
         hpx::util::atomic_count count_;
     };
 
-    template <typename Mutex = hpx::spinlock>
+    HPX_CXX_CORE_EXPORT template <typename Mutex = hpx::spinlock>
     class shared_mutex
     {
     private:
@@ -496,6 +519,8 @@ namespace hpx::detail {
         void lock_shared()
         {
             auto data = data_;
+            if (data->try_lock_shared())
+                return;
             data->lock_shared();
         }
 
@@ -603,12 +628,5 @@ namespace hpx {
     ///          no other thread is reading or writing at the same time. The \a
     ///          shared_mutex class satisfies all requirements of \a SharedMutex
     ///          and \a StandardLayoutType.
-    using shared_mutex = detail::shared_mutex<>;
+    HPX_CXX_CORE_EXPORT using shared_mutex = detail::shared_mutex<>;
 }    // namespace hpx
-
-namespace hpx::lcos::local {
-
-    using shared_mutex HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::local::shared_mutex is deprecated, use hpx::shared_mutex "
-        "instead") = hpx::shared_mutex;
-}

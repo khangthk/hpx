@@ -7,10 +7,11 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCEL_COALESCING)
+#include <hpx/modules/errors.hpp>
 #include <hpx/modules/util.hpp>
+#include <hpx/modules/performance_counters.hpp>
 
 #include <hpx/parcel_coalescing/counter_registry.hpp>
-#include <hpx/performance_counters/registry.hpp>
 
 #include <cstdint>
 #include <mutex>
@@ -275,7 +276,7 @@ namespace hpx::plugins::parcel {
 
                 map_type::const_iterator end = map_.end();
                 for (map_type::const_iterator it = map_.begin(); it != end;
-                     ++it)
+                    ++it)
                 {
                     if (!std::regex_match(it->first, rx))
                         continue;
@@ -298,7 +299,7 @@ namespace hpx::plugins::parcel {
                     std::unique_lock<mutex_type> l(mtx_);
                     map_type::const_iterator end = map_.end();
                     for (map_type::const_iterator it = map_.begin(); it != end;
-                         ++it)
+                        ++it)
                     {
                         types += "  " + it->first + "\n";
                     }
@@ -345,7 +346,7 @@ namespace hpx::plugins::parcel {
                 std::string types;
                 map_type::const_iterator end = map_.end();
                 for (map_type::const_iterator it_ct = map_.begin();
-                     it_ct != end; ++it_ct)
+                    it_ct != end; ++it_ct)
                 {
                     types += "  " + it_ct->first + "\n";
                 }

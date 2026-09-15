@@ -7,19 +7,25 @@
 set(tests
     not_bitwise_serializable
     serialization_array
-    serialization_brace_initializable
     serialization_valarray
     serialization_builtins
+    serialization_chrono
     serialization_complex
     serialization_custom_constructor
     serialization_deque
+    serialization_error_code
     serialization_list
     serialization_map
+    serialization_multimap
     serialization_set
+    serialization_multiset
     serialization_simple
     serialization_smart_ptr
     serialization_std_tuple
     serialization_unordered_map
+    serialization_unordered_multimap
+    serialization_unordered_set
+    serialization_unordered_multiset
     serialization_vector
     serialize_with_incompatible_signature
     serialization_std_variant
@@ -31,7 +37,12 @@ if(HPX_SERIALIZATION_WITH_BOOST_TYPES)
   set(tests ${tests} serialization_boost_variant)
 endif()
 
+if(NOT HPX_WITH_CXX26_REFLECTION)
+  set(tests ${tests} serialization_brace_initializable)
+endif()
+
 add_subdirectory(polymorphic)
+add_subdirectory(refl)
 
 # tests that can run without HPX
 foreach(test ${tests})

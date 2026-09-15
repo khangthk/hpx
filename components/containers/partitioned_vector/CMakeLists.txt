@@ -30,10 +30,10 @@ set(partitioned_vector_headers
     hpx/components/containers/partitioned_vector/partitioned_vector_segmented_iterator.hpp
     hpx/components/containers/partitioned_vector/partitioned_vector_view.hpp
     hpx/components/containers/partitioned_vector/partitioned_vector_view_iterator.hpp
+    hpx/components/containers/partitioned_vector/serialization/partitioned_vector.hpp
     hpx/include/partitioned_vector.hpp
     hpx/include/partitioned_vector_predef.hpp
     hpx/include/partitioned_vector_view.hpp
-    hpx/runtime/serialization/partitioned_vector.hpp
 )
 
 set(partitioned_vector_sources
@@ -49,9 +49,10 @@ add_hpx_component(
   INSTALL_COMPONENT runtime
   HEADER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include"
   HEADERS ${partitioned_vector_headers}
-  PREPEND_SOURCE_ROOT
+  PREPEND_SOURCE_ROOT ${HPX_WITH_UNITY_BUILD_OPTION}
+  ${HPX_WITH_CXX_MODULES_OPTION}
   SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/src"
-  SOURCES ${partitioned_vector_sources} ${HPX_WITH_UNITY_BUILD_OPTION}
+  SOURCES ${partitioned_vector_sources}
 )
 
 target_compile_definitions(
@@ -61,6 +62,16 @@ target_compile_definitions(
 add_hpx_pseudo_dependencies(
   components.containers.partitioned_vector partitioned_vector_component
 )
+
+# MSVC V1951 and V1952 exposes ICE compiling this in C++20 module mode
+if(HPX_WITH_CXX_MODULES
+   AND (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+   AND (MSVC_VERSION LESS_EQUAL 1952)
+)
+  target_compile_definitions(
+    partitioned_vector_component PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES
+  )
+endif()
 
 add_subdirectory(tests)
 add_subdirectory(examples)

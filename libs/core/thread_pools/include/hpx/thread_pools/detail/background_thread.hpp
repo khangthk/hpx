@@ -7,11 +7,10 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/execution_base/this_thread.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/threading_base.hpp>
 #include <hpx/thread_pools/detail/scheduling_callbacks.hpp>
 #include <hpx/thread_pools/detail/scheduling_counters.hpp>
-#include <hpx/threading_base/scheduler_base.hpp>
-#include <hpx/threading_base/threading_base_fwd.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -44,7 +43,8 @@ namespace hpx::threads::detail {
 
     ///////////////////////////////////////////////////////////////////////////
     // Create a new background thread
-    HPX_CORE_EXPORT thread_id_ref_type create_background_thread(
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void create_background_thread(
+        thread_id_ref_type& background_thread,
         threads::policies::scheduler_base& scheduler_base,
         std::size_t num_thread, scheduling_callbacks const& callbacks,
         std::shared_ptr<bool>& background_running,

@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2013 Agustin Berge
 //  Copyright (c) 2017 Denis Blank
 //
@@ -32,7 +32,7 @@ namespace hpx {
     /// \return   Returns a future holding the same list of futures as has
     ///           been passed to \a when_all.
     ///           - future<Container<future<R>>>: If the input cardinality is
-    ///             unknown at compile time and the futures are all of the
+    ///             unknown at compile time and the futures are all have the
     ///             same type. The order of the futures in the output container
     ///             will be the same as given by the input iterator.
     ///
@@ -57,7 +57,7 @@ namespace hpx {
     /// \return   Returns a future holding the same list of futures as has
     ///           been passed to when_all.
     ///           - future<Container<future<R>>>: If the input cardinality is
-    ///             unknown at compile time and the futures are all of the
+    ///             unknown at compile time and the futures are all have the
     ///             same type.
     ///
     /// \note Calling this version of \a when_all where the input container is
@@ -104,7 +104,7 @@ namespace hpx {
     /// \return   Returns a future holding the same list of futures as has
     ///           been passed to \a when_all_n.
     ///           - future<Container<future<R>>>: If the input cardinality is
-    ///             unknown at compile time and the futures are all of the
+    ///             unknown at compile time and the futures are all have the
     ///             same type. The order of the futures in the output vector
     ///             will be the same as given by the input iterator.
     ///
@@ -116,7 +116,7 @@ namespace hpx {
     ///
     /// \note     As long as \a ec is not pre-initialized to \a hpx::throws this
     ///           function doesn't throw but returns the result code using the
-    ///           parameter \a ec. Otherwise it throws an instance of
+    ///           parameter \a ec. Otherwise, it throws an instance of
     ///           hpx::exception.
     ///
     /// \note     None of the futures in the input sequence are invalidated.
@@ -129,20 +129,11 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
-#include <hpx/allocator_support/thread_local_caching_allocator.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/functional/tag_invoke.hpp>
-#include <hpx/futures/detail/future_data.hpp>
-#include <hpx/futures/detail/future_transforms.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/acquire_future.hpp>
-#include <hpx/futures/traits/acquire_shared_state.hpp>
-#include <hpx/futures/traits/future_access.hpp>
-#include <hpx/futures/traits/future_traits.hpp>
-#include <hpx/futures/traits/is_future.hpp>
-#include <hpx/futures/traits/is_future_range.hpp>
-#include <hpx/pack_traversal/pack_traversal_async.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/concurrency.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/pack_traversal.hpp>
 
 #include <cstddef>
 #include <iterator>
@@ -201,14 +192,16 @@ namespace hpx::lcos::detail {
             return async_visit_future(HPX_FORWARD(T, current));
         }
 
+        // clang-format off
         template <typename T, typename N>
         auto operator()(hpx::util::async_traverse_detach_tag, T&& current,
             N&& next) -> decltype(async_detach_future(HPX_FORWARD(T, current),
-            HPX_FORWARD(N, next)))
+                          HPX_FORWARD(N, next)))
         {
             return async_detach_future(
                 HPX_FORWARD(T, current), HPX_FORWARD(N, next));
         }
+        // clang-format on
 
         template <typename T>
         void operator()(hpx::util::async_traverse_complete_tag, T&& pack)
@@ -226,7 +219,8 @@ namespace hpx::lcos::detail {
         using frame_type = async_when_all_frame<result_type>;
         using no_addref = typename frame_type::base_type::init_no_addref;
 
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
+        using allocator_type = hpx::util::thread_local_caching_allocator<
+            hpx::lockfree::variable_size_stack,
             hpx::util::internal_allocator<>>;
         auto frame = hpx::util::traverse_pack_async_allocator(allocator_type{},
             hpx::util::async_traverse_in_place_tag<frame_type>{}, no_addref{},
@@ -240,13 +234,12 @@ namespace hpx::lcos::detail {
 namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct when_all_t final : hpx::functional::tag<when_all_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct when_all_t final
     {
-    private:
         // different versions of clang-format disagree
         // clang-format off
         template <typename... Args>
-        friend auto tag_invoke(when_all_t, Args&&... args) -> decltype(
+        auto operator()(Args&&... args) const -> decltype(
             hpx::lcos::detail::when_all_impl(HPX_FORWARD(Args, args)...))
         // clang-format on
         {
@@ -256,8 +249,7 @@ namespace hpx {
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend decltype(auto) tag_invoke(
-            when_all_t, Iterator begin, Iterator end)
+        decltype(auto) operator()(Iterator begin, Iterator end) const
         {
             using container_type = std::vector<
                 hpx::lcos::detail::future_iterator_traits_t<Iterator>>;
@@ -266,22 +258,19 @@ namespace hpx {
                     container_type>(begin, end));
         }
 
-        friend auto tag_invoke(when_all_t)
+        auto operator()() const
         {
             return hpx::make_ready_future(hpx::tuple<>());
         }
     } when_all{};
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct when_all_n_t final
-      : hpx::functional::tag<when_all_n_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct when_all_n_t final
     {
-    private:
         template <typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend decltype(auto) tag_invoke(
-            when_all_n_t, Iterator begin, std::size_t count)
+        decltype(auto) operator()(Iterator begin, std::size_t count) const
         {
             using container_type = std::vector<
                 hpx::lcos::detail::future_iterator_traits_t<Iterator>>;
@@ -291,26 +280,5 @@ namespace hpx {
         }
     } when_all_n{};
 }    // namespace hpx
-
-namespace hpx::lcos {
-
-    template <typename... Args>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_all is deprecated. Use hpx::when_all instead.")
-    auto when_all(Args&&... args)
-    {
-        return hpx::when_all(HPX_FORWARD(Args, args)...);
-    }
-
-    template <typename Iterator,
-        typename Enable =
-            std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::when_all_n is deprecated. Use hpx::when_all_n instead.")
-    auto when_all_n(Iterator begin, std::size_t count)
-    {
-        return hpx::when_all(begin, count);
-    }
-}    // namespace hpx::lcos
 
 #endif    // DOXYGEN

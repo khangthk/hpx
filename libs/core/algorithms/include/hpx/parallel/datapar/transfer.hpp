@@ -9,10 +9,8 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR)
-#include <hpx/execution/traits/is_execution_policy.hpp>
-#include <hpx/executors/datapar/execution_policy.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/functional/tag_invoke.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
 #include <hpx/parallel/datapar/transform_loop.hpp>
 #include <hpx/parallel/util/result_types.hpp>
 #include <hpx/parallel/util/transfer.hpp>
@@ -21,11 +19,12 @@
 #include <type_traits>
 #include <utility>
 
-namespace hpx { namespace parallel { namespace util {
+namespace hpx::parallel::util {
 
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
-        template <typename Iterator>
+
+        HPX_CXX_CORE_EXPORT template <typename Iterator>
         struct datapar_copy_n
         {
             template <typename InIter, typename OutIter>
@@ -38,7 +37,7 @@ namespace hpx { namespace parallel { namespace util {
             {
                 auto ret =
                     util::transform_loop_n_ind<hpx::execution::simd_policy>(
-                        first, count, dest, [](auto& v) { return v; });
+                        first, count, dest, [](auto&& v) { return v; });
 
                 return util::in_out_result<InIter, OutIter>{
                     HPX_MOVE(ret.first), HPX_MOVE(ret.second)};
@@ -58,14 +57,16 @@ namespace hpx { namespace parallel { namespace util {
         };
     }    // namespace detail
 
-    template <typename ExPolicy, typename InIter, typename OutIter>
+    HPX_CXX_CORE_EXPORT template <typename ExPolicy, typename InIter,
+        typename OutIter>
     HPX_HOST_DEVICE HPX_FORCEINLINE
         typename std::enable_if<hpx::is_vectorpack_execution_policy_v<ExPolicy>,
             in_out_result<InIter, OutIter>>::type
-        tag_invoke(hpx::parallel::util::copy_n_t<ExPolicy>, InIter first,
+        hpx_invoke(hpx::parallel::util::copy_n_t<ExPolicy>, InIter first,
             std::size_t count, OutIter dest)
     {
         return detail::datapar_copy_n<InIter>::call(first, count, dest);
     }
-}}}    // namespace hpx::parallel::util
+}    // namespace hpx::parallel::util
+
 #endif

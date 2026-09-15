@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Bryce Lelbach & Katelyn Kufahl
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2015 Anton Bikineev
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -9,32 +9,28 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_NETWORKING)
-#include <hpx/actions_base/actions_base_support.hpp>
-#include <hpx/actions_base/plain_action.hpp>
-#include <hpx/agas/addressing_service.hpp>
-#include <hpx/agas_base/detail/hosted_component_namespace.hpp>
-#include <hpx/agas_base/detail/hosted_locality_namespace.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/put_parcel.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/components_base/server/managed_component_base.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/functional/bind_front.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/agas.hpp>
 #include <hpx/modules/agas_base.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/format.hpp>
-#include <hpx/parcelset/detail/parcel_await.hpp>
-#include <hpx/parcelset_base/parcel_interface.hpp>
-#include <hpx/parcelset_base/parcelport.hpp>
-#include <hpx/runtime_configuration/runtime_configuration.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/parcelset.hpp>
+#include <hpx/modules/parcelset_base.hpp>
+#include <hpx/modules/runtime_configuration.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/static_reinit.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/topology.hpp>
+
 #include <hpx/runtime_distributed.hpp>
 #include <hpx/runtime_distributed/big_boot_barrier.hpp>
 #include <hpx/runtime_distributed/runtime_fwd.hpp>
-#include <hpx/serialization/detail/polymorphic_id_factory.hpp>
-#include <hpx/serialization/vector.hpp>
-#include <hpx/static_reinit/reinitializable_static.hpp>
-#include <hpx/timing/high_resolution_clock.hpp>
-#include <hpx/topology/topology.hpp>
-#include <hpx/util/from_string.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -48,10 +44,7 @@
 #include <utility>
 #include <vector>
 
-namespace hpx::detail {
-
-    std::string get_locality_base_name();
-}
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::parcelset {
 
@@ -63,8 +56,7 @@ namespace hpx::agas::detail {
 
     void register_unassigned_typenames()
     {
-        // supposed to be run on locality 0 before
-        // before locality communication
+        // supposed to be run on locality 0 locality communication
         hpx::serialization::detail::id_registry& serialization_registry =
             hpx::serialization::detail::id_registry::instance();
 
@@ -85,7 +77,7 @@ namespace hpx::agas::detail {
                 hpx::serialization::detail::id_registry::instance()
                     .get_unassigned_typenames())
           , action_typenames(hpx::actions::detail::action_registry::instance()
-                                 .get_unassigned_typenames())
+                    .get_unassigned_typenames())
         {
         }
 
@@ -143,7 +135,7 @@ namespace hpx::agas::detail {
                     hpx::serialization::detail::id_registry::instance();
                 std::uint32_t max_id = registry.get_max_registered_id();
 
-                for (const std::string& s :
+                for (std::string const& s :
                     unassigned_ids.serialization_typenames)
                 {
                     std::uint32_t id = registry.try_get_id(s);
@@ -162,7 +154,7 @@ namespace hpx::agas::detail {
                     hpx::actions::detail::action_registry::instance();
                 std::uint32_t max_id = registry.max_id_;
 
-                for (const std::string& s : unassigned_ids.action_typenames)
+                for (std::string const& s : unassigned_ids.action_typenames)
                 {
                     std::uint32_t id = registry.try_get_id(s);
                     if (id == hpx::actions::detail::action_registry::invalid_id)
@@ -186,7 +178,7 @@ namespace hpx::agas::detail {
                 // Yes, we look up the unassigned typenames twice, but this allows
                 // to avoid using globals and protects from race conditions during
                 // de-serialization.
-                std::vector<std::string> typenames =
+                std::vector<std::string> const typenames =
                     registry.get_unassigned_typenames();
 
                 // we should have received as many ids as we have unassigned names
@@ -209,7 +201,7 @@ namespace hpx::agas::detail {
                 // Yes, we look up the unassigned typenames twice, but this allows
                 // to avoid using globals and protects from race conditions during
                 // de-serialization.
-                std::vector<std::string> typenames =
+                std::vector<std::string> const typenames =
                     registry.get_unassigned_typenames();
 
                 // we should have received as many ids as we have unassigned names
@@ -235,8 +227,8 @@ namespace hpx::agas {
 
     template <typename Action, typename... Args>
     void big_boot_barrier::apply(std::uint32_t source_locality_id,
-        std::uint32_t target_locality_id, parcelset::locality dest, Action act,
-        Args&&... args)
+        std::uint32_t const target_locality_id, parcelset::locality dest,
+        Action act, Args&&... args)
     {    // {{{
         HPX_ASSERT(pp);
         naming::address addr(
@@ -265,7 +257,8 @@ namespace hpx::agas {
     template <typename Action, typename... Args>
     void big_boot_barrier::apply_late(std::uint32_t /* source_locality_id */
         ,
-        std::uint32_t target_locality_id, parcelset::locality const& /* dest */
+        std::uint32_t const target_locality_id,
+        parcelset::locality const& /* dest */
         ,
         Action act, Args&&... args)
     {    // {{{
@@ -295,21 +288,15 @@ namespace hpx::agas {
     // (first round trip)
     struct registration_header
     {
-        registration_header()
-          : primary_ns_ptr(nullptr)
-          , symbol_ns_ptr(nullptr)
-          , cores_needed(0)
-          , num_threads(0)
-        {
-        }
+        registration_header() = default;
 
-        // TODO: pass head address as a GVA
         registration_header(parcelset::endpoints_type const& endpoints_,
-            naming::address_type primary_ns_ptr_,
-            naming::address_type symbol_ns_ptr_, std::uint32_t cores_needed_,
-            std::uint32_t num_threads_, std::string const& hostname_,
+            naming::address_type const primary_ns_ptr_,
+            naming::address_type const symbol_ns_ptr_,
+            std::uint32_t const cores_needed_, std::uint32_t const num_threads_,
+            std::string const& hostname_,
             detail::unassigned_typename_sequence const& typenames_,
-            naming::gid_type prefix_ = naming::gid_type())
+            naming::gid_type prefix_, bool is_connecting_)
           : endpoints(endpoints_)
           , primary_ns_ptr(primary_ns_ptr_)
           , symbol_ns_ptr(symbol_ns_ptr_)
@@ -318,20 +305,22 @@ namespace hpx::agas {
           , hostname(hostname_)
           , typenames(typenames_)
           , prefix(prefix_)
+          , is_connecting(is_connecting_)
         {
         }
 
         parcelset::endpoints_type endpoints;
-        naming::address_type primary_ns_ptr;
-        naming::address_type symbol_ns_ptr;
-        std::uint32_t cores_needed;
-        std::uint32_t num_threads;
+        naming::address_type primary_ns_ptr = nullptr;
+        naming::address_type symbol_ns_ptr = nullptr;
+        std::uint32_t cores_needed = 0;
+        std::uint32_t num_threads = 0;
         std::string hostname;    // hostname of locality
         detail::unassigned_typename_sequence typenames;
         naming::gid_type prefix;    // suggested prefix (optional)
+        bool is_connecting = false;
 
         template <typename Archive>
-        void serialize(Archive& ar, const unsigned int)
+        void serialize(Archive& ar, unsigned int const)
         {
             // clang-format off
             ar & endpoints;
@@ -349,6 +338,7 @@ namespace hpx::agas {
             ar & hostname;
             ar & typenames;
             ar & prefix;
+            ar & is_connecting;
             // clang-format on
         }
     };
@@ -357,11 +347,7 @@ namespace hpx::agas {
     // is trying to register (first roundtrip).
     struct notification_header
     {
-        notification_header()
-          : num_localities(0)
-          , used_cores(0)
-        {
-        }
+        notification_header() = default;
 
         notification_header(naming::gid_type const& prefix_,
             parcelset::locality const& agas_locality_,
@@ -369,7 +355,8 @@ namespace hpx::agas {
             naming::address const& primary_ns_address_,
             naming::address const& component_ns_address_,
             naming::address const& symbol_ns_address_,
-            std::uint32_t num_localities_, std::uint32_t used_cores_,
+            std::uint32_t const num_localities_,
+            std::uint32_t const used_cores_,
             parcelset::endpoints_type const& agas_endpoints_,
             detail::assigned_id_sequence const& ids_)
           : prefix(prefix_)
@@ -391,14 +378,14 @@ namespace hpx::agas {
         naming::address primary_ns_address;
         naming::address component_ns_address;
         naming::address symbol_ns_address;
-        std::uint32_t num_localities;
-        std::uint32_t used_cores;
+        std::uint32_t num_localities = 0;
+        std::uint32_t used_cores = 0;
         parcelset::endpoints_type agas_endpoints;
         detail::assigned_id_sequence ids;
         std::vector<parcelset::endpoints_type> endpoints;
 
         template <typename Archive>
-        void serialize(Archive& ar, const unsigned int)
+        void serialize(Archive& ar, unsigned int const)
         {
             // clang-format off
             ar & prefix;
@@ -435,8 +422,11 @@ namespace hpx::agas {
 using hpx::agas::notify_worker_action;
 using hpx::agas::register_worker_action;
 
-HPX_ACTION_HAS_CRITICAL_PRIORITY(register_worker_action)
-HPX_ACTION_HAS_CRITICAL_PRIORITY(notify_worker_action)
+// The two startup actions acquire a lock on the big boot barrier spanning
+// possible suspensions. Using thread_priority::bound ensures that the lock is
+// released by the same thread that acquired it.
+HPX_ACTION_HAS_BOUND_PRIORITY(register_worker_action)
+HPX_ACTION_HAS_BOUND_PRIORITY(notify_worker_action)
 
 HPX_REGISTER_ACTION_ID(register_worker_action, register_worker_action,
     hpx::actions::register_worker_action_id)
@@ -452,7 +442,7 @@ namespace hpx::agas {
         // its dtor calls big_boot_barrier::notify().
         big_boot_barrier::scoped_lock lock(get_big_boot_barrier());
 
-        naming::resolver_client& agas_client = naming::get_agas_client();
+        agas::addressing_service& agas_client = naming::get_agas_client();
 
         if (HPX_UNLIKELY(agas_client.is_connecting()))
         {
@@ -477,11 +467,10 @@ namespace hpx::agas {
                 "worker node ({}) can't suggest locality_id zero, "
                 "this is reserved for the console",
                 header.endpoints);
-            return;
         }
 
-        if (!agas_client.register_locality(
-                header.endpoints, prefix, header.num_threads))
+        if (!agas_client.register_locality(header.endpoints, prefix,
+                header.num_threads, header.is_connecting))
         {
             HPX_THROW_EXCEPTION(hpx::error::internal_server_error,
                 "agas::register_worker",
@@ -518,12 +507,11 @@ namespace hpx::agas {
 
         parcelset::locality dest;
         parcelset::locality here = bbb.here();
-        for (parcelset::endpoints_type::value_type const& loc :
-            header.endpoints)
+        for (auto const& endpoint : header.endpoints | std::views::values)
         {
-            if (loc.second.type() == here.type())
+            if (endpoint.type() == here.type())
             {
-                dest = loc.second;
+                dest = endpoint;
                 break;
             }
         }
@@ -532,8 +520,6 @@ namespace hpx::agas {
         bbb.add_locality_endpoints(
             naming::get_locality_id_from_gid(prefix), header.endpoints);
 
-        // TODO: Handle cases where localities try to connect to AGAS while it's
-        // shutting down.
         if (agas_client.get_status() != hpx::state::starting)
         {
             // We can just send the parcel now, the connecting locality isn't a part
@@ -570,7 +556,7 @@ namespace hpx::agas {
         header.ids.register_ids_on_worker_loc();
 
         runtime_distributed& rt = get_runtime_distributed();
-        naming::resolver_client& agas_client = naming::get_agas_client();
+        agas::addressing_service& agas_client = naming::get_agas_client();
 
         if (HPX_UNLIKELY(agas_client.get_status() != hpx::state::starting))
         {
@@ -604,7 +590,7 @@ namespace hpx::agas {
             rt.get_runtime_support_lva());
         agas_client.bind_local(runtime_support_gid, runtime_support_address);
 
-        runtime_support_gid.set_lsb(std::uint64_t(0));
+        runtime_support_gid.set_lsb(static_cast<std::uint64_t>(0));
         agas_client.bind_local(runtime_support_gid, runtime_support_address);
 
         // Assign the initial parcel gid range to the parcelport.
@@ -613,8 +599,14 @@ namespace hpx::agas {
         // store number of initial localities
         cfg.set_num_localities(header.num_localities);
 
+        // prevent adding a core-offset if the user provided explicit affinity
+        // bindings
+        bool const explicit_core_assignment =
+            cfg.get_entry("hpx.bind-provided", "0") != "0";
+
         // store number of used cores by other localities
-        cfg.set_first_used_core(header.used_cores);
+        cfg.set_first_used_core(
+            explicit_core_assignment ? 0 : header.used_cores);
         rt.assign_cores();
 
         // pre-cache all known locality endpoints in local AGAS
@@ -622,8 +614,9 @@ namespace hpx::agas {
     }
     // }}}
 
-    void big_boot_barrier::apply_notification(std::uint32_t source_locality_id,
-        std::uint32_t target_locality_id, parcelset::locality const& dest,
+    void big_boot_barrier::apply_notification(
+        std::uint32_t const source_locality_id,
+        std::uint32_t const target_locality_id, parcelset::locality const& dest,
         notification_header&& hdr)
     {
         hdr.endpoints = localities;
@@ -631,7 +624,8 @@ namespace hpx::agas {
             notify_worker_action(), HPX_MOVE(hdr));
     }
 
-    void big_boot_barrier::add_locality_endpoints(std::uint32_t locality_id,
+    void big_boot_barrier::add_locality_endpoints(
+        std::uint32_t const locality_id,
         parcelset::endpoints_type const& endpoints_data)
     {
         if (localities.size() < static_cast<std::size_t>(locality_id) + 1)
@@ -652,7 +646,7 @@ namespace hpx::agas {
         // pre-cache all known locality endpoints in local AGAS on locality 0 as well
         if (service_mode::bootstrap == service_type)
         {
-            naming::resolver_client& agas_client = naming::get_agas_client();
+            agas::addressing_service& agas_client = naming::get_agas_client();
             agas_client.pre_cache_endpoints(localities);
         }
     }
@@ -660,12 +654,12 @@ namespace hpx::agas {
     inline std::size_t get_number_of_bootstrap_connections(
         util::runtime_configuration const& ini)
     {
-        service_mode service_type = ini.get_agas_service_mode();
+        service_mode const service_type = ini.get_agas_service_mode();
         std::size_t result = 1;
 
         if (service_mode::bootstrap == service_type)
         {
-            std::size_t num_localities =
+            std::size_t const num_localities =
                 static_cast<std::size_t>(ini.get_num_localities());
             result = num_localities ? num_localities - 1 : 0;
         }
@@ -704,16 +698,16 @@ namespace hpx::agas {
 
     namespace detail {
 
-        std::uint32_t get_number_of_pus_in_cores(std::uint32_t num_cores)
+        std::uint32_t get_number_of_pus_in_cores(std::uint32_t const num_cores)
         {
-            threads::topology& top = threads::create_topology();
+            threads::topology const& top = threads::create_topology();
 
             std::uint32_t num_pus = 0;
             for (std::uint32_t i = 0; i != num_cores; ++i)
             {
-                std::uint32_t num_pus_core = static_cast<std::uint32_t>(
-                    top.get_number_of_core_pus(std::size_t(i)));
-                if (num_pus_core == ~std::uint32_t(0))
+                std::uint32_t const num_pus_core = static_cast<std::uint32_t>(
+                    top.get_number_of_core_pus(static_cast<std::size_t>(i)));
+                if (num_pus_core == ~static_cast<std::uint32_t>(0))
                     return num_cores;    // assume one pu per core
 
                 num_pus += num_pus_core;
@@ -724,8 +718,9 @@ namespace hpx::agas {
     }    // namespace detail
 
     void big_boot_barrier::wait_hosted(std::string const& locality_name,
-        naming::address::address_type primary_ns_server,
-        naming::address::address_type symbol_ns_server)
+        naming::address::address_type const& primary_ns_server,
+        naming::address::address_type const& symbol_ns_server,
+        bool is_connecting)
     {    // {{{
         HPX_ASSERT(service_mode::bootstrap != service_type);
 
@@ -737,13 +732,13 @@ namespace hpx::agas {
 
         // get the number of cores we need for our locality. This respects the
         // affinity description. Cores that are partially used are counted as well
-        std::uint32_t cores_needed = rt.assign_cores();
-        std::uint32_t num_threads =
-            std::uint32_t(rt.get_config().get_os_thread_count());
+        std::uint32_t const cores_needed = rt.assign_cores();
+        std::uint32_t const num_threads =
+            static_cast<std::uint32_t>(rt.get_config().get_os_thread_count());
 
         naming::gid_type suggested_prefix;
 
-        std::string locality_str =
+        std::string const locality_str =
             rt.get_config().get_entry("hpx.locality", "-1");
         if (locality_str != "-1")
         {
@@ -752,12 +747,12 @@ namespace hpx::agas {
         }
 
         // pre-load all unassigned ids
-        detail::unassigned_typename_sequence unassigned(true);
+        detail::unassigned_typename_sequence const unassigned(true);
 
         // contact the bootstrap AGAS node
         registration_header hdr(parcelset::get_parcel_handler().endpoints(),
             primary_ns_server, symbol_ns_server, cores_needed, num_threads,
-            locality_name, unassigned, suggested_prefix);
+            locality_name, unassigned, suggested_prefix, is_connecting);
 
         // random first parcel id
         apply(static_cast<std::uint32_t>(std::random_device{}()), 0,
@@ -774,7 +769,7 @@ namespace hpx::agas {
 #endif
     void big_boot_barrier::notify()
     {
-        naming::resolver_client& agas_client = naming::get_agas_client();
+        agas::addressing_service const& agas_client = naming::get_agas_client();
 
         bool notify = false;
         {

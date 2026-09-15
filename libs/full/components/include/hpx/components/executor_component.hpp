@@ -1,4 +1,4 @@
-//  Copyright (c) 2017-2024 Hartmut Kaiser
+//  Copyright (c) 2017-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,14 +7,12 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/components_base/get_lva.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/threading_base/annotated_function.hpp>
-#include <hpx/threading_base/thread_description.hpp>
-#include <hpx/threading_base/thread_init_data.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <type_traits>
 #include <utility>
@@ -23,7 +21,7 @@ namespace hpx::components {
 
     // This is a base class which allows to associate the execution of all
     // actions for a particular component instance with a given executor.
-    template <typename Executor, typename BaseComponent>
+    HPX_CXX_EXPORT template <typename Executor, typename BaseComponent>
     struct executor_component : BaseComponent
     {
     private:

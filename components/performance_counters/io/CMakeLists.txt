@@ -23,10 +23,16 @@ if(HPX_WITH_IO_COUNTERS)
     INSTALL_COMPONENT runtime
     HEADER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include"
     HEADERS ${io_counters_headers}
-    PREPEND_SOURCE_ROOT
+    PREPEND_SOURCE_ROOT ${HPX_WITH_UNITY_BUILD_OPTION}
+    ${HPX_WITH_CXX_MODULES_OPTION}
     SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    SOURCES ${io_counters_sources} ${HPX_WITH_UNITY_BUILD_OPTION}
+    SOURCES ${io_counters_sources}
   )
+
+  # see #6579
+  if(MSVC AND Boost_VERSION_STRING VERSION_LESS "1.79.0")
+    target_compile_definitions(io_counters_component PRIVATE NOMINMAX)
+  endif()
 
   add_hpx_pseudo_dependencies(
     components.performance_counters.io io_counters_component

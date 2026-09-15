@@ -45,7 +45,7 @@ namespace hpx::parallel::traits {
     }    // namespace detail
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T, std::size_t N, typename Abi>
+    HPX_CXX_CORE_EXPORT template <typename T, std::size_t N, typename Abi>
     struct vector_pack_type : detail::vector_pack_type<T, N, Abi>
     {
     };

@@ -6,5 +6,5 @@
 
 #pragma once
 
-#include <hpx/synchronization/binary_semaphore.hpp>
-#include <hpx/synchronization/counting_semaphore.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/synchronization.hpp>

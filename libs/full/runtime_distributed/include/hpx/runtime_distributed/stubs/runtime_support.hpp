@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,15 +8,16 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/async_colocated/async_colocated_fwd.hpp>
-#include <hpx/components_base/component_type.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/ini/ini.hpp>
+#include <hpx/modules/async_colocated.hpp>
+#include <hpx/modules/components_base.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/naming_base/id_type.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/ini.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/runtime_distributed/server/runtime_support.hpp>
-#include <hpx/serialization/vector.hpp>
-#include <hpx/type_support/decay.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -25,12 +26,12 @@
 #include <utility>
 #include <vector>
 
-namespace hpx { namespace components { namespace stubs {
+namespace hpx::components::stubs {
 
     ///////////////////////////////////////////////////////////////////////////
     // The \a runtime_support class is the client side representation of a
     // \a server#runtime_support component
-    struct HPX_EXPORT runtime_support
+    HPX_CXX_EXPORT struct HPX_EXPORT runtime_support
     {
         ///////////////////////////////////////////////////////////////////////
         /// Create a new component \a type using the runtime_support with the
@@ -47,12 +48,10 @@ namespace hpx { namespace components { namespace stubs {
                     "stubs::runtime_support::create_component_async",
                     "The id passed as the first argument is not representing"
                     " a locality");
-                return hpx::make_ready_future(hpx::invalid_id);
             }
 
-            typedef server::create_component_action<Component,
-                typename std::decay<Ts>::type...>
-                action_type;
+            using action_type =
+                server::create_component_action<Component, std::decay_t<Ts>...>;
             return hpx::async<action_type>(gid, HPX_FORWARD(Ts, vs)...);
         }
 
@@ -68,36 +67,35 @@ namespace hpx { namespace components { namespace stubs {
         }
 
         /// Create multiple new components \a type using the runtime_support
-        /// colocated with the with the given \a targetgid. This is a
+        /// colocated with the given \a targetgid. This is a
         /// non-blocking call.
-        template <typename Component, typename... Ts>
+        template <bool WithCount, typename Component, typename... Ts>
         static hpx::future<std::vector<hpx::id_type>>
         bulk_create_component_colocated_async(
             hpx::id_type const& gid, std::size_t count, Ts&&... vs)
         {
-            typedef server::bulk_create_component_action<Component,
-                typename std::decay<Ts>::type...>
-                action_type;
+            using action_type = server::bulk_create_component_action<WithCount,
+                Component, std::decay_t<Ts>...>;
 
             return hpx::detail::async_colocated<action_type>(
                 gid, count, HPX_FORWARD(Ts, vs)...);
         }
 
         /// Create multiple new components \a type using the runtime_support
-        /// colocated with the with the given \a targetgid. Block for the
+        /// colocated with the given \a targetgid. Block for the
         /// creation to finish.
-        template <typename Component, typename... Ts>
+        template <bool WithCount, typename Component, typename... Ts>
         static std::vector<hpx::id_type> bulk_create_component_colocated(
             hpx::id_type const& gid, std::size_t count, Ts&&... vs)
         {
-            return bulk_create_component_colocated_async<Component>(
+            return bulk_create_component_colocated_async<WithCount, Component>(
                 gid, count, HPX_FORWARD(Ts, vs)...)
                 .get();
         }
 
         /// Create multiple new components \a type using the runtime_support
         /// on the given locality. This is a  non-blocking call.
-        template <typename Component, typename... Ts>
+        template <bool WithCount, typename Component, typename... Ts>
         static hpx::future<std::vector<hpx::id_type>>
         bulk_create_component_async(
             hpx::id_type const& gid, std::size_t count, Ts&&... vs)
@@ -108,22 +106,20 @@ namespace hpx { namespace components { namespace stubs {
                     "stubs::runtime_support::bulk_create_component_async",
                     "The id passed as the first argument is not representing"
                     " a locality");
-                return hpx::make_ready_future(std::vector<hpx::id_type>());
             }
 
-            typedef server::bulk_create_component_action<Component,
-                typename std::decay<Ts>::type...>
-                action_type;
+            using action_type = server::bulk_create_component_action<WithCount,
+                Component, std::decay_t<Ts>...>;
             return hpx::async<action_type>(gid, count, HPX_FORWARD(Ts, vs)...);
         }
 
         /// Create multiple new components \a type using the runtime_support
         /// on the given locality. Block for the creation to finish.
-        template <typename Component, typename... Ts>
+        template <bool WithCount, typename Component, typename... Ts>
         static std::vector<hpx::id_type> bulk_create_component(
             hpx::id_type const& gid, std::size_t count, Ts&&... vs)
         {
-            return bulk_create_component_async<Component>(
+            return bulk_create_component_async<WithCount, Component>(
                 gid, count, HPX_FORWARD(Ts, vs)...)
                 .get();
         }
@@ -136,9 +132,8 @@ namespace hpx { namespace components { namespace stubs {
         static hpx::future<hpx::id_type> create_component_colocated_async(
             hpx::id_type const& gid, Ts&&... vs)
         {
-            typedef server::create_component_action<Component,
-                typename std::decay<Ts>::type...>
-                action_type;
+            using action_type =
+                server::create_component_action<Component, std::decay_t<Ts>...>;
             return hpx::detail::async_colocated<action_type>(
                 gid, HPX_FORWARD(Ts, vs)...);
         }
@@ -167,11 +162,9 @@ namespace hpx { namespace components { namespace stubs {
                     "stubs::runtime_support::copy_create_component_async",
                     "The id passed as the first argument is not representing"
                     " a locality");
-                return hpx::make_ready_future(hpx::invalid_id);
             }
 
-            typedef typename server::copy_create_component_action<Component>
-                action_type;
+            using action_type = server::copy_create_component_action<Component>;
             return hpx::async<action_type>(gid, p, local_op);
         }
 
@@ -198,11 +191,10 @@ namespace hpx { namespace components { namespace stubs {
                     "stubs::runtime_support::migrate_component_async",
                     "The id passed as the first argument is not representing"
                     " a locality");
-                return hpx::make_ready_future(hpx::invalid_id);
             }
 
-            typedef typename server::migrate_component_here_action<Component>
-                action_type;
+            using action_type =
+                server::migrate_component_here_action<Component>;
             return hpx::async<action_type>(target_locality, p, to_migrate);
         }
 
@@ -211,8 +203,8 @@ namespace hpx { namespace components { namespace stubs {
             DistPolicy const& policy, std::shared_ptr<Component> const& p,
             hpx::id_type const& to_migrate)
         {
-            typedef typename server::migrate_component_here_action<Component>
-                action_type;
+            using action_type =
+                server::migrate_component_here_action<Component>;
             return hpx::async<action_type>(policy, p, to_migrate);
         }
 
@@ -236,10 +228,10 @@ namespace hpx { namespace components { namespace stubs {
             hpx::id_type const& gid, bool pre_startup);
 
         /// \brief Shutdown the given runtime system
-        static hpx::future<void> shutdown_async(
-            hpx::id_type const& targetgid, double timeout = -1);
-        static void shutdown(
-            hpx::id_type const& targetgid, double timeout = -1);
+        static hpx::future<void> shutdown_async(hpx::id_type const& targetid,
+            double timeout = -1, bool force_disconnect = false);
+        static void shutdown(hpx::id_type const& targetgid, double timeout = -1,
+            bool force_disconnect = false);
 
         /// \brief Shutdown the runtime systems of all localities
         static void shutdown_all(
@@ -269,9 +261,10 @@ namespace hpx { namespace components { namespace stubs {
 
         ///////////////////////////////////////////////////////////////////////
         static hpx::future<hpx::id_type> create_performance_counter_async(
-            hpx::id_type targetgid,
+            hpx::id_type const& targetgid,
             performance_counters::counter_info const& info);
-        static hpx::id_type create_performance_counter(hpx::id_type targetgid,
+        static hpx::id_type create_performance_counter(
+            hpx::id_type const& targetgid,
             performance_counters::counter_info const& info,
             error_code& ec = throws);
 
@@ -287,4 +280,4 @@ namespace hpx { namespace components { namespace stubs {
             hpx::id_type const& target, naming::gid_type const& gid,
             parcelset::endpoints_type const& endpoints);
     };
-}}}    // namespace hpx::components::stubs
+}    // namespace hpx::components::stubs

@@ -94,8 +94,8 @@ namespace sheneos {
             // Unregister all symbolic names.
             for (std::size_t i = 0; i < partitions_.size(); ++i)
             {
-                hpx::agas::unregister_name(hpx::launch::sync,
-                    data.symbolic_name_ + std::to_string(i++));
+                hpx::agas::unregister_name(
+                    hpx::launch::sync, data.symbolic_name_ + std::to_string(i));
             }
         }
     }
@@ -385,8 +385,8 @@ namespace sheneos {
                 context_data& d = p.second;
                 lazy_results.push_back(hpx::async<action_type>(
                     p.first, std::move(d.coords_), eosvalue)
-                                           .then(on_completed_bulk_one(
-                                               partitions, d, overall_result)));
+                        .then(on_completed_bulk_one(
+                            partitions, d, overall_result)));
             }
 
             // wait for all asynchronous operations to complete
@@ -498,8 +498,8 @@ namespace sheneos {
                 context_data& d = p.second;
                 lazy_results.push_back(hpx::async<action_type>(
                     p.first, std::move(d.coords_), eosvalues)
-                                           .then(on_completed_bulk(partitions,
-                                               d, overall_results)));
+                        .then(
+                            on_completed_bulk(partitions, d, overall_results)));
             }
 
             // wait for all asynchronous operations to complete

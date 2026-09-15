@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2018 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -21,10 +21,10 @@
 #include <hpx/config/debug.hpp>
 #include <hpx/config/deprecation.hpp>
 #include <hpx/config/emulate_deleted.hpp>
+#include <hpx/config/endian.hpp>
 #include <hpx/config/export_definitions.hpp>
 #include <hpx/config/forceinline.hpp>
 #include <hpx/config/forward.hpp>
-#include <hpx/config/lambda_capture_this.hpp>
 #include <hpx/config/manual_profiling.hpp>
 #include <hpx/config/modules_enabled.hpp>
 #include <hpx/config/move.hpp>
@@ -32,15 +32,7 @@
 #include <hpx/config/version.hpp>
 #include <hpx/config/weak_symbol.hpp>
 
-#include <boost/version.hpp>
-
-#if BOOST_VERSION < 107100
-// Please update your Boost installation (see www.boost.org for details).
-#error HPX cannot be compiled with a Boost version earlier than 1.71.0
-#endif
-
-#include <hpx/preprocessor/cat.hpp>
-#include <hpx/preprocessor/stringize.hpp>
+#include <hpx/modules/preprocessor.hpp>
 
 #include <cstddef>
 
@@ -179,6 +171,17 @@
 #  define HPX_AGAS_LOCAL_CACHE_SIZE 4096
 #endif
 
+/// This defines the default AGAS RPC timeout in milliseconds.
+///
+/// This value can be changed at runtime by setting the configuration parameter:
+/// \code
+///   hpx.agas.rpc_timeout = val
+/// \endcode
+/// (or by setting the corresponding environment variable HPX_AGAS_RPC_TIMEOUT)
+#if !defined(HPX_AGAS_RPC_TIMEOUT)
+#  define HPX_AGAS_RPC_TIMEOUT 60000
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////
 #if !defined(HPX_INITIAL_AGAS_MAX_PENDING_REFCNT_REQUESTS)
 #  define HPX_INITIAL_AGAS_MAX_PENDING_REFCNT_REQUESTS 4096
@@ -259,21 +262,29 @@
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////
+#if defined(HPX_DEBUG) && defined(HPX_HAVE_DEBUG_POSTFIX)
+#  define HPX_DEBUG_POSTFIX_STR HPX_PP_STRINGIZE(HPX_HAVE_DEBUG_POSTFIX)
+#else
+#  define HPX_DEBUG_POSTFIX_STR ""
+#endif
+
 #if !defined(HPX_WINDOWS)
-#  if defined(HPX_DEBUG)
-#    define HPX_MAKE_DLL_STRING(n)  "lib" + (n) + "d" + HPX_SHARED_LIB_EXTENSION
+#  if defined(HPX_DEBUG) && defined(HPX_HAVE_DEBUG_POSTFIX)
+#    define HPX_MAKE_DLL_STRING(n)                                             \
+        "lib" + (n) + HPX_DEBUG_POSTFIX_STR + HPX_SHARED_LIB_EXTENSION
 #  else
 #    define HPX_MAKE_DLL_STRING(n)  "lib" + (n) + HPX_SHARED_LIB_EXTENSION
 #  endif
-#elif defined(HPX_DEBUG)
-#  define HPX_MAKE_DLL_STRING(n)   ((n) + "d" + HPX_SHARED_LIB_EXTENSION)
+#elif defined(HPX_DEBUG) && defined(HPX_HAVE_DEBUG_POSTFIX)
+#  define HPX_MAKE_DLL_STRING(n)                                               \
+      ((n) + HPX_DEBUG_POSTFIX_STR + HPX_SHARED_LIB_EXTENSION)
 #else
 #  define HPX_MAKE_DLL_STRING(n)   ((n) + HPX_SHARED_LIB_EXTENSION)
 #endif
 
-#if defined(HPX_DEBUG)
-#  define HPX_MANGLE_NAME(n)     HPX_PP_CAT(n, d)
-#  define HPX_MANGLE_STRING(n)   ((n) + "d")
+#if defined(HPX_DEBUG) && defined(HPX_HAVE_DEBUG_POSTFIX)
+#  define HPX_MANGLE_NAME(n)     HPX_PP_CAT(n, HPX_HAVE_DEBUG_POSTFIX)
+#  define HPX_MANGLE_STRING(n)   ((n) + HPX_DEBUG_POSTFIX_STR)
 #else
 #  define HPX_MANGLE_NAME(n)     n
 #  define HPX_MANGLE_STRING(n)   n
@@ -391,6 +402,12 @@
 // initializing a thread queue.
 #if !defined(HPX_THREAD_QUEUE_INIT_THREADS_COUNT)
 #  define HPX_THREAD_QUEUE_INIT_THREADS_COUNT 10
+#endif
+
+///////////////////////////////////////////////////////////////////////////////
+// Number of thread objects to cache.
+#if !defined(HPX_THREAD_QUEUE_CACHED_THREADS_COUNT)
+#  define HPX_THREAD_QUEUE_CACHED_THREADS_COUNT 1000
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////

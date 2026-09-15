@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,21 +7,18 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/async_base/async.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/async_base/traits/is_launch_policy.hpp>
-#include <hpx/execution/detail/async_launch_policy_dispatch.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/futures/future.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
 
 #include <type_traits>
 #include <utility>
 
 namespace hpx::detail {
 
-    template <typename Func, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Func, typename Enable = void>
     struct async_dispatch_launch_policy_helper;
 
     template <typename Func>
@@ -63,8 +60,9 @@ namespace hpx::detail {
     };
 
     // Launch the given function or function object asynchronously and return a
-    // future allowing to synchronize with the returned result.
-    template <typename Func, typename Enable>
+    // future allowing to synchronize with the returned result. Enable inline
+    // execution by default (uses launch::async).
+    HPX_CXX_CORE_EXPORT template <typename Func, typename Enable>
     struct async_dispatch
     {
         template <typename F, typename... Ts>

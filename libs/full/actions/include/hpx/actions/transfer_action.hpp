@@ -15,18 +15,15 @@
 #include <hpx/actions/post_helper.hpp>
 #include <hpx/actions/register_action.hpp>
 #include <hpx/actions/transfer_base_action.hpp>
-#include <hpx/actions_base/actions_base_support.hpp>
+#include <hpx/modules/actions_base.hpp>
 
 #if defined(HPX_HAVE_NETWORKING)
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/datastructures/serialization/tuple.hpp>
-#include <hpx/serialization/input_archive.hpp>
-#include <hpx/serialization/output_archive.hpp>
-#include <hpx/serialization/serialization_fwd.hpp>
-#include <hpx/serialization/traits/needs_automatic_registration.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/threading_base/thread_init_data.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -39,7 +36,7 @@ namespace hpx::actions {
     /// \cond NOINTERNAL
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action>
+    HPX_CXX_EXPORT template <typename Action>
     struct transfer_action final : transfer_base_action<Action>
     {
         transfer_action(transfer_action const&) = delete;
@@ -171,25 +168,22 @@ namespace hpx::actions {
 
         threads::thread_init_data data;
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
-#if defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0 &&                  \
-    !defined(HPX_HAVE_APEX)
         data.description = threads::thread_description(
             actions::detail::get_action_name<Action>(),
-            actions::detail::get_action_name_itt<Action>());
-#else
-        data.description = actions::detail::get_action_name<Action>();
-#endif
+            actions::detail::get_action_name_tracing<Action>());
 #endif
 #if defined(HPX_HAVE_THREAD_PARENT_REFERENCE)
         data.parent_id = this->parent_id_;
         data.parent_locality_id = this->parent_locality_;
 #endif
-#if defined(HPX_HAVE_APEX)
-        data.timer_data = hpx::util::external_timer::new_task(
-            data.description, data.parent_locality_id, data.parent_id);
-#endif
-        data.priority = this->priority_;
-        data.stacksize = this->stacksize_;
+        data.timer_data = threads::thread_init_data::setup_timer_data(data);
+        data.priority = this->priority_ == threads::thread_priority::default_ ?
+            actions::action_priority<Action>() :
+            this->priority_;
+        data.stacksize =
+            this->stacksize_ == threads::thread_stacksize::default_ ?
+            actions::action_stacksize<Action>() :
+            this->stacksize_;
 
         hpx::detail::post_helper<typename base_type::derived_type>::call(
             HPX_MOVE(data), HPX_MOVE(target), lva, comptype,
@@ -262,12 +256,14 @@ namespace hpx::actions {
 }    // namespace hpx::actions
 
 /// \cond NOINTERNAL
-template <typename Action>
-struct hpx::traits::needs_automatic_registration<
-    hpx::actions::transfer_action<Action>>
-  : needs_automatic_registration<Action>
-{
-};
+namespace hpx::traits {
+
+    template <typename Action>
+    struct needs_automatic_registration<hpx::actions::transfer_action<Action>>
+      : needs_automatic_registration<Action>
+    {
+    };
+}    // namespace hpx::traits
 /// \endcond
 
 #include <hpx/config/warnings_suffix.hpp>

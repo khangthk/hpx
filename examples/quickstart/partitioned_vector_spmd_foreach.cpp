@@ -1,15 +1,15 @@
-//  Copyright (c) 2016-2022 Hartmut Kaiser
+//  Copyright (c) 2016-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
-// The purpose of this example is to demonstrate how the partitioned_vector
-// data structure can be used in an SPMD style way, i.e. how to execute code
-// on each of the localities the partinioned_vector is located. Each locality
-// touches only the elements located on this locality. The access to those
-// elements is done directly, with best possible performance, working directly
-// on the std::vector's the data is stored in.
+// The purpose of this example is to demonstrate how the partitioned_vector data
+// structure can be used in an SPMD style way, i.e. how to execute code on each
+// of the localities the partitioned_vector is located. Each locality touches
+// only the elements located on this locality. The access to those elements is
+// done directly, with the best possible performance, working directly on the
+// std::vector's the data is stored in.
 
 #include <hpx/config.hpp>
 #if !defined(HPX_COMPUTE_DEVICE_CODE)
@@ -146,7 +146,8 @@ int hpx_main(hpx::program_options::variables_map& vm)
                 size, hpx::container_layout(localities));
             v.register_as(example_vector_name);
 
-            l = hpx::distributed::latch(localities.size());
+            l = hpx::distributed::latch(
+                static_cast<std::ptrdiff_t>(localities.size()));
             l.register_as(example_latch_name);
         }
         else

@@ -1,10 +1,14 @@
-//  Copyright (c) 2021 Hartmut Kaiser
+//  Copyright (c) 2021-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 /// \file create_communicator.hpp
+/// \page hpx::collectives::channel_communicator
+/// \page hpx::collectives::create_channel_communicator
+/// \page hpx::collectives::get, hpx::collectives::set
+/// \headerfile hpx/collectives.hpp
 
 #pragma once
 
@@ -37,6 +41,16 @@ namespace hpx { namespace collectives {
     /// \returns    This function returns a future to a new communicator object
     ///             usable with the collective operation.
     ///
+    /// \note       The caller must ensure that the communicator object
+    ///             returned by this function is kept alive (i.e., does not go
+    ///             out of scope) until all participating sites have
+    ///             successfully connected. Destroying the communicator before
+    ///             all sites have reached the creation point may cause the
+    ///             remaining sites to hang indefinitely. Consider using a
+    ///             barrier or similar synchronization mechanism after creating
+    ///             the communicator to ensure all sites are connected before
+    ///             allowing it to be destroyed.
+    ///
     hpx::future<channel_communicator> create_channel_communicator(
         char const* basename,
         num_sites_arg num_sites = num_sites_arg(),
@@ -58,6 +72,16 @@ namespace hpx { namespace collectives {
     ///
     /// \returns    This function returns a new communicator object usable
     ///             with the collective operation.
+    ///
+    /// \note       The caller must ensure that the communicator object
+    ///             returned by this function is kept alive (i.e., does not go
+    ///             out of scope) until all participating sites have
+    ///             successfully connected. Destroying the communicator before
+    ///             all sites have reached the creation point may cause the
+    ///             remaining sites to hang indefinitely. Consider using a
+    ///             barrier or similar synchronization mechanism after creating
+    ///             the communicator to ensure all sites are connected before
+    ///             allowing it to be destroyed.
     ///
     channel_communicator create_channel_communicator(
         hpx::launch::sync_policy, char const* basename,
@@ -104,49 +128,74 @@ namespace hpx { namespace collectives {
 
 #include <hpx/config.hpp>
 
-#if !defined(HPX_COMPUTE_DEVICE_CODE)
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/async_distributed/async.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components.hpp>
+#include <hpx/modules/futures.hpp>
+
 #include <hpx/collectives/argument_types.hpp>
 #include <hpx/collectives/detail/channel_communicator.hpp>
-#include <hpx/components/client.hpp>
-#include <hpx/futures/future.hpp>
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
-#include <vector>
 
-namespace hpx { namespace collectives {
+namespace hpx::collectives {
 
     // forward declarations
-    class channel_communicator;
+    HPX_CXX_EXPORT class channel_communicator;
 
-    template <typename T>
+    HPX_CXX_EXPORT template <typename T>
     hpx::future<T> get(
         channel_communicator, that_site_arg, tag_arg = tag_arg());
 
-    template <typename T>
+    HPX_CXX_EXPORT template <typename T>
+    T get(hpx::launch::sync_policy, channel_communicator, that_site_arg,
+        tag_arg = tag_arg());
+
+    HPX_CXX_EXPORT template <typename T>
     hpx::future<void> set(
         channel_communicator, that_site_arg, T&&, tag_arg = tag_arg());
 
-    class channel_communicator
+    HPX_CXX_EXPORT template <typename T>
+    void set(hpx::launch::sync_policy, channel_communicator, that_site_arg, T&&,
+        tag_arg = tag_arg());
+
+    HPX_CXX_EXPORT class channel_communicator
     {
     private:
         friend HPX_EXPORT hpx::future<channel_communicator>
         create_channel_communicator(char const* basename,
             num_sites_arg num_sites, this_site_arg this_site);
 
+        friend HPX_EXPORT channel_communicator create_channel_communicator(
+            hpx::launch::sync_policy, char const* basename,
+            num_sites_arg num_sites, this_site_arg this_site);
+
         template <typename T>
         friend hpx::future<T> get(channel_communicator, that_site_arg, tag_arg);
+
+        template <typename T>
+        friend T get(hpx::launch::sync_policy, channel_communicator,
+            that_site_arg, tag_arg);
 
         template <typename T>
         friend hpx::future<void> set(
             channel_communicator, that_site_arg, T&&, tag_arg);
 
+        template <typename T>
+        friend void set(hpx::launch::sync_policy, channel_communicator,
+            that_site_arg, T&&, tag_arg);
+
     private:
         HPX_EXPORT channel_communicator(char const* basename,
             num_sites_arg num_sites, this_site_arg this_site,
+            components::client<detail::channel_communicator_server>&& here);
+
+        HPX_EXPORT channel_communicator(hpx::launch::sync_policy,
+            char const* basename, num_sites_arg num_sites,
+            this_site_arg this_site,
             components::client<detail::channel_communicator_server>&& here);
 
     public:
@@ -163,36 +212,113 @@ namespace hpx { namespace collectives {
 
         HPX_EXPORT void free();
 
+        explicit operator bool() const noexcept
+        {
+            return !!comm_;
+        }
+
+        HPX_EXPORT std::pair<num_sites_arg, this_site_arg> get_info()
+            const noexcept;
+
     private:
         std::shared_ptr<detail::channel_communicator> comm_;
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    HPX_EXPORT hpx::future<channel_communicator> create_channel_communicator(
-        char const* basename, num_sites_arg num_sites = num_sites_arg(),
+    HPX_CXX_EXPORT HPX_EXPORT hpx::future<channel_communicator>
+    create_channel_communicator(char const* basename,
+        num_sites_arg num_sites = num_sites_arg(),
         this_site_arg this_site = this_site_arg());
 
-    HPX_EXPORT channel_communicator create_channel_communicator(
+    HPX_CXX_EXPORT HPX_EXPORT channel_communicator create_channel_communicator(
         hpx::launch::sync_policy, char const* basename,
         num_sites_arg num_sites = num_sites_arg(),
         this_site_arg this_site = this_site_arg());
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T>
+    HPX_CXX_EXPORT template <typename T>
     hpx::future<T> get(
-        channel_communicator comm, that_site_arg site, tag_arg tag)
+        channel_communicator const comm, that_site_arg site, tag_arg tag)
     {
-        return comm.comm_->template get<T>(site.argument_, tag.argument_);
+        return comm.comm_->get<T>(site.argument_, tag.argument_);
     }
 
-    template <typename T>
-    hpx::future<void> set(
-        channel_communicator comm, that_site_arg site, T&& value, tag_arg tag)
+    HPX_CXX_EXPORT template <typename T>
+    T get(hpx::launch::sync_policy, channel_communicator const comm,
+        that_site_arg site, tag_arg tag)
+    {
+        return comm.comm_->get<T>(site.argument_, tag.argument_).get();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    HPX_CXX_EXPORT template <typename T>
+    hpx::future<void> set(channel_communicator const comm, that_site_arg site,
+        T&& value, tag_arg tag)
     {
         return comm.comm_->set(
             site.argument_, HPX_FORWARD(T, value), tag.argument_);
     }
-}}    // namespace hpx::collectives
 
-#endif    // !HPX_COMPUTE_DEVICE_CODE
+    HPX_CXX_EXPORT template <typename T>
+    void set(hpx::launch::sync_policy, channel_communicator const comm,
+        that_site_arg site, T&& value, tag_arg tag)
+    {
+        return comm.comm_
+            ->set(site.argument_, HPX_FORWARD(T, value), tag.argument_)
+            .get();
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Predefined p2p communicator (refers to all localities)
+    HPX_CXX_EXPORT HPX_EXPORT channel_communicator
+    get_world_channel_communicator();
+
+    namespace detail {
+
+        HPX_EXPORT void create_world_channel_communicator();
+        HPX_EXPORT void reset_world_channel_communicator();
+
+        ///////////////////////////////////////////////////////////////////////
+        // Returns the channel communicator this site holds under the given
+        // name, creating it on first use and handing out the same one
+        // afterwards. A name plus a site is what identifies a communicator,
+        // because that pair is what it registers under; sites sharing a
+        // process therefore share the name but keep a communicator each.
+        //
+        // A caller that repeats an exchange over one fixed set of sites, and
+        // separates the individual exchanges by tag rather than by name, would
+        // otherwise pay a fresh AGAS registration plus a full peer lookup on
+        // every repetition -- which is the cost such a caller went to the
+        // channel communicator to avoid in the first place.
+        //
+        // The name must therefore identify the group of sites and not one
+        // operation on it: the number of sites is fixed by the first call
+        // that names a communicator, and a later call that disagrees about
+        // it is rejected instead of silently reusing an entry built for
+        // another participant count. The future is shared because the
+        // communicator is, and returning it unwaited keeps an asynchronous
+        // caller asynchronous.
+        //
+        // Entries live until reset_cached_channel_communicators drops them
+        // during runtime shutdown, which is what releases the registered names
+        // while AGAS is still up.
+        //
+        // The communicator type has to be qualified: inside this namespace the
+        // unqualified name resolves to the detail implementation class, not to
+        // the public handle callers hold.
+        HPX_CXX_EXPORT HPX_EXPORT
+            hpx::shared_future<collectives::channel_communicator>
+            get_cached_channel_communicator(std::string name,
+                num_sites_arg num_sites = num_sites_arg(),
+                this_site_arg this_site = this_site_arg());
+
+        HPX_EXPORT void reset_cached_channel_communicators();
+
+        /// The number of entries currently held, for tests to verify that
+        /// repeated lookups reuse an entry instead of growing the cache.
+        HPX_CXX_EXPORT HPX_EXPORT std::size_t
+        get_cached_channel_communicator_count();
+    }    // namespace detail
+}    // namespace hpx::collectives
+
 #endif    // DOXYGEN

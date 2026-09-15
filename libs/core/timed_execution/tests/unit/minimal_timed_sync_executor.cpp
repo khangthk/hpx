@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -151,8 +151,7 @@ struct test_sync_executor1
     typedef hpx::execution::sequenced_execution_tag execution_category;
 
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::sync_execute_t,
-        test_sync_executor1 const&, F&& f, Ts&&... ts)
+    decltype(auto) sync_execute(F&& f, Ts&&... ts) const
     {
         ++count_sync;
         return hpx::invoke(std::forward<F>(f), std::forward<Ts>(ts)...);
@@ -164,10 +163,8 @@ struct test_timed_sync_executor1 : test_sync_executor1
     typedef hpx::execution::sequenced_execution_tag execution_category;
 
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(
-        hpx::parallel::execution::sync_execute_at_t,
-        test_timed_sync_executor1 const&,
-        hpx::chrono::steady_time_point const& abs_time, F&& f, Ts&&... ts)
+    decltype(auto) sync_execute_at(
+        hpx::chrono::steady_time_point const& abs_time, F&& f, Ts&&... ts) const
     {
         ++count_sync_at;
         hpx::this_thread::sleep_until(abs_time);
@@ -175,7 +172,7 @@ struct test_timed_sync_executor1 : test_sync_executor1
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
     template <>
     struct is_one_way_executor<test_sync_executor1> : std::true_type
     {
@@ -185,15 +182,14 @@ namespace hpx::parallel::execution {
     struct is_one_way_executor<test_timed_sync_executor1> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 struct test_sync_executor2 : test_sync_executor1
 {
     typedef hpx::execution::sequenced_execution_tag execution_category;
 
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::post_t,
-        test_sync_executor2 const&, F&& f, Ts&&... ts)
+    decltype(auto) post(F&& f, Ts&&... ts) const
     {
         ++count_apply;
         hpx::invoke(std::forward<F>(f), std::forward<Ts>(ts)...);
@@ -203,9 +199,8 @@ struct test_sync_executor2 : test_sync_executor1
 struct test_timed_sync_executor2 : test_sync_executor2
 {
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::post_at_t,
-        test_timed_sync_executor2 const&,
-        hpx::chrono::steady_time_point const& abs_time, F&& f, Ts&&... ts)
+    void post_at(
+        hpx::chrono::steady_time_point const& abs_time, F&& f, Ts&&... ts) const
     {
         ++count_apply_at;
         hpx::this_thread::sleep_until(abs_time);
@@ -213,7 +208,7 @@ struct test_timed_sync_executor2 : test_sync_executor2
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
     template <>
     struct is_one_way_executor<test_sync_executor2> : std::true_type
     {
@@ -223,7 +218,7 @@ namespace hpx::parallel::execution {
     struct is_one_way_executor<test_timed_sync_executor2> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 ///////////////////////////////////////////////////////////////////////////////
 int hpx_main()

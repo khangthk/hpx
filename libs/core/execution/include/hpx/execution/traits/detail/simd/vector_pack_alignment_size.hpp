@@ -44,7 +44,7 @@ namespace hpx::parallel::traits {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T, typename Enable>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Enable>
     struct vector_pack_alignment
     {
         static constexpr std::size_t const value = sizeof(T);
@@ -59,7 +59,7 @@ namespace hpx::parallel::traits {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T, typename Enable>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Enable>
     struct vector_pack_size
     {
         static constexpr std::size_t const value = 1;

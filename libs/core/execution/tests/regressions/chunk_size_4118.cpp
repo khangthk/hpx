@@ -1,4 +1,5 @@
 //  Copyright (c) 2019 Jeff Trull
+//  Copyright (c) 2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -19,26 +20,26 @@
 struct test_async_executor : hpx::execution::parallel_executor
 {
     template <typename F, typename T, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::async_execute_t,
-        test_async_executor const& exec, F&& f, T&& t, std::size_t chunk_size,
-        Ts&&... ts)
+    decltype(auto) async_execute(
+        F&& f, T&& t, std::size_t chunk_size, Ts&&... ts) const
     {
         // make sure the chunk_size is equal to what was specified below
         HPX_TEST_EQ(chunk_size, std::size_t(50000));
 
         using base_type = hpx::execution::parallel_executor;
         return hpx::parallel::execution::async_execute(
-            static_cast<base_type const&>(exec), std::forward<F>(f),
+            static_cast<base_type const&>(*this), std::forward<F>(f),
             std::forward<T>(t), chunk_size, std::forward<Ts>(ts)...);
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct is_two_way_executor<test_async_executor> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 int hpx_main()
 {

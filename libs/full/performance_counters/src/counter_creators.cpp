@@ -1,20 +1,22 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/actions/transfer_action.hpp>
-#include <hpx/actions_base/plain_action.hpp>
-#include <hpx/agas/agas_fwd.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_distributed/async.hpp>
-#include <hpx/async_distributed/transfer_continuation_action.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/functional/function.hpp>
+#include <hpx/modules/actions.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/agas.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/naming_base/id_type.hpp>
+#include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/performance_counters/agas_namespace_action_code.hpp>
 #include <hpx/performance_counters/counter_creators.hpp>
 #include <hpx/performance_counters/counters.hpp>
@@ -22,14 +24,15 @@
 #include <hpx/performance_counters/server/locality_namespace_counters.hpp>
 #include <hpx/performance_counters/server/primary_namespace_counters.hpp>
 #include <hpx/performance_counters/server/symbol_namespace_counters.hpp>
-#include <hpx/type_support/unused.hpp>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include <hpx/config/warnings_prefix.hpp>
+
 ///////////////////////////////////////////////////////////////////////////////
-namespace hpx { namespace performance_counters {
+namespace hpx::performance_counters {
 
     ///////////////////////////////////////////////////////////////////////////
     // Creation functions to be registered with counter types
@@ -593,7 +596,8 @@ namespace hpx { namespace performance_counters {
         if (paths.instancename_ == "total" && paths.instanceindex_ == -1)
         {
             // find the referenced AGAS instance and dispatch the request there
-            std::string service(agas::service_name);
+            std::string service = agas::service_name_prefix();
+
             service += paths.parentinstancename_;
 
             if (-1 == paths.parentinstanceindex_)
@@ -627,4 +631,4 @@ namespace hpx { namespace performance_counters {
             "invalid counter type name: " + paths.instancename_);
         return naming::invalid_gid;
     }
-}}    // namespace hpx::performance_counters
+}    // namespace hpx::performance_counters

@@ -1008,7 +1008,7 @@ static void output_module_level_report(module_level_actions& actions)
 
                 for (auto j = i->second.begin(); j != i->second.end(); ++j)
                 {
-                    level = (std::max)(level, level_map[*j] + 1);
+                    level = (std::max) (level, level_map[*j] + 1);
                 }
 
                 if (level == k)
@@ -1049,7 +1049,7 @@ static void output_module_level_report(module_level_actions& actions)
 
                     if (jl < unknown_level)
                     {
-                        level = (std::max)(level, jl + 1);
+                        level = (std::max) (level, jl + 1);
                     }
                     else
                     {
@@ -1064,7 +1064,7 @@ static void output_module_level_report(module_level_actions& actions)
                             ++ml;
                         }
 
-                        level = (std::max)(level, ml);
+                        level = (std::max) (level, ml);
                     }
                 }
 
@@ -1585,7 +1585,7 @@ static void output_module_weight_report(module_weight_actions& actions)
                 actions.module_primary_start();
 
                 for (auto k = s_module_deps[*j].begin();
-                     k != s_module_deps[*j].end(); ++k)
+                    k != s_module_deps[*j].end(); ++k)
                 {
                     std::size_t w =
                         s_module_deps[*k].size() + secondary_deps[*k].size();
@@ -1600,7 +1600,7 @@ static void output_module_weight_report(module_weight_actions& actions)
                 actions.module_secondary_start();
 
                 for (auto k = secondary_deps[*j].begin();
-                     k != secondary_deps[*j].end(); ++k)
+                    k != secondary_deps[*j].end(); ++k)
                 {
                     std::size_t w =
                         s_module_deps[*k].size() + secondary_deps[*k].size();
@@ -1717,7 +1717,8 @@ struct module_weight_html_actions : public module_weight_actions
     {
         std::cout << " ";
 
-        bool heavy = weight >= 0.8 * weight_;
+        bool heavy =
+            static_cast<double>(weight) >= 0.8 * static_cast<double>(weight_);
 
         if (heavy)
         {
@@ -1900,7 +1901,7 @@ static void output_module_subset_report_(std::string const& module,
         int k = 0;
 
         for (auto j = i->second.begin(); j != i->second.end() && k < 4;
-             ++j, ++k)
+            ++j, ++k)
         {
             actions.from_path(j->second);
         }
@@ -2363,7 +2364,7 @@ static void output_module_cmake_report(std::string module)
 
         for (auto i = um.begin(); i != um.end(); ++i)
         {
-            *i = std::toupper(static_cast<unsigned char>(*i));
+            *i = static_cast<char>(std::toupper(*i));
         }
 
         std::cout << "target_compile_definitions(hpx_" << lm
@@ -2604,7 +2605,7 @@ static void output_pkgconfig(std::string const& module,
     std::cout << "Name: " << m2 << '\n';
     std::cout << "Description: HPX C++ Module'" << module_name(module) << "'\n";
     std::cout << "Version: " << version << '\n';
-    std::cout << "URL: https://github.com/STEllAR-GROUP/hpx/libs/"
+    std::cout << "URL: https://github.com/TheHPXProject/hpx/libs/"
               << module_name(module) << '\n';
     std::cout << "Cflags: -I${includedir}\n";
 
@@ -2802,8 +2803,8 @@ public:
 private:
     virtual int overflow(int c)
     {
-        int r1 = sb1_->sputc(c);
-        int r2 = sb2_->sputc(c);
+        int r1 = sb1_->sputc(static_cast<char>(c));
+        int r2 = sb2_->sputc(static_cast<char>(c));
 
         return r1 == EOF || r2 == EOF ? EOF : c;
     }
@@ -2868,7 +2869,7 @@ std::string format_version()
     std::stringstream ss;
     ss << HPX_VERSION_MAJOR << "." << HPX_VERSION_MINOR << "."
        << HPX_VERSION_SUBMINOR << HPX_VERSION_TAG
-       << " (<a href=\"https://github.com/STEllAR-GROUP/hpx/commit/"
+       << " (<a href=\"https://github.com/TheHPXProject/hpx/commit/"
        << HPX_HAVE_GIT_COMMIT << "\">" << std::string(HPX_HAVE_GIT_COMMIT, 10)
        << "</a>)";
     return ss.str();
@@ -3045,8 +3046,9 @@ int main(int argc, char const* argv[])
 
     std::string html_prefix = R"(
     <table><tr>
-        <td><a href="https://github.com/STEllAR-GROUP/hpx">
-        <img src="http://stellar-group.org/files/stellar100.png" alt="STE||AR logo" />
+        <td><a href="https://github.com/TheHPXProject/hpx">
+        <img src="https://docs.hpx.dev/branches/master/html/_static/favicon.png"
+            alt="HPX logo" width="100" height="100"/>
         </a></td>
         <td><div class='logo'>
             <div class='upper'>HPX</div>

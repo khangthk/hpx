@@ -29,6 +29,8 @@ set(include_local_headers
     hpx/tuple.hpp
     hpx/type_traits.hpp
     hpx/unwrap.hpp
+    hpx/include_local/iostream.hpp
+    hpx/experimental/run_on_all.hpp
     hpx/experimental/scope.hpp
     hpx/experimental/task_group.hpp
 )
@@ -40,6 +42,8 @@ if(NOT HPX_WITH_DISTRIBUTED_RUNTIME)
       hpx/channel.hpp
       hpx/compute.hpp
       hpx/future.hpp
+      hpx/init.hpp
+      hpx/iostream.hpp
       hpx/latch.hpp
       hpx/runtime.hpp
   )
@@ -89,23 +93,32 @@ add_hpx_module(
   GENERATED_HEADERS ${generated_include_local_headers}
   MODULE_DEPENDENCIES
     hpx_algorithms
+    hpx_assertion
     hpx_async_base
     hpx_async_combinators
     hpx_async_local
     hpx_compute_local
+    hpx_datastructures
     hpx_errors
     hpx_execution
     hpx_execution_base
     hpx_executors
     hpx_format
+    hpx_functional
     hpx_futures
+    hpx_init_runtime_local
     hpx_lcos_local
     hpx_memory
+    hpx_pack_traversal
     hpx_runtime_local
+    hpx_string_util
     hpx_synchronization
     hpx_threading
     hpx_threading_base
+    hpx_thread_support
     hpx_timed_execution
     hpx_timing
+    hpx_type_support
+    hpx_util
   CMAKE_SUBDIRS examples tests
 )

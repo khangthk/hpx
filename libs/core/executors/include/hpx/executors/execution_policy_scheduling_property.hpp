@@ -1,4 +1,4 @@
-//  Copyright (c) 2023 Hartmut Kaiser
+//  Copyright (c) 2023-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,47 +8,17 @@
 
 #pragma once
 
-#include <hpx/async_base/scheduling_properties.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/execution/executors/rebind_executor.hpp>
-#include <hpx/execution/traits/is_execution_policy.hpp>
-#include <hpx/functional/tag_invoke.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/execution.hpp>
 
 #include <type_traits>
 
 namespace hpx::execution::experimental {
 
-    // Scheduling property implementations for execution policies that simply
-    // forwards to the embedded executor
-
-    // clang-format off
-    template <typename Tag, typename ExPolicy, typename Property,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::execution::experimental::is_scheduling_property_v<Tag> &&
-            hpx::is_execution_policy_v<ExPolicy> &&
-            hpx::functional::is_tag_invocable_v<
-                Tag, typename std::decay_t<ExPolicy>::executor_type,
-                Property>
-        )>
-    // clang-format on
-    constexpr decltype(auto) tag_invoke(
-        Tag tag, ExPolicy&& policy, Property prop)
-    {
-        return hpx::parallel::execution::create_rebound_policy(
-            policy, tag(policy.executor(), prop), policy.parameters());
-    }
-
-    // clang-format off
-    template <typename Tag, typename ExPolicy,
-        HPX_CONCEPT_REQUIRES_(
-            hpx::execution::experimental::is_scheduling_property_v<Tag> &&
-            hpx::is_execution_policy_v<ExPolicy> &&
-            hpx::functional::is_tag_invocable_v<
-                Tag, typename std::decay_t<ExPolicy>::executor_type>
-        )>
-    // clang-format on
-    constexpr decltype(auto) tag_invoke(Tag tag, ExPolicy&& policy)
-    {
-        return tag(policy.executor());
-    }
+    // Scheduling property implementations for execution policies are provided
+    // through the public query() member functions on execution_policy (see
+    // hpx/executors/execution_policy.hpp). The scheduling property CPOs detect
+    // those members directly (via property_base), so no tag_invoke bridge is
+    // needed here.
 }    // namespace hpx::execution::experimental

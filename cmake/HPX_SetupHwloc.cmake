@@ -8,6 +8,7 @@
 # Copyright (c) 2017      Abhimanyu Rawat
 # Copyright (c) 2017      Google
 # Copyright (c) 2017      Taeguk Kwon
+# Copyright (c) 2025      Srinivas Yadav Singanaboina
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -17,7 +18,9 @@ if(NOT HPX_WITH_FETCH_HWLOC)
   find_package(Hwloc)
   if(NOT Hwloc_FOUND)
     hpx_error(
-      "Hwloc could not be found, please specify Hwloc_ROOT to point to the correct location"
+      "Hwloc could not be found. Please either specify Hwloc_ROOT to point to the correct location, "
+      "install it using your system's package manager, or configure CMake with -DHPX_WITH_FETCH_HWLOC=ON "
+      "to download it automatically."
     )
   endif()
 else()
@@ -44,13 +47,26 @@ else()
     )
     if(NOT HWLoc_POPULATED)
       fetchcontent_populate(HWLoc)
-      execute_process(
-        COMMAND
-          sh -c
-          "cd ${FETCHCONTENT_BASE_DIR}/hwloc-src && ./configure --prefix=${FETCHCONTENT_BASE_DIR}/hwloc-installed && make -j && make install"
+      set(HPX_HWLOC_BUILD_DIR_INSTALLATION_PATH
+          "${FETCHCONTENT_BASE_DIR}/hwloc_installed"
       )
+      if(NOT Hwloc_BUILD_INSTALLED)
+        execute_process(
+          COMMAND
+            sh -c
+            "cd ${FETCHCONTENT_BASE_DIR}/hwloc-src && ./configure --prefix=${HPX_HWLOC_BUILD_DIR_INSTALLATION_PATH} && make -j && make install"
+        )
+        set(Hwloc_BUILD_INSTALLED
+            TRUE
+            CACHE INTERNAL ""
+        )
+      else()
+        message(
+          "HWLoc is installed at ${FETCHCONTENT_BASE_DIR}/hwloc-installed"
+        )
+      endif()
+      set(HWLOC_ROOT ${HPX_HWLOC_BUILD_DIR_INSTALLATION_PATH})
     endif()
-    set(HWLOC_ROOT "${FETCHCONTENT_BASE_DIR}/hwloc-installed")
     set(Hwloc_INCLUDE_DIR
         ${HWLOC_ROOT}/include
         CACHE INTERNAL ""
@@ -97,15 +113,14 @@ else()
         ${HWLOC_ROOT}/lib/libhwloc.dll.a
         CACHE INTERNAL ""
     )
+    file(GLOB HWLOC_DLL ${HWLOC_ROOT}/bin/libhwloc*.dll)
   else()
     hpx_error(
       "Building HWLOC as part of HPX' configuration process is not supported on this platform"
     )
   endif() # End hwloc installation
 
-  add_library(Hwloc::hwloc INTERFACE IMPORTED)
-  target_include_directories(Hwloc::hwloc INTERFACE ${Hwloc_INCLUDE_DIR})
-  target_link_libraries(Hwloc::hwloc INTERFACE ${Hwloc_LIBRARY})
+  find_package(Hwloc)
 
   if(HPX_WITH_FETCH_HWLOC AND "${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     if(RUNTIME_OUTPUT_DIRECTORY)
@@ -114,15 +129,21 @@ else()
       set(EXE_DIRECTORY_PATH "${CMAKE_BINARY_DIR}/$<CONFIG>/bin/")
     endif()
 
-    set(DLL_PATH "${HWLOC_ROOT}/bin/libhwloc-15.dll")
+    message("Copying ${HWLOC_DLL} to ${EXE_DIRECTORY_PATH}")
     add_custom_target(
       HwlocDLL ALL
       COMMAND ${CMAKE_COMMAND} -E make_directory ${EXE_DIRECTORY_PATH}
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DLL_PATH}
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different ${HWLOC_DLL}
               ${EXE_DIRECTORY_PATH}
     )
-    install(FILES ${DLL_PATH} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${HWLOC_DLL} DESTINATION ${CMAKE_INSTALL_BINDIR})
     add_hpx_pseudo_target(HwlocDLL)
+    add_dependencies(Hwloc::hwloc HwlocDLL)
   endif()
 
+  install(
+    DIRECTORY ${HWLOC_ROOT}/
+    DESTINATION ${HPX_HWLOC_INSTALL_PATH}
+    COMPONENT core
+  )
 endif()

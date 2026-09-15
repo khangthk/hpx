@@ -9,12 +9,15 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR_EVE)
+
+#include <hpx/execution/traits/detail/eve/vector_pack_simd.hpp>
+
 #include <eve/module/core.hpp>
 
 namespace hpx::parallel::traits {
 
     ///////////////////////////////////////////////////////////////////////
-    template <typename Mask>
+    HPX_CXX_CORE_EXPORT template <typename Mask>
     HPX_HOST_DEVICE HPX_FORCEINLINE int find_first_of(Mask const& msk) noexcept
     {
         auto tmp = eve::first_true(msk);

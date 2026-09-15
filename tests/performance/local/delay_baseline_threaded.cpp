@@ -6,7 +6,7 @@
 
 #include "worker_timed.hpp"
 
-#include <hpx/concurrency/barrier.hpp>
+#include <hpx/modules/concurrency.hpp>
 #include <hpx/modules/format.hpp>
 #include <hpx/modules/timing.hpp>
 
@@ -72,9 +72,6 @@ void print_results(variables_map& vm, double sum_, double mean_)
                 "## 2:OSTHRDS:OS-threads - Independent Variable\n"
                 "## 3:WTIME_THR:Total Walltime/Thread [micro-seconds]\n";
     }
-
-    std::string const tasks_str = hpx::util::format("{},", tasks);
-    std::string const delay_str = hpx::util::format("{},", delay);
 
     hpx::util::format_to(
         cout, "{} {} {} {:.14g}\n", delay, tasks, threads, mean_);

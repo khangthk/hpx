@@ -9,7 +9,7 @@
 //  http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/util/to_string.hpp>
+#include <hpx/modules/format.hpp>
 
 #include <algorithm>
 
@@ -60,108 +60,108 @@ namespace boost { namespace inspect {
             {"type_traits"}},
         {"(\\bstd\\s*::\\s*bool_constant\\b)", "std::bool_constant",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_void\\b)", "std::is_void", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_null_pointer\\b)", "std::is_null_pointer",
+        {"(\\bstd\\s*::\\s*(is_void(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_null_pointer(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_integral\\b)", "std::is_integral",
+        {"(\\bstd\\s*::\\s*(is_integral(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_floating_point\\b)", "std::is_floating_point",
+        {"(\\bstd\\s*::\\s*(is_floating_point(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_array\\b)", "std::is_array", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_enum\\b)", "std::is_enum", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_union\\b)", "std::is_union", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_class\\b)", "std::is_class", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_function\\b)", "std::is_function",
+        {"(\\bstd\\s*::\\s*(is_array(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_enum(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_union(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_class(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_function(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_pointer\\b)", "std::is_pointer", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_lvalue_reference\\b)", "std::is_lvalue_reference",
+        {"(\\bstd\\s*::\\s*(is_pointer(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_lvalue_reference(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_rvalue_reference\\b)", "std::is_rvalue_reference",
+        {"(\\bstd\\s*::\\s*(is_rvalue_reference(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_member_object_pointer\\b)",
-            "std::is_member_object_pointer", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_member_function_pointer\\b)",
-            "std::is_member_function_pointer", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_fundamental\\b)", "std::is_fundamental",
+        {"(\\bstd\\s*::\\s*(is_member_object_pointer(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_arithmetic\\b)", "std::is_arithmetic",
+        {"(\\bstd\\s*::\\s*(is_member_function_pointer(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_scalar\\b)", "std::is_scalar", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_object\\b)", "std::is_object", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_compound\\b)", "std::is_compound",
+        {"(\\bstd\\s*::\\s*(is_fundamental(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_reference\\b)", "std::is_reference",
+        {"(\\bstd\\s*::\\s*(is_arithmetic(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_member_pointer\\b)", "std::is_member_pointer",
+        {"(\\bstd\\s*::\\s*(is_scalar(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_object(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_compound(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_const\\b)", "std::is_const", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_volatile\\b)", "std::is_volatile",
+        {"(\\bstd\\s*::\\s*(is_reference(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivial\\b)", "std::is_trivial", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_copyable\\b)",
-            "std::is_trivially_copyable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_standard_layout\\b)", "std::is_standard_layout",
+        {"(\\bstd\\s*::\\s*(is_member_pointer(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_pod\\b)", "std::is_pod", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_literal_type\\b)", "std::is_literal_type",
+        {"(\\bstd\\s*::\\s*(is_const(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_volatile(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_empty\\b)", "std::is_empty", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_polymorphic\\b)", "std::is_polymorphic",
+        {"(\\bstd\\s*::\\s*(is_trivial(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_copyable(_v)?)\\b)",
+            "std\\2is_trivially_copyable", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_standard_layout(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_abstract\\b)", "std::is_abstract",
+        {"(\\bstd\\s*::\\s*(is_pod(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_literal_type(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_signed\\b)", "std::is_signed", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_unsigned\\b)", "std::is_unsigned",
+        {"(\\bstd\\s*::\\s*(is_empty(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_polymorphic(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_constructible\\b)", "std::is_constructible",
+        {"(\\bstd\\s*::\\s*(is_abstract(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_constructible\\b)",
-            "std::is_trivially_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_constructible\\b)",
-            "std::is_nothrow_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_default_constructible\\b)",
-            "std::is_default_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_default_constructible\\b)",
-            "std::is_trivially_default_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_default_constructible\\b)",
-            "std::is_nothrow_default_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_copy_constructible\\b)",
-            "std::is_copy_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_copy_constructible\\b)",
-            "std::is_trivially_copy_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_copy_constructible\\b)",
-            "std::is_nothrow_copy_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_move_constructible\\b)",
-            "std::is_move_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_move_constructible\\b)",
-            "std::is_trivially_move_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_move_constructible\\b)",
-            "std::is_nothrow_move_constructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_assignable\\b)", "std::is_assignable",
+        {"(\\bstd\\s*::\\s*(is_signed(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_unsigned(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_assignable\\b)",
-            "std::is_trivially_assignable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_assignable\\b)",
-            "std::is_nothrow_assignable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_copy_assignable\\b)", "std::is_copy_assignable",
+        {"(\\bstd\\s*::\\s*(is_constructible(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_copy_assignable\\b)",
-            "std::is_trivially_copy_assignable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_copy_assignable\\b)",
-            "std::is_nothrow_copy_assignable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_move_assignable\\b)", "std::is_move_assignable",
+        {"(\\bstd\\s*::\\s*(is_trivially_constructible(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_move_assignable\\b)",
-            "std::is_trivially_move_assignable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_nothrow_move_assignable\\b)",
-            "std::is_nothrow_move_assignable", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_destructible\\b)", "std::is_destructible",
+        {"(\\bstd\\s*::\\s*(is_nothrow_constructible(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_trivially_destructible\\b)",
-            "std::is_trivially_destructible", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_same\\b)", "std::is_same", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_base_of\\b)", "std::is_base_of", {"type_traits"}},
-        {"(\\bstd\\s*::\\s*is_convertible\\b)", "std::is_convertible",
+        {"(\\bstd\\s*::\\s*(is_default_constructible(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_default_constructible(_v)?)\\b)",
+            "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_nothrow_default_constructible(_v)?)\\b)",
+            "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_copy_constructible(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_copy_constructible(_v)?)\\b)",
+            "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_nothrow_copy_constructible(_v)?)\\b)",
+            "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_move_constructible(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_move_constructible(_v)?)\\b)",
+            "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_nothrow_move_constructible(_v)?)\\b)",
+            "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_assignable(_v)?)\\b)", "std::is_assignable\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_assignable(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_nothrow_assignable(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_copy_assignable(_v)?)\\b)",
+            "std::is_copy_assignable\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_copy_assignable(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_nothrow_copy_assignable(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_move_assignable(_v)?)\\b)",
+            "std::is_move_assignable\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_move_assignable(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_nothrow_move_assignable(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_destructible(_v)?)\\b)",
+            "std::is_destructible\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_trivially_destructible(_v)?)\\b)", "std::\\2",
+            {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_same(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_base_of(_v)?)\\b)", "std::\\2", {"type_traits"}},
+        {"(\\bstd\\s*::\\s*(is_convertible(_v)?)\\b)", "std::\\2",
             {"type_traits"}},
         {"(\\bstd\\s*::\\s*has_virtual_destructor\\b)",
             "std::has_virtual_destructor", {"type_traits"}},
@@ -210,6 +210,8 @@ namespace boost { namespace inspect {
             {"type_traits"}},
         {"(\\bstd\\s*::\\s*underlying_type\\b)", "std::underlying_type",
             {"type_traits"}},
+        {"(\\bstd\\s*::\\s*underlying_type_t\\b)", "std::underlying_type_t",
+            {"type_traits"}},
         {"(\\bstd\\s*::\\s*result_of\\b)", "std::result_of", {"type_traits"}},
         // cstring
         {"(\\bstd\\s*::\\s*(mem((set)|(cpy)|(move)))\\b)", "std::\\2",
@@ -251,13 +253,24 @@ namespace boost { namespace inspect {
             {"system_error"}},
         {"(\\bstd\\s*::\\s*system_error\\b)", "std::system_error",
             {"system_error"}},
+        // c++20
+        {"(\\bstd\\s*::\\s*cmp_equal\\b)", "std::cmp_equal", {"utility"}},
+        {"(\\bstd\\s*::\\s*cmp_less\\b)", "std::cmp_less", {"utility"}},
+        {"(\\bstd\\s*::\\s*cmp_less_equal\\b)", "std::cmp_less_equal",
+            {"utility"}},
+        {"(\\bstd\\s*::\\s*cmp_greater\\b)", "std::cmp_greater", {"utility"}},
+        {"(\\bstd\\s*::\\s*cmp_greater_equal\\b)", "std::cmp_greater_equal",
+            {"utility"}},
+        {"(\\bstd\\s*::\\s*cmp_not_equal\\b)", "std::cmp_not_equal",
+            {"utility"}},
+        {"(\\bstd\\s*::\\s*in_range\\b)", "std::in_range", {"utility"}},
         // boost
         {"(\\bhpx\\s*::\\s*intrusive_ptr\\b)", "hpx::intrusive_ptr",
             {"hpx/modules/memory.hpp"}},
         {"(\\bhpx\\s*::\\s*util\\s*::\\s*from_string\\b)",
-            "hpx::util::from_string", {"hpx/util/from_string.hpp"}},
+            "hpx::util::from_string", {"hpx/modules/format.hpp"}},
         {"(\\bhpx\\s*::\\s*util\\s*::\\s*to_string\\b)", "hpx::util::to_string",
-            {"hpx/util/to_string.hpp"}},
+            {"hpx/modules/format.hpp"}},
         // macros
         {"(\\bHPX_PP_CAT\\b)", "HPX_PP_CAT",
             {"hpx/modules/preprocessor.hpp", "hpx/preprocessor/cat.hpp"}},
@@ -273,6 +286,51 @@ namespace boost { namespace inspect {
         //
         {"(\\HPX_ASSERT\\b)", "HPX_ASSERT", {"hpx/assert.hpp"}},
         {"(\\HPX_ASSERT_MSG\\b)", "HPX_ASSERT_MSG", {"hpx/assert.hpp"}},
+        {"(\\HPX_THROW_EXCEPTION\\b)", "HPX_THROW_EXCEPTION",
+            {"hpx/modules/errors.hpp"}},
+        {"(\\HPX_THROWS_IF\\b)", "HPX_THROWS_IF", {"hpx/modules/errors.hpp"}},
+        {"(\\HPX_THROW_BAD_ALLOC\\b)", "HPX_THROW_BAD_ALLOC",
+            {"hpx/modules/errors.hpp"}},
+        {"(\\HPX_THROWS_BAD_ALLOC_IF\\b)", "HPX_THROWS_BAD_ALLOC_IF",
+            {"hpx/modules/errors.hpp"}},
+        //
+        // std concepts
+        {"(\\bstd\\s*::\\s*convertible_to\\b)", "std::convertible_to",
+            {"concepts"}},
+        {"(\\bstd\\s*::\\s*destructible\\b)", "std::destructible",
+            {"concepts"}},
+        {"(\\bstd\\s*::\\s*derived_from\\b)", "std::derived_from",
+            {"concepts"}},
+        {"(\\bstd\\s*::\\s*integral\\b)", "std::integral", {"concepts"}},
+        {"(\\bstd\\s*::\\s*invocable\\b)", "std::invocable", {"concepts"}},
+        {"(\\bstd\\s*::\\s*regular_invocable\\b)", "std::regular_invocable",
+            {"concepts"}},
+        {"(\\bstd\\s*::\\s*same_as\\b)", "std::same_as", {"concepts"}},
+        //
+        // std iterator
+        {"(\\bstd\\s*::\\s*input_iterator\\b)", "std::input_iterator",
+            {"iterator"}},
+        {"(\\bstd\\s*::\\s*output_iterator\\b)", "std::output_iterator",
+            {"iterator"}},
+        {"(\\bstd\\s*::\\s*forward_iterator\\b)", "std::forward_iterator",
+            {"iterator"}},
+        {"(\\bstd\\s*::\\s*bidirectional_iterator\\b)",
+            "std::bidirectional_iterator", {"iterator"}},
+        {"(\\bstd\\s*::\\s*random_access_iterator\\b)",
+            "std::random_access_iterator", {"iterator"}},
+        {"(\\bstd\\s*::\\s*sentinel_for\\b)", "std::sentinel_for",
+            {"iterator"}},
+        {"(\\bstd\\s*::\\s*next\\b)", "std::next", {"iterator"}},
+        {"(\\bstd\\s*::\\s*prev\\b)", "std::prev", {"iterator"}},
+        // std ranges
+        {"(\\bstd\\s*::\\s*ranges\\s*::\\srange\\b)", "std::ranges::range",
+            {"ranges"}},
+        {"(\\bstd\\s*::\\s*ranges\\s*::\\s*input_range\\b)",
+            "std::ranges::input_range", {"ranges"}},
+        {"(\\bstd\\s*::\\s*ranges\\s*::\\s*bidirectional_range\\b)",
+            "std::ranges::bidirectional_range", {"ranges"}},
+        {"(\\bstd\\s*::\\s*ranges\\s*::\\s*iterator_t\\b)",
+            "std::ranges::iterator_t", {"ranges"}},
         {nullptr, nullptr, {nullptr}}};
 
     //  include_check constructor  -------------------------------------------//
@@ -290,9 +348,11 @@ namespace boost { namespace inspect {
         register_signature(".hxx");
         register_signature(".inc");
         register_signature(".ipp");
+        register_signature(".ixx");
+        register_signature(".cppm");
 
         for (names_includes const* names_it = &names[0];
-             names_it->name_regex != nullptr; ++names_it)
+            names_it->name_regex != nullptr; ++names_it)
         {
             std::string rx(names_it->name_regex);
             rx += "|"    // or (ignored)
@@ -309,9 +369,9 @@ namespace boost { namespace inspect {
 
     //  inspect ( C++ source files )  ---------------------------------------//
 
-    void include_check::inspect(const string& library_name,
-        const path& full_path,     // example: c:/foo/boost/filesystem/path.hpp
-        const string& contents)    // contents of file to be inspected
+    void include_check::inspect(string const& library_name,
+        path const& full_path,     // example: c:/foo/boost/filesystem/path.hpp
+        string const& contents)    // contents of file to be inspected
     {
         std::string::size_type p = contents.find("hpxinspect:"
                                                  "noinclude");
@@ -345,6 +405,15 @@ namespace boost { namespace inspect {
         // if one of the includes is <hpx/hpx.hpp> assume all is well
         if (includes.find("hpx/hpx.hpp") != includes.end())
             return;
+
+        // if one of the includes starts with <hpx/include/...> assume all is
+        // well as well
+        constexpr char const* prefix = "hpx/include/";
+        if (auto it = includes.lower_bound(prefix);
+            it != includes.end() && it->find(prefix) == 0)
+        {
+            return;
+        }
 
         // for all given names, check whether corresponding include was found
         std::set<std::string> checked_includes;

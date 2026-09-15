@@ -1,4 +1,4 @@
-# Copyright (c) 2020-2021 The STE||AR-Group
+# Copyright (c) 2020-2026 The STE||AR-Group
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -18,13 +18,13 @@ set(_hpx_full_modules
     async_colocated
     async_distributed
     checkpoint
-    checkpoint_base
     collectives
     command_line_handling
     components
     components_base
     compute
     distribution_policies
+    execution_distributed
     executors_distributed
     include
     init_runtime
@@ -33,7 +33,7 @@ set(_hpx_full_modules
     naming_base
     parcelport_gasnet
     parcelport_lci
-    parcelport_libfabric
+    parcelport_lcw
     parcelport_mpi
     parcelport_tcp
     parcelports
@@ -46,6 +46,7 @@ set(_hpx_full_modules
     runtime_distributed
     segmented_algorithms
     statistics
+    supervision
 )
 # cmake-format: on
 

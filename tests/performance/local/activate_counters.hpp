@@ -7,8 +7,8 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/performance_counters/counters_fwd.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/performance_counters.hpp>
 
 #include <cstddef>
 #include <string>

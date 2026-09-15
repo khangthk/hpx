@@ -1,27 +1,31 @@
-//  Copyright (c) 2005-2023 Hartmut Kaiser
+//  Copyright (c) 2005-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Adelstein-Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
-#include <hpx/config/endian.hpp>
+#include <hpx/config.hpp>
 #include <hpx/assert.hpp>
+#include <hpx/modules/errors.hpp>
 #include <hpx/modules/filesystem.hpp>
-#include <hpx/modules/itt_notify.hpp>
+#include <hpx/modules/format.hpp>
+#include <hpx/modules/prefix.hpp>
+#include <hpx/modules/preprocessor.hpp>
 #include <hpx/modules/string_util.hpp>
-#include <hpx/prefix/find_prefix.hpp>
-#include <hpx/preprocessor/expand.hpp>
-#include <hpx/preprocessor/stringize.hpp>
+#include <hpx/modules/util.hpp>
 #include <hpx/runtime_configuration/agas_service_mode.hpp>
 #include <hpx/runtime_configuration/component_registry_base.hpp>
 #include <hpx/runtime_configuration/init_ini_data.hpp>
 #include <hpx/runtime_configuration/plugin_registry_base.hpp>
 #include <hpx/runtime_configuration/runtime_configuration.hpp>
 #include <hpx/runtime_configuration/runtime_mode.hpp>
-#include <hpx/util/from_string.hpp>
-#include <hpx/util/get_entry_as.hpp>
 #include <hpx/version.hpp>
+
+#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
+#include <hpx/itt_notify/detail/use_ittnotify_api.hpp>
+#include <hpx/modules/itt_notify.hpp>
+#endif
 
 #include <algorithm>
 #include <cstddef>
@@ -72,7 +76,7 @@ namespace hpx::util {
         // CMake does not deal with explicit semicolons well, for this reason,
         // the paths are delimited with ':'. On Windows those need to be
         // converted to ';'.
-        std::string convert_delimiters(std::string paths)
+        static std::string convert_delimiters(std::string paths)
         {
 #if defined(HPX_WINDOWS)
             std::replace(paths.begin(), paths.end(), ':', ';');
@@ -150,7 +154,7 @@ namespace hpx::util {
             "${HPX_EXPECT_CONNECTING_LOCALITIES:0}",
 
             // add placeholders for keys to be added by command line handling
-            "os_threads = cores",
+            "os_threads = ${HPX_NUM_WORKER_THREADS:cores}",
             "cores = all",
             "localities = 1",
             "first_pu = 0",
@@ -186,7 +190,9 @@ namespace hpx::util {
                 HPX_PP_EXPAND(HPX_HAVE_THREAD_BACKTRACE_DEPTH)) "}",
             "handle_signals = ${HPX_HANDLE_SIGNALS:1}",
             "handle_failed_new = ${HPX_HANDLE_FAILED_NEW:1}",
-
+#if defined(HPX_HAVE_FAULT_TOLERANCE)
+            "enable_fault_tolerance = ${HPX_ENABLE_FAULT_TOLERANCE:0}",
+#endif
             // arity for collective operations implemented in a tree fashion
             "[hpx.lcos.collectives]",
             "arity = ${HPX_LCOS_COLLECTIVES_ARITY:32}",
@@ -195,6 +201,16 @@ namespace hpx::util {
             // connect back to the given latch if specified
             "[hpx.on_startup]",
             "wait_on_latch = ${HPX_ON_STARTUP_WAIT_ON_LATCH}",
+
+#if defined(HPX_HAVE_TRACY)
+            // Runtime override for the 1-in-N task-sampling countdown.
+            // Defaults to the compile-time HPX_TRACING_SAMPLE_RATE; the
+            // atomic in task_sampling.cpp is repopulated during startup
+            // from this key.
+            "[hpx.tracing]",
+            "sample_rate = ${HPX_TRACING_SAMPLE_RATE:" HPX_PP_STRINGIZE(
+                HPX_PP_EXPAND(HPX_TRACING_SAMPLE_RATE)) "}",
+#endif
 
 #if defined(HPX_HAVE_NETWORKING)
             // by default, enable networking
@@ -257,6 +273,9 @@ namespace hpx::util {
             "init_threads_count = "
             "${HPX_THREAD_QUEUE_INIT_THREADS_COUNT:" HPX_PP_STRINGIZE(
                 HPX_PP_EXPAND(HPX_THREAD_QUEUE_INIT_THREADS_COUNT)) "}",
+            "cached_threads_count = "
+            "${HPX_THREAD_QUEUE_CACHED_THREADS_COUNT:" HPX_PP_STRINGIZE(
+                HPX_PP_EXPAND(HPX_THREAD_QUEUE_CACHED_THREADS_COUNT)) "}",
 
             "[hpx.commandline]",
             // enable aliasing
@@ -265,7 +284,7 @@ namespace hpx::util {
             // allow for unknown options to be passed through
             "allow_unknown = ${HPX_COMMANDLINE_ALLOW_UNKNOWN:0}",
 
-            // allow for command line options to to be passed through the
+            // allow for command line options to be passed through the
             // environment
             "prepend_options = ${HPX_COMMANDLINE_OPTIONS}",
 
@@ -309,6 +328,8 @@ namespace hpx::util {
                 HPX_PP_EXPAND(HPX_AGAS_LOCAL_CACHE_SIZE)) "}",
             "use_range_caching = ${HPX_AGAS_USE_RANGE_CACHING:1}",
             "use_caching = ${HPX_AGAS_USE_CACHING:1}",
+            "rpc_timeout = ${HPX_AGAS_RPC_TIMEOUT:" HPX_PP_STRINGIZE(
+                HPX_PP_EXPAND(HPX_AGAS_RPC_TIMEOUT)) "}",
 
             "[hpx.components]",
             "load_external = ${HPX_LOAD_EXTERNAL_COMPONENTS:1}",
@@ -561,17 +582,17 @@ namespace hpx::util {
             if (fsec)
                 canonical_p = this_p;
 
-            if (auto const [it, ok] =
-                    component_paths.emplace(canonical_p.string());
+            if (auto const [it, ok] = component_paths.emplace(
+                    hpx::filesystem::to_string(canonical_p));
                 ok)
             {
                 // have all path elements, now find ini files in there...
                 fs::path const this_path(*it);
                 if (fs::exists(this_path, fsec) && !fsec)
                 {
-                    plugin_list_type tmp_regs =
-                        util::init_ini_data_default(this_path.string(), *this,
-                            basenames, modules_, component_registries);
+                    plugin_list_type tmp_regs = util::init_ini_data_default(
+                        hpx::filesystem::to_string(this_path), *this, basenames,
+                        modules_, component_registries);
 
                     std::copy(tmp_regs.begin(), tmp_regs.end(),
                         std::back_inserter(plugin_registries));
@@ -590,12 +611,10 @@ namespace hpx::util {
         std::set<std::string>& component_paths,
         std::map<std::string, filesystem::path>& basenames)
     {
-        namespace fs = filesystem;
-
         // try to build default ini structure from shared libraries in default
         // installation location, this allows to install simple components
-        // without the need to install an ini file
-        // split of the separate paths from the given path list
+        // without the need to install an ini file split of the separate paths
+        // from the given path list
         hpx::string_util::char_separator sep(HPX_INI_PATH_DELIMITER);
         hpx::string_util::tokenizer tok_path(component_base_paths, sep);
         hpx::string_util::tokenizer tok_suffixes(component_path_suffixes, sep);
@@ -635,7 +654,7 @@ namespace hpx::util {
         // protect against duplicate paths
         std::set<std::string> component_paths;
 
-        // list of base names avoiding to load a module more than once
+        // list of base names avoiding loading a module more than once
         std::map<std::string, filesystem::path> basenames;
 
         // plugin registry object
@@ -655,6 +674,30 @@ namespace hpx::util {
         std::string const plugin_paths(get_entry("hpx.component_paths", ""));
         load_component_paths(plugin_registries, component_registries,
             plugin_paths, "", component_paths, basenames);
+
+        // Pull in any statically registered plugin modules. This covers
+        // three cases:
+        //   - static HPX build: no shared libraries to dlopen, the static
+        //     map is the only source of plugins.
+        //   - plugin baked into the application exe (dynamic HPX build): the
+        //     exe's static ctor pushed an entry here; the DLL scan above
+        //     never saw it.
+        //   - plugin shared libraries dlopen'd by the scan: their file-scope
+        //     ctors also push here, so we skip those via modules_ (keyed by
+        //     module name) to avoid duplicate registry objects.
+        for (components::static_factory_load_data_type const& d :
+            components::get_static_plugin_module_data())
+        {
+            if (modules_.find(d.name) != modules_.end())
+                continue;    // already loaded via DLL scan
+
+            auto new_registries =
+                util::load_plugin_factory_static(*this, d.name, d.get_factory);
+            plugin_registries.reserve(
+                plugin_registries.size() + new_registries.size());
+            std::move(new_registries.begin(), new_registries.end(),
+                std::back_inserter(plugin_registries));
+        }
 
         // read system and user ini files _again_, to allow the user to
         // overwrite the settings from the default component ini's.
@@ -677,7 +720,8 @@ namespace hpx::util {
 
     ///////////////////////////////////////////////////////////////////////////
     runtime_configuration::runtime_configuration(char const* argv0_,
-        runtime_mode mode, std::vector<std::string> extra_static_ini_defs_)
+        runtime_mode const mode,
+        std::vector<std::string> extra_static_ini_defs_)
       : extra_static_ini_defs(HPX_MOVE(extra_static_ini_defs_))
       , mode_(mode)
       , num_localities(0)
@@ -687,6 +731,8 @@ namespace hpx::util {
       , large_stacksize(HPX_LARGE_STACK_SIZE)
       , huge_stacksize(HPX_HUGE_STACK_SIZE)
       , need_to_call_pre_initialize(true)
+      , need_to_initialize_tolerate_node_faults(true)
+      , tolerate_node_faults_value(false)
 #if defined(__linux) || defined(linux) || defined(__linux__)
       , argv0(argv0_)
 #endif
@@ -793,7 +839,7 @@ namespace hpx::util {
     }
 
     void runtime_configuration::set_num_localities(
-        std::uint32_t num_localities_)
+        std::uint32_t const num_localities_)
     {
         // this function should not be called on the AGAS server
         HPX_ASSERT(agas::service_mode::bootstrap != get_agas_service_mode());
@@ -862,7 +908,7 @@ namespace hpx::util {
     }
 
     void runtime_configuration::set_first_used_core(
-        std::uint32_t first_used_core)
+        std::uint32_t const first_used_core)
     {
         if (util::section* sec = get_section("hpx"); nullptr != sec)
         {
@@ -871,7 +917,7 @@ namespace hpx::util {
     }
 
     std::size_t runtime_configuration::get_agas_local_cache_size(
-        std::size_t dflt) const
+        std::size_t const dflt) const
     {
         std::size_t cache_size = dflt;
 
@@ -881,8 +927,7 @@ namespace hpx::util {
                 *sec, "local_cache_size", cache_size);
         }
 
-        if ((cache_size != static_cast<std::size_t>(~0x0ul)) &&
-            cache_size < 16ul)
+        if (cache_size != ~static_cast<std::size_t>(0) && cache_size < 16ul)
         {
             cache_size = 16;    // limit lower bound
         }
@@ -906,6 +951,19 @@ namespace hpx::util {
                 0;
         }
         return false;
+    }
+
+    std::uint64_t runtime_configuration::get_agas_rpc_timeout(
+        std::uint64_t const dflt) const
+    {
+        std::uint64_t timeout = dflt;
+
+        if (util::section const* sec = get_section("hpx.agas"); nullptr != sec)
+        {
+            timeout = hpx::util::get_entry_as<std::uint64_t>(
+                *sec, "rpc_timeout", timeout);
+        }
+        return timeout;
     }
 
     std::size_t runtime_configuration::get_agas_max_pending_refcnt_requests()
@@ -1026,11 +1084,14 @@ namespace hpx::util {
     {
         if (num_os_threads == 0)
         {
-            num_os_threads = 1;
             if (util::section const* sec = get_section("hpx"); nullptr != sec)
             {
                 num_os_threads = hpx::util::get_entry_as<std::uint32_t>(
                     *sec, "os_threads", 1);
+            }
+            else
+            {
+                num_os_threads = 1;
             }
         }
         return static_cast<std::size_t>(num_os_threads);
@@ -1045,7 +1106,7 @@ namespace hpx::util {
         return "";
     }
 
-    // Return the configured sizes of any of the know thread pools
+    // Return the configured sizes of the known thread pools
     std::size_t runtime_configuration::get_thread_pool_size(
         char const* poolname) const
     {
@@ -1072,7 +1133,7 @@ namespace hpx::util {
 
     // Will return the stack size to use for all HPX-threads.
     std::ptrdiff_t runtime_configuration::init_stack_size(char const* entryname,
-        char const* defaultvaluestr, std::ptrdiff_t defaultvalue) const
+        char const* defaultvaluestr, std::ptrdiff_t const defaultvalue) const
     {
         if (util::section const* sec = get_section("hpx.stacks");
             nullptr != sec)
@@ -1126,26 +1187,23 @@ namespace hpx::util {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    // Return maximally allowed message size
-    std::uint64_t runtime_configuration::get_max_inbound_message_size() const
+    // Return maximally allowed message size (zero for unlimited)
+    std::uint64_t runtime_configuration::get_max_inbound_message_size(
+        std::string const& type) const
     {
-        if (util::section const* sec = get_section("hpx.parcel");
+        if (util::section const* sec = get_section("hpx.parcel." + type);
             nullptr != sec)
         {
-            if (std::uint64_t const maxsize =
-                    hpx::util::get_entry_as<std::uint64_t>(
-                        *sec, "max_message_size", HPX_PARCEL_MAX_MESSAGE_SIZE);
-                maxsize > 0)
-            {
-                return maxsize;
-            }
+            return hpx::util::get_entry_as<std::uint64_t>(
+                *sec, "max_message_size", HPX_PARCEL_MAX_MESSAGE_SIZE);
         }
         return HPX_PARCEL_MAX_MESSAGE_SIZE;    // default is 1GByte
     }
 
-    std::uint64_t runtime_configuration::get_max_outbound_message_size() const
+    std::uint64_t runtime_configuration::get_max_outbound_message_size(
+        std::string const& type) const
     {
-        if (util::section const* sec = get_section("hpx.parcel");
+        if (util::section const* sec = get_section("hpx.parcel." + type);
             nullptr != sec)
         {
             if (std::uint64_t const maxsize =
@@ -1158,6 +1216,29 @@ namespace hpx::util {
             }
         }
         return HPX_PARCEL_MAX_OUTBOUND_MESSAGE_SIZE;    // default is 1GByte
+    }
+
+    bool runtime_configuration::tolerate_node_faults()
+    {
+        // ignore the benign data races around loading/setting the values from
+        // the booleans
+        if (!need_to_initialize_tolerate_node_faults)
+        {
+            return tolerate_node_faults_value;
+        }
+
+        bool value = false;
+        if (util::section const* sec = get_section("hpx"); nullptr != sec)
+        {
+            std::string const entry =
+                sec->get_entry("enable_fault_tolerance", "0");
+            value = !entry.empty() && entry != "0";
+        }
+
+        tolerate_node_faults_value = value;
+        need_to_initialize_tolerate_node_faults = false;
+
+        return value;
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -1185,7 +1266,7 @@ namespace hpx::util {
 
     ///////////////////////////////////////////////////////////////////////////
     std::ptrdiff_t runtime_configuration::get_stack_size(
-        threads::thread_stacksize stacksize) const
+        threads::thread_stacksize const stacksize) const
     {
         switch (stacksize)
         {

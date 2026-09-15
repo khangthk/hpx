@@ -10,8 +10,8 @@
 
 #include <hpx/config.hpp>
 #include <hpx/execution.hpp>
+#include <hpx/modules/algorithms.hpp>
 #include <hpx/modules/testing.hpp>
-#include <hpx/parallel/algorithms/find.hpp>
 
 #include <cstddef>
 #include <iostream>
@@ -41,7 +41,8 @@ void test_find_if_not(IteratorTag)
     iterator index = hpx::find_if_not(iterator(std::begin(c)),
         iterator(std::end(c)), [](auto v) { return v != int(1); });
 
-    base_iterator test_index = std::begin(c) + c.size() / 2;
+    base_iterator test_index =
+        std::begin(c) + static_cast<std::ptrdiff_t>(c.size() / 2);
 
     HPX_TEST(index == iterator(test_index));
 }
@@ -63,12 +64,12 @@ void test_find_if_not(ExPolicy&& policy, IteratorTag)
     iterator index = hpx::find_if_not(policy, iterator(std::begin(c)),
         iterator(std::end(c)), [](auto v) { return v != int(1); });
 
-    base_iterator test_index = std::begin(c) + c.size() / 2;
+    base_iterator test_index =
+        std::begin(c) + static_cast<std::ptrdiff_t>(c.size() / 2);
 
     HPX_TEST(index == iterator(test_index));
 }
 
-#if defined(HPX_HAVE_STDEXEC)
 template <typename LnPolicy, typename ExPolicy, typename IteratorTag>
 void test_find_if_not_sender(
     LnPolicy ln_policy, ExPolicy&& ex_policy, IteratorTag)
@@ -95,13 +96,13 @@ void test_find_if_not_sender(
                           [](auto v) { return v != int(1); }) |
             hpx::find_if_not(ex_policy.on(exec)));
 
-    iterator index = hpx::get<0>(*snd_result);
+    iterator index = hpx::get<0>(snd_result.value());
 
-    base_iterator test_index = std::begin(c) + c.size() / 2;
+    base_iterator test_index =
+        std::begin(c) + static_cast<std::ptrdiff_t>(c.size() / 2);
 
     HPX_TEST(index == iterator(test_index));
 }
-#endif
 
 template <typename ExPolicy, typename IteratorTag>
 void test_find_if_not_async(ExPolicy&& p, IteratorTag)
@@ -119,7 +120,8 @@ void test_find_if_not_async(ExPolicy&& p, IteratorTag)
     f.wait();
 
     //create iterator at position of value to be found
-    base_iterator test_index = std::begin(c) + c.size() / 2;
+    base_iterator test_index =
+        std::begin(c) + static_cast<std::ptrdiff_t>(c.size() / 2);
 
     HPX_TEST(f.get() == iterator(test_index));
 }

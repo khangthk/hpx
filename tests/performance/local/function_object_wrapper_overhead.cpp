@@ -7,8 +7,8 @@
 
 // make inspect happy: hpxinspect:nodeprecatedinclude hpxinspect:nodeprecatedname
 
-#include <hpx/functional/function.hpp>
 #include <hpx/hpx.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/timing.hpp>
 
 #include <hpx/modules/program_options.hpp>
@@ -52,7 +52,8 @@ void run(F const& f, std::uint64_t local_iterations)
         f();
 
     double elapsed = t.elapsed();
-    std::cout << " walltime/iteration: " << ((elapsed / i) * 1e9) << " ns\n";
+    std::cout << " walltime/iteration: "
+              << ((elapsed / static_cast<double>(i)) * 1e9) << " ns\n";
 }
 
 int app_main(variables_map& vm)

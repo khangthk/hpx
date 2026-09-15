@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //  Copyright (c) 2013 Agustin Berge
 //  Copyright (c) 2016 Lukas Troska
 //
@@ -128,19 +128,12 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/datastructures/tuple.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/acquire_future.hpp>
-#include <hpx/futures/traits/detail/future_traits.hpp>
-#include <hpx/futures/traits/future_access.hpp>
-#include <hpx/futures/traits/future_traits.hpp>
-#include <hpx/futures/traits/is_future.hpp>
-#include <hpx/futures/traits/is_future_range.hpp>
-#include <hpx/iterator_support/range.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/iterator_support.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/type_support/decay.hpp>
-#include <hpx/type_support/unwrap_ref.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -239,11 +232,13 @@ namespace hpx::lcos::detail {
                         // Attach a continuation to this future which will
                         // re-evaluate it and continue to the next argument
                         // (if any).
+                        Iter next_ = HPX_FORWARD(Iter, next);
+                        Iter end_ = HPX_FORWARD(Iter, end);
                         next_future_data->set_on_completed(
-                            [this_ = HPX_MOVE(this_), next = HPX_MOVE(next),
-                                end = HPX_MOVE(end)]() mutable -> void {
+                            [this_ = HPX_MOVE(this_), next_,
+                                end_]() mutable -> void {
                                 this_->template await_range<I>(
-                                    HPX_MOVE(next), HPX_MOVE(end));
+                                    HPX_MOVE(next_), HPX_MOVE(end_));
                             });
 
                         // explicitly destruct iterators as those might
@@ -340,15 +335,13 @@ namespace hpx::lcos::detail {
 namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct when_each_t final
-      : hpx::functional::tag<when_each_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct when_each_t final
     {
-    private:
         template <typename F, typename Future,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_future_v<Future>>>
-        friend decltype(auto) tag_invoke(
-            when_each_t, F&& func, std::vector<Future>& lazy_values)
+        decltype(auto) operator()(
+            F&& func, std::vector<Future>& lazy_values) const
         {
             using argument_type = hpx::tuple<std::vector<Future>>;
             using frame_type =
@@ -360,9 +353,10 @@ namespace hpx {
             std::transform(lazy_values.begin(), lazy_values.end(),
                 std::back_inserter(values), traits::acquire_future_disp());
 
+            auto const tuple_size = values.size();
             hpx::intrusive_ptr<frame_type> p(
                 new frame_type(hpx::forward_as_tuple(HPX_MOVE(values)),
-                    HPX_FORWARD(F, func), values.size()));
+                    HPX_FORWARD(F, func), tuple_size));
 
             p->template do_await<0>();
 
@@ -371,17 +365,15 @@ namespace hpx {
         }
 
         template <typename F, typename Future>
-        friend decltype(auto) tag_invoke(
-            when_each_t, F&& f, std::vector<Future>&& values)
+        decltype(auto) operator()(F&& f, std::vector<Future>&& values) const
         {
-            return tag_invoke(when_each_t{}, HPX_FORWARD(F, f), values);
+            return (*this)(HPX_FORWARD(F, f), values);
         }
 
         template <typename F, typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend decltype(auto) tag_invoke(
-            when_each_t, F&& f, Iterator begin, Iterator end)
+        decltype(auto) operator()(F&& f, Iterator begin, Iterator end) const
         {
             using future_type =
                 lcos::detail::future_iterator_traits_t<Iterator>;
@@ -393,7 +385,7 @@ namespace hpx {
             std::transform(begin, end, std::back_inserter(values),
                 traits::acquire_future_disp());
 
-            return tag_invoke(when_each_t{}, HPX_FORWARD(F, f), values)
+            return (*this)(HPX_FORWARD(F, f), values)
                 .then(hpx::launch::sync,
                     [end = HPX_MOVE(end)](hpx::future<void> fut) -> Iterator {
                         fut.get();    // rethrow exceptions, if any
@@ -402,7 +394,7 @@ namespace hpx {
         }
 
         template <typename F>
-        friend decltype(auto) tag_invoke(when_each_t, F&&)
+        decltype(auto) operator()(F&&) const
         {
             return hpx::make_ready_future();
         }
@@ -411,7 +403,7 @@ namespace hpx {
             typename Enable =
                 std::enable_if_t<!hpx::traits::is_future_v<std::decay_t<F>> &&
                     hpx::util::all_of_v<hpx::traits::is_future<Ts>...>>>
-        friend decltype(auto) tag_invoke(when_each_t, F&& f, Ts&&... ts)
+        decltype(auto) operator()(F&& f, Ts&&... ts) const
         {
             using argument_type = hpx::tuple<traits::acquire_future_t<Ts>...>;
             using frame_type =
@@ -431,15 +423,13 @@ namespace hpx {
     } when_each{};
 
     ///////////////////////////////////////////////////////////////////////////
-    inline constexpr struct when_each_n_t final
-      : hpx::functional::tag<when_each_n_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct when_each_n_t final
     {
-    private:
         template <typename F, typename Iterator,
             typename Enable =
                 std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-        friend decltype(auto) tag_invoke(
-            when_each_n_t, F&& f, Iterator begin, std::size_t count)
+        decltype(auto) operator()(
+            F&& f, Iterator begin, std::size_t count) const
         {
             using future_type =
                 lcos::detail::future_iterator_traits_t<Iterator>;
@@ -462,26 +452,5 @@ namespace hpx {
         }
     } when_each_n{};
 }    // namespace hpx
-
-namespace hpx::lcos {
-
-    template <typename F, typename... Ts>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::lcos::when_each is deprecated. Use hpx::when_each instead.")
-    auto when_each(F&& f, Ts&&... ts)
-    {
-        return hpx::when_each(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
-    }
-
-    template <typename F, typename Iterator,
-        typename Enable =
-            std::enable_if_t<hpx::traits::is_iterator_v<Iterator>>>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::when_each_n is deprecated. Use hpx::when_each_n instead.")
-    hpx::future<Iterator> when_each_n(F&& f, Iterator begin, std::size_t count)
-    {
-        return hpx::when_each_n(HPX_FORWARD(F, f), begin, count);
-    }
-}    // namespace hpx::lcos
 
 #endif    // DOXYGEN

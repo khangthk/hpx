@@ -1,5 +1,5 @@
 //  Copyright (c) 2017 Taeguk Kwon
-//  Copyright (c) 2020-2023 Hartmut Kaiser
+//  Copyright (c) 2020-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -209,16 +209,19 @@ namespace hpx {
 #else    // DOXYGEN
 
 #include <hpx/config.hpp>
+#include <hpx/contracts.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/coroutines.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/executors.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/iterator_support.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/algorithms/traits/projected.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/coroutines/thread_enums.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/executors/execution_policy.hpp>
-#include <hpx/functional/invoke.hpp>
-#include <hpx/functional/traits/is_invocable.hpp>
-#include <hpx/iterator_support/traits/is_iterator.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/adapt_placement_mode.hpp>
 #include <hpx/parallel/util/cancellation_token.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
@@ -226,7 +229,6 @@ namespace hpx {
 #include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/loop.hpp>
 #include <hpx/parallel/util/partitioner.hpp>
-#include <hpx/type_support/identity.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -240,36 +242,94 @@ namespace hpx::parallel {
     // is_heap
     namespace detail {
 
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Sent,
+            typename Comp, typename Proj>
+        constexpr Iter sequential_is_heap_until(
+            Iter first, Sent last, Comp&& comp, Proj&& proj)
+        {
+            Iter child = first;
+            if (child == last)
+            {
+                return child;
+            }
+
+            while (true)
+            {
+                ++child;
+                if (child == last ||
+                    HPX_INVOKE(comp, HPX_INVOKE(proj, *first),
+                        HPX_INVOKE(proj, *child)))
+                {
+                    break;
+                }
+
+                ++child;
+                if (child == last ||
+                    HPX_INVOKE(comp, HPX_INVOKE(proj, *first),
+                        HPX_INVOKE(proj, *child)))
+                {
+                    break;
+                }
+
+                ++first;
+            }
+
+            return child;
+        }
+
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Sent,
+            typename Comp>
+        constexpr Iter sequential_is_heap_until(
+            Iter first, Sent last, Comp&& comp, hpx::identity)
+        {
+            Iter child = first;
+            if (child == last)
+            {
+                return child;
+            }
+
+            while (true)
+            {
+                ++child;
+                if (child == last || HPX_INVOKE(comp, *first, *child))
+                {
+                    break;
+                }
+
+                ++child;
+                if (child == last || HPX_INVOKE(comp, *first, *child))
+                {
+                    break;
+                }
+
+                ++first;
+            }
+
+            return child;
+        }
+
         // sequential is_heap with projection function
-        template <typename Iter, typename Sent, typename Comp, typename Proj>
+        HPX_CXX_CORE_EXPORT template <typename Iter, typename Sent,
+            typename Comp, typename Proj>
         constexpr bool sequential_is_heap(
             Iter first, Sent last, Comp&& comp, Proj&& proj)
         {
-            using difference_type =
-                typename std::iterator_traits<Iter>::difference_type;
-
-            difference_type count = detail::distance(first, last);
-
-            for (difference_type i = 1; i < count; ++i)
-            {
-                if (HPX_INVOKE(comp, HPX_INVOKE(proj, *(first + (i - 1) / 2)),
-                        HPX_INVOKE(proj, *(first + i))))
-                    return false;
-            }
-            return true;
+            return sequential_is_heap_until(first, last,
+                       HPX_FORWARD(Comp, comp),
+                       HPX_FORWARD(Proj, proj)) == last;
         }
 
         struct is_heap_helper
         {
             template <typename ExPolicy, typename Iter, typename Sent,
                 typename Comp, typename Proj>
-            decltype(auto) operator()(ExPolicy&& orgpolicy, Iter first,
+            decltype(auto) operator()(ExPolicy&& org_policy, Iter first,
                 Sent last, Comp&& comp, Proj&& proj)
             {
                 using result = util::detail::algorithm_result<ExPolicy, bool>;
-                using type = typename std::iterator_traits<Iter>::value_type;
+                using type = std::iterator_traits<Iter>::value_type;
                 using difference_type =
-                    typename std::iterator_traits<Iter>::difference_type;
+                    std::iterator_traits<Iter>::difference_type;
                 constexpr bool has_scheduler_executor =
                     hpx::execution_policy_has_scheduler_executor_v<ExPolicy>;
 
@@ -294,9 +354,10 @@ namespace hpx::parallel {
                 Iter second = first + 1;
                 --count;
 
-                decltype(auto) policy = parallel::util::adapt_placement_mode(
-                    HPX_FORWARD(ExPolicy, orgpolicy),
-                    hpx::threads::thread_placement_hint::breadth_first);
+                decltype(auto) policy =
+                    hpx::execution::experimental::adapt_placement_mode(
+                        HPX_FORWARD(ExPolicy, org_policy),
+                        hpx::threads::thread_placement_hint::breadth_first);
 
                 using policy_type = std::decay_t<decltype(policy)>;
 
@@ -308,26 +369,43 @@ namespace hpx::parallel {
                               proj = HPX_FORWARD(Proj, proj)](Iter it,
                               std::size_t part_size,
                               std::size_t base_idx) mutable -> void {
+                    bool cancelled = false;
                     util::loop_idx_n<policy_type>(base_idx, it, part_size, tok,
-                        [&tok, first, &comp, &proj](
-                            type const& v, std::size_t i) mutable -> void {
-                            if (hpx::invoke(comp,
-                                    hpx::invoke(proj, *(first + i / 2)),
-                                    hpx::invoke(proj, v)))
+                        [&cancelled, first, &comp, &proj](type const& v,
+                            std::size_t const i) mutable -> void {
+                            if constexpr (std::is_same_v<hpx::identity,
+                                              std::decay_t<Proj>>)
                             {
-                                tok.cancel(0);
+                                HPX_UNUSED(proj);
+                                if (!cancelled &&
+                                    hpx::invoke(comp, *(first + i / 2), v))
+                                {
+                                    cancelled = true;
+                                }
+                            }
+                            else
+                            {
+                                if (!cancelled &&
+                                    hpx::invoke(comp,
+                                        hpx::invoke(proj, *(first + i / 2)),
+                                        hpx::invoke(proj, v)))
+                                {
+                                    cancelled = true;
+                                }
                             }
                         });
+                    if (cancelled)
+                    {
+                        tok.cancel(0);
+                    }
                 };
 
                 auto f2 = [tok, count](auto&&... data) mutable -> bool {
                     static_assert(sizeof...(data) < 2);
-                    if constexpr (sizeof...(data) == 1)
-                    {
-                        // make sure iterators embedded in function object that
-                        // is attached to futures are invalidated
-                        util::detail::clear_container(data...);
-                    }
+
+                    // make sure iterators embedded in function object that
+                    // is attached to futures are invalidated
+                    util::detail::clear_container(data...);
 
                     difference_type find_res =
                         static_cast<difference_type>(tok.get_data());
@@ -343,8 +421,8 @@ namespace hpx::parallel {
             }
         };
 
-        template <typename RandIter>
-        struct is_heap : public algorithm<is_heap<RandIter>, bool>
+        HPX_CXX_CORE_EXPORT template <typename RandIter>
+        struct is_heap : algorithm<is_heap<RandIter>, bool>
         {
             constexpr is_heap() noexcept
               : algorithm<is_heap, bool>("is_heap")
@@ -375,36 +453,17 @@ namespace hpx::parallel {
     // is_heap_until
     namespace detail {
 
-        // sequential is_heap_until with projection function
-        template <typename Iter, typename Sent, typename Comp, typename Proj>
-        constexpr Iter sequential_is_heap_until(
-            Iter first, Sent last, Comp&& comp, Proj&& proj)
-        {
-            using difference_type =
-                typename std::iterator_traits<Iter>::difference_type;
-
-            difference_type count = detail::distance(first, last);
-
-            for (difference_type i = 1; i < count; ++i)
-            {
-                if (HPX_INVOKE(comp, HPX_INVOKE(proj, *(first + (i - 1) / 2)),
-                        HPX_INVOKE(proj, *(first + i))))
-                    return first + i;
-            }
-            return last;
-        }
-
         struct is_heap_until_helper
         {
             template <typename ExPolicy, typename Iter, typename Sent,
                 typename Comp, typename Proj>
-            decltype(auto) operator()(ExPolicy&& orgpolicy, Iter first,
+            decltype(auto) operator()(ExPolicy&& org_policy, Iter first,
                 Sent last, Comp comp, Proj proj)
             {
                 using result = util::detail::algorithm_result<ExPolicy, Iter>;
-                using type = typename std::iterator_traits<Iter>::value_type;
+                using type = std::iterator_traits<Iter>::value_type;
                 using difference_type =
-                    typename std::iterator_traits<Iter>::difference_type;
+                    std::iterator_traits<Iter>::difference_type;
                 constexpr bool has_scheduler_executor =
                     hpx::execution_policy_has_scheduler_executor_v<ExPolicy>;
 
@@ -429,9 +488,10 @@ namespace hpx::parallel {
                     --count;
                 }
 
-                decltype(auto) policy = parallel::util::adapt_placement_mode(
-                    HPX_FORWARD(ExPolicy, orgpolicy),
-                    hpx::threads::thread_placement_hint::breadth_first);
+                decltype(auto) policy =
+                    hpx::execution::experimental::adapt_placement_mode(
+                        HPX_FORWARD(ExPolicy, org_policy),
+                        hpx::threads::thread_placement_hint::breadth_first);
 
                 using policy_type = std::decay_t<decltype(policy)>;
 
@@ -443,26 +503,47 @@ namespace hpx::parallel {
                               proj = HPX_FORWARD(Proj, proj)](Iter it,
                               std::size_t part_size,
                               std::size_t base_idx) mutable {
+                    std::size_t cancelled = static_cast<std::size_t>(-1);
                     util::loop_idx_n<policy_type>(base_idx, it, part_size, tok,
-                        [&tok, first, &comp, &proj](
-                            type const& v, std::size_t i) -> void {
-                            if (hpx::invoke(comp,
-                                    hpx::invoke(proj, *(first + i / 2)),
-                                    hpx::invoke(proj, v)))
+                        [&cancelled, first, &comp, &proj](
+                            type const& v, std::size_t const i) -> void {
+                            if constexpr (std::is_same_v<hpx::identity,
+                                              std::decay_t<Proj>>)
                             {
-                                tok.cancel(i);
+                                HPX_UNUSED(proj);
+                                if (cancelled == static_cast<std::size_t>(-1))
+                                {
+                                    if (hpx::invoke(comp, *(first + i / 2), v))
+                                    {
+                                        cancelled = i;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                if (cancelled == static_cast<std::size_t>(-1))
+                                {
+                                    if (hpx::invoke(comp,
+                                            hpx::invoke(proj, *(first + i / 2)),
+                                            hpx::invoke(proj, v)))
+                                    {
+                                        cancelled = i;
+                                    }
+                                }
                             }
                         });
+                    if (cancelled != static_cast<std::size_t>(-1))
+                    {
+                        tok.cancel(cancelled);
+                    }
                 };
 
                 auto f2 = [tok, second](auto&&... data) mutable -> Iter {
                     static_assert(sizeof...(data) < 2);
-                    if constexpr (sizeof...(data) == 1)
-                    {
-                        // make sure iterators embedded in function object that is
-                        // attached to futures are invalidated
-                        util::detail::clear_container(data...);
-                    }
+
+                    // make sure iterators embedded in function object that is
+                    // attached to futures are invalidated
+                    util::detail::clear_container(data...);
 
                     difference_type find_res =
                         static_cast<difference_type>(tok.get_data());
@@ -480,9 +561,8 @@ namespace hpx::parallel {
             }
         };
 
-        template <typename RandIter>
-        struct is_heap_until
-          : public algorithm<is_heap_until<RandIter>, RandIter>
+        HPX_CXX_CORE_EXPORT template <typename RandIter>
+        struct is_heap_until : algorithm<is_heap_until<RandIter>, RandIter>
         {
             constexpr is_heap_until() noexcept
               : algorithm<is_heap_until, RandIter>("is_heap_until")
@@ -515,26 +595,26 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::is_heap
-    inline constexpr struct is_heap_t final
-      : hpx::detail::tag_parallel_algorithm<is_heap_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct is_heap_t final
+      : hpx::detail::tag_dispatch<is_heap_t,
+            hpx::detail::tag_parallel_algorithm<is_heap_t>>
     {
-    private:
-        // clang-format off
         template <typename ExPolicy, typename RandIter,
-            typename Comp = hpx::parallel::detail::less,
-            HPX_CONCEPT_REQUIRES_(
+            typename Comp = hpx::parallel::detail::less>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<RandIter> &&
                 hpx::is_invocable_v<Comp,
                     typename std::iterator_traits<RandIter>::value_type,
                     typename std::iterator_traits<RandIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(is_heap_t, ExPolicy&& policy,
-            RandIter first, RandIter last, Comp comp = Comp())
+        static decltype(auto) invoke_default(ExPolicy&& policy, RandIter first,
+            RandIter last, Comp comp = Comp()) HPX_PRE(first <= last)
         {
-            static_assert(hpx::traits::is_random_access_iterator_v<RandIter>,
+            static_assert(std::random_access_iterator<RandIter>,
                 "Requires a random access iterator.");
 
             return hpx::parallel::detail::is_heap<RandIter>().call(
@@ -542,21 +622,21 @@ namespace hpx {
                 hpx::identity_v);
         }
 
-        // clang-format off
         template <typename RandIter,
-            typename Comp = hpx::parallel::detail::less,
-            HPX_CONCEPT_REQUIRES_(
+            typename Comp = hpx::parallel::detail::less>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<RandIter> &&
                 hpx::is_invocable_v<Comp,
                     typename std::iterator_traits<RandIter>::value_type,
                     typename std::iterator_traits<RandIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend bool tag_fallback_invoke(
-            is_heap_t, RandIter first, RandIter last, Comp comp = Comp())
+        static bool invoke_default(RandIter first, RandIter last,
+            Comp comp = Comp()) HPX_PRE(first <= last)
         {
-            static_assert(hpx::traits::is_random_access_iterator_v<RandIter>,
+            static_assert(std::random_access_iterator<RandIter>,
                 "Requires a random access iterator.");
 
             return hpx::parallel::detail::is_heap<RandIter>().call(
@@ -567,27 +647,26 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::is_heap_until
-    inline constexpr struct is_heap_until_t final
-      : hpx::detail::tag_parallel_algorithm<is_heap_until_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct is_heap_until_t final
+      : hpx::detail::tag_dispatch<is_heap_until_t,
+            hpx::detail::tag_parallel_algorithm<is_heap_until_t>>
     {
-    private:
-        // clang-format off
         template <typename ExPolicy, typename RandIter,
-            typename Comp = hpx::parallel::detail::less,
-            HPX_CONCEPT_REQUIRES_(
+            typename Comp = hpx::parallel::detail::less>
+        // clang-format off
+            requires (
                 hpx::is_execution_policy_v<ExPolicy> &&
                 hpx::traits::is_iterator_v<RandIter> &&
                 hpx::is_invocable_v<Comp,
                     typename std::iterator_traits<RandIter>::value_type,
                     typename std::iterator_traits<RandIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(is_heap_until_t,
-            ExPolicy&& policy, RandIter first, RandIter last,
-            Comp comp = Comp())
+        static decltype(auto) invoke_default(ExPolicy&& policy, RandIter first,
+            RandIter last, Comp comp = Comp()) HPX_PRE(first <= last)
         {
-            static_assert(hpx::traits::is_random_access_iterator_v<RandIter>,
+            static_assert(std::random_access_iterator<RandIter>,
                 "Requires a random access iterator.");
 
             return hpx::parallel::detail::is_heap_until<RandIter>().call(
@@ -595,21 +674,21 @@ namespace hpx {
                 hpx::identity_v);
         }
 
-        // clang-format off
         template <typename RandIter,
-            typename Comp = hpx::parallel::detail::less,
-            HPX_CONCEPT_REQUIRES_(
+            typename Comp = hpx::parallel::detail::less>
+        // clang-format off
+            requires (
                 hpx::traits::is_iterator_v<RandIter> &&
                 hpx::is_invocable_v<Comp,
                     typename std::iterator_traits<RandIter>::value_type,
                     typename std::iterator_traits<RandIter>::value_type
                 >
-            )>
+            )
         // clang-format on
-        friend RandIter tag_fallback_invoke(
-            is_heap_until_t, RandIter first, RandIter last, Comp comp = Comp())
+        static RandIter invoke_default(RandIter first, RandIter last,
+            Comp comp = Comp()) HPX_PRE(first <= last)
         {
-            static_assert(hpx::traits::is_random_access_iterator_v<RandIter>,
+            static_assert(std::random_access_iterator<RandIter>,
                 "Requires a random access iterator.");
 
             return hpx::parallel::detail::is_heap_until<RandIter>().call(

@@ -1,5 +1,5 @@
 //  Copyright (c) 2021 ETH Zurich
-//  Copyright (c) 2022 Hartmut Kaiser
+//  Copyright (c) 2022-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,25 +7,19 @@
 
 #pragma once
 
-#include <hpx/allocator_support/allocator_deleter.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
-#include <hpx/allocator_support/traits/is_allocator.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
+#include <hpx/assert.hpp>
+#include <hpx/async_base/query_dispatch.hpp>
 #include <hpx/execution/algorithms/detail/inject_scheduler.hpp>
 #include <hpx/execution/algorithms/detail/partial_algorithm.hpp>
 #include <hpx/execution/algorithms/detail/single_result.hpp>
 #include <hpx/execution/algorithms/run_loop.hpp>
-#include <hpx/execution_base/completion_signatures.hpp>
-#include <hpx/execution_base/operation_state.hpp>
-#include <hpx/execution_base/receiver.hpp>
-#include <hpx/execution_base/sender.hpp>
-#include <hpx/functional/detail/tag_priority_invoke.hpp>
-#include <hpx/functional/invoke_result.hpp>
-#include <hpx/futures/detail/future_data.hpp>
-#include <hpx/futures/promise.hpp>
+#include <hpx/execution_base/stdexec_forward.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/futures.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/type_support/meta.hpp>
-#include <hpx/type_support/unused.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <exception>
 #include <memory>
@@ -37,21 +31,54 @@ namespace hpx::execution::experimental {
     // enforce proper formatting
     namespace detail {
 
+        using run_loop_scheduler_type =
+            decltype(std::declval<run_loop&>().get_scheduler());
+
+        // Recover the parent `run_loop&` from HPX's concrete run-loop
+        // scheduler through its public accessor instead of depending on the
+        // scheduled sender's environment layout.
+        inline hpx::execution::experimental::run_loop&
+        get_run_loop_from_scheduler(run_loop_scheduler_type const&
+                sched) noexcept(noexcept(sched.get_run_loop()))
+        {
+            return sched.get_run_loop();
+        }
+
+        template <typename OperationState>
+        void start_operation_state(OperationState& op_state) noexcept
+        {
+            if constexpr (requires { op_state.start(); })
+            {
+                op_state.start();
+            }
+            else
+            {
+#if defined(HPX_CLANG_VERSION)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+                hpx::execution::experimental::start(op_state);
+#if defined(HPX_CLANG_VERSION)
+#pragma clang diagnostic pop
+#endif
+            }
+        }
+
 #if defined(HPX_GCC_VERSION) && HPX_GCC_VERSION >= 110000
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
-        template <typename Data>
+        HPX_CXX_CORE_EXPORT template <typename Data>
         struct future_receiver_base
         {
-            using is_receiver = void;
+            using receiver_concept = hpx::execution::experimental::receiver_t;
             hpx::intrusive_ptr<Data> data;
 
         protected:
             // Note: MSVC toolset v142 fails compiling 'data->' below, using
             // '(*data).' instead
             template <typename U>
-            void set_value(U&& u) && noexcept
+            void set_value_impl(U&& u) && noexcept
             {
                 hpx::detail::try_catch_exception_ptr(
                     [&]() { (*data).set_value(HPX_FORWARD(U, u)); },
@@ -61,16 +88,14 @@ namespace hpx::execution::experimental {
                 data.reset();
             }
 
-        private:
-            friend void tag_invoke(set_error_t, future_receiver_base&& r,
-                std::exception_ptr ep) noexcept
+        public:
+            void set_error(std::exception_ptr ep) && noexcept
             {
-                r.data->set_exception(HPX_MOVE(ep));
-                r.data.reset();
+                data->set_exception(HPX_MOVE(ep));
+                data.reset();
             }
 
-            friend void tag_invoke(
-                set_stopped_t, future_receiver_base&&) noexcept
+            static void set_stopped() noexcept
             {
                 std::terminate();
             }
@@ -79,16 +104,14 @@ namespace hpx::execution::experimental {
 #pragma GCC diagnostic pop
 #endif
 
-        template <typename T>
+        HPX_CXX_CORE_EXPORT template <typename T>
         struct future_receiver
           : future_receiver_base<hpx::lcos::detail::future_data_base<T>>
         {
-        private:
             template <typename U>
-            friend void tag_invoke(
-                set_value_t, future_receiver&& r, U&& u) noexcept
+            void set_value(U&& u) && noexcept
             {
-                HPX_MOVE(r).set_value(HPX_FORWARD(U, u));
+                HPX_MOVE(*this).set_value_impl(HPX_FORWARD(U, u));
             }
         };
 
@@ -96,10 +119,9 @@ namespace hpx::execution::experimental {
         struct future_receiver<void>
           : future_receiver_base<hpx::lcos::detail::future_data_base<void>>
         {
-        private:
-            friend void tag_invoke(set_value_t, future_receiver&& r) noexcept
+            void set_value() && noexcept
             {
-                HPX_MOVE(r).set_value(hpx::util::unused);
+                HPX_MOVE(*this).set_value_impl(hpx::util::unused);
             }
         };
 
@@ -108,26 +130,31 @@ namespace hpx::execution::experimental {
 #pragma GCC diagnostic ignored "-Warray-bounds"
 #pragma GCC diagnostic ignored "-Wstringop-overflow"
 #endif
-        template <typename T, typename Allocator, typename OperationState,
-            typename Derived = void>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Allocator,
+            typename OperationState, typename Derived = void>
         struct future_data
           : hpx::lcos::detail::future_data_allocator<T, Allocator,
                 std::conditional_t<std::is_void_v<Derived>,
                     future_data<T, Allocator, OperationState, Derived>,
                     Derived>>
         {
-            HPX_NON_COPYABLE(future_data);
+            future_data& operator=(future_data const&) = delete;
+            future_data& operator=(future_data&&) = delete;
 
             using derived_type = std::conditional_t<std::is_void_v<Derived>,
                 future_data, Derived>;
             using base_type = hpx::lcos::detail::future_data_allocator<T,
                 Allocator, derived_type>;
             using operation_state_type = std::decay_t<OperationState>;
-            using init_no_addref = typename base_type::init_no_addref;
-            using other_allocator = typename std::allocator_traits<
+            using init_no_addref = base_type::init_no_addref;
+            using other_allocator = std::allocator_traits<
                 Allocator>::template rebind_alloc<future_data>;
 
             operation_state_type op_state;
+
+            // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
+            future_data(future_data const&) = delete;
+            future_data(future_data&&) = delete;
 
             template <typename Sender>
             future_data(init_no_addref no_addref, other_allocator const& alloc,
@@ -137,11 +164,13 @@ namespace hpx::execution::experimental {
                     HPX_FORWARD(Sender, sender),
                     detail::future_receiver<T>{{this}}))
             {
-                hpx::execution::experimental::start(op_state);
+                detail::start_operation_state(op_state);
             }
+            // NOLINTEND(bugprone-crtp-constructor-accessibility)
         };
 
-        template <typename T, typename Allocator, typename OperationState>
+        HPX_CXX_CORE_EXPORT template <typename T, typename Allocator,
+            typename OperationState>
         struct future_data_with_run_loop
           : future_data<T, Allocator, OperationState,
                 future_data_with_run_loop<T, Allocator, OperationState>>
@@ -150,29 +179,15 @@ namespace hpx::execution::experimental {
 
             using base_type = future_data<T, Allocator, OperationState,
                 future_data_with_run_loop>;
-            using init_no_addref = typename base_type::init_no_addref;
-            using other_allocator = typename base_type::other_allocator;
+            using init_no_addref = base_type::init_no_addref;
+            using other_allocator = base_type::other_allocator;
 
             template <typename Sender>
             future_data_with_run_loop(init_no_addref no_addref,
                 other_allocator const& alloc,
-#if defined(HPX_HAVE_STDEXEC)
-                decltype(std::declval<hpx::execution::experimental::run_loop>()
-                             .get_scheduler()) const& sched,
-#else
-                hpx::execution::experimental::run_loop_scheduler const& sched,
-#endif
-                Sender&& sender)
+                run_loop_scheduler_type const& sched, Sender&& sender)
               : base_type(no_addref, alloc, HPX_FORWARD(Sender, sender))
-#if defined(HPX_HAVE_STDEXEC)
-              //TODO: Keep an eye on this, it is based on the internal impl of
-              // stdexec, so it is subect to change. This is currently relying
-              // on the env struct to expose __loop_ as a public member.
-              , loop(*hpx::execution::experimental::get_env(schedule(sched))
-                          .__loop_)
-#else
-              , loop(sched.get_run_loop())
-#endif
+              , loop(get_run_loop_from_scheduler(sched))
             {
                 this->set_on_completed([this]() { loop.finish(); });
             }
@@ -191,7 +206,7 @@ namespace hpx::execution::experimental {
         };
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Sender, typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename Sender, typename Allocator>
         auto make_future(Sender&& sender, Allocator const& allocator)
         {
             using allocator_type = Allocator;
@@ -208,8 +223,8 @@ namespace hpx::execution::experimental {
 
             using shared_state =
                 future_data<result_type, allocator_type, operation_state_type>;
-            using init_no_addref = typename shared_state::init_no_addref;
-            using other_allocator = typename std::allocator_traits<
+            using init_no_addref = shared_state::init_no_addref;
+            using other_allocator = std::allocator_traits<
                 allocator_type>::template rebind_alloc<shared_state>;
             using allocator_traits = std::allocator_traits<other_allocator>;
             using unique_ptr = std::unique_ptr<shared_state,
@@ -230,14 +245,10 @@ namespace hpx::execution::experimental {
 #endif
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Sender, typename Allocator>
+        HPX_CXX_CORE_EXPORT template <typename Sender, typename Allocator>
         auto make_future_with_run_loop(
-#if defined(HPX_HAVE_STDEXEC)
             decltype(std::declval<hpx::execution::experimental::run_loop>()
-                         .get_scheduler()) const& sched,
-#else
-            hpx::execution::experimental::run_loop_scheduler const& sched,
-#endif
+                    .get_scheduler()) const& sched,
             Sender&& sender, Allocator const& allocator)
         {
             using allocator_type = Allocator;
@@ -254,8 +265,8 @@ namespace hpx::execution::experimental {
 
             using shared_state = future_data_with_run_loop<result_type,
                 allocator_type, operation_state_type>;
-            using init_no_addref = typename shared_state::init_no_addref;
-            using other_allocator = typename std::allocator_traits<
+            using init_no_addref = shared_state::init_no_addref;
+            using other_allocator = std::allocator_traits<
                 allocator_type>::template rebind_alloc<shared_state>;
             using allocator_traits = std::allocator_traits<other_allocator>;
             using unique_ptr = std::unique_ptr<shared_state,
@@ -319,10 +330,12 @@ namespace hpx::execution::experimental {
     // If the provided sender sends the "stopped" signal instead of values,
     // make_future calls std::terminate.
     //
-    inline constexpr struct make_future_t final
-      : hpx::functional::detail::tag_priority<make_future_t>
+    // Overloads, highest preference first: completion-scheduler routing,
+    // explicit scheduler.query, default, inject_scheduler, then partial.
+    HPX_CXX_CORE_EXPORT inline constexpr struct make_future_t final
     {
-    private:
+        // Prefer the sender's completion scheduler when it customizes
+        // make_future.
         // clang-format off
         template <typename Sender,
             typename Allocator = hpx::util::internal_allocator<>,
@@ -335,58 +348,50 @@ namespace hpx::execution::experimental {
                 >
             )>
         // clang-format on
-        friend constexpr HPX_FORCEINLINE auto tag_override_invoke(make_future_t,
-            Sender&& sender, Allocator const& allocator = Allocator{})
+        constexpr HPX_FORCEINLINE auto operator()(
+            Sender&& sender, Allocator const& allocator = Allocator{}) const
         {
-#if defined(HPX_HAVE_STDEXEC)
             auto scheduler =
                 hpx::execution::experimental::get_completion_scheduler<
                     hpx::execution::experimental::set_value_t>(
                     hpx::execution::experimental::get_env(sender));
-#else
-            auto scheduler =
-                hpx::execution::experimental::get_completion_scheduler<
-                    hpx::execution::experimental::set_value_t>(sender);
-#endif
 
-            return hpx::functional::tag_invoke(make_future_t{},
+            return make_future_t{}(
                 HPX_MOVE(scheduler), HPX_FORWARD(Sender, sender), allocator);
         }
 
-        // clang-format off
-        template <typename Sender,
-            typename Allocator = hpx::util::internal_allocator<>,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::execution::experimental::is_sender_v<Sender>
-            )>
-        // clang-format on
-        friend auto tag_invoke(make_future_t,
-#if defined(HPX_HAVE_STDEXEC)
-            decltype(std::declval<hpx::execution::experimental::run_loop>()
-                         .get_scheduler()) const& sched,
-#else
-            hpx::execution::experimental::run_loop_scheduler const& sched,
-#endif
-            Sender&& sender, Allocator const& allocator = Allocator{})
+        // Explicit scheduler: make_future(sched, sender, alloc)
+        template <typename Scheduler, typename Sender,
+            typename Allocator = hpx::util::internal_allocator<>>
+        constexpr auto operator()(Scheduler&& sched, Sender&& sender,
+            Allocator const& allocator = Allocator{}) const
+            requires(
+                has_query_v<Scheduler, make_future_t, Sender, Allocator const&>)
         {
-            return detail::make_future_with_run_loop(
-                sched, HPX_FORWARD(Sender, sender), allocator);
+            return HPX_FORWARD(Scheduler, sched)
+                .query(make_future_t{}, HPX_FORWARD(Sender, sender), allocator);
         }
 
+        // Default: sender (+ optional allocator)
         // clang-format off
         template <typename Sender,
             typename Allocator = hpx::util::internal_allocator<>,
             HPX_CONCEPT_REQUIRES_(
                 is_sender_v<Sender> &&
-                hpx::traits::is_allocator_v<Allocator>
+                hpx::traits::is_allocator_v<Allocator> &&
+                !experimental::detail::is_completion_scheduler_tag_invocable_v<
+                    hpx::execution::experimental::set_value_t,
+                    Sender, make_future_t, Allocator
+                >
             )>
         // clang-format on
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(make_future_t,
-            Sender&& sender, Allocator const& allocator = Allocator{})
+        constexpr HPX_FORCEINLINE auto operator()(
+            Sender&& sender, Allocator const& allocator = Allocator{}) const
         {
             return detail::make_future(HPX_FORWARD(Sender, sender), allocator);
         }
 
+        // Partial with scheduler: make_future(sched) | ...
         // clang-format off
         template <typename Scheduler,
             typename Allocator = hpx::util::internal_allocator<>,
@@ -395,25 +400,34 @@ namespace hpx::execution::experimental {
                 hpx::traits::is_allocator_v<Allocator>
             )>
         // clang-format on
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(make_future_t,
-            Scheduler&& scheduler, Allocator const& allocator = Allocator{})
+        constexpr HPX_FORCEINLINE auto operator()(Scheduler&& scheduler,
+            Allocator const& allocator = Allocator{}) const
         {
             return hpx::execution::experimental::detail::inject_scheduler<
                 make_future_t, Scheduler, Allocator>{
                 HPX_FORWARD(Scheduler, scheduler), allocator};
         }
 
+        // Partial: make_future(alloc) | ...
         // clang-format off
         template <typename Allocator = hpx::util::internal_allocator<>,
             HPX_CONCEPT_REQUIRES_(
                 hpx::traits::is_allocator_v<Allocator>
             )>
         // clang-format on
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(
-            make_future_t, Allocator const& allocator = Allocator{})
+        constexpr HPX_FORCEINLINE auto operator()(
+            Allocator const& allocator = Allocator{}) const
         {
             return detail::partial_algorithm<make_future_t, Allocator>{
                 allocator};
         }
     } make_future{};
+
+    template <typename Sender, typename Allocator>
+    auto run_loop::run_loop_scheduler::query(
+        make_future_t, Sender&& sender, Allocator const& allocator) const
+    {
+        return detail::make_future_with_run_loop(
+            *this, HPX_FORWARD(Sender, sender), allocator);
+    }
 }    // namespace hpx::execution::experimental

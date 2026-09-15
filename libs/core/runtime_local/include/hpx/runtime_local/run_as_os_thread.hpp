@@ -8,8 +8,8 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/functional/invoke_result.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/runtime_local/service_executors.hpp>
 
 #include <type_traits>
@@ -18,13 +18,13 @@
 namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename F, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename F, typename... Ts>
     hpx::future<util::invoke_result_t<F, Ts...>> run_as_os_thread(
         F&& f, Ts&&... vs)
     {
         HPX_ASSERT(threads::get_self_ptr() != nullptr);
 
-        parallel::execution::io_pool_executor executor;
+        hpx::execution::experimental::io_pool_executor executor;
         return parallel::execution::async_execute(
             executor, HPX_FORWARD(F, f), HPX_FORWARD(Ts, vs)...);
     }

@@ -42,7 +42,7 @@ namespace hpx::util::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////
-    template <typename Sig, bool Copyable = true>
+    HPX_CXX_CORE_EXPORT template <typename Sig, bool Copyable = true>
     struct function_vtable;
 
     template <typename Sig>
@@ -79,6 +79,6 @@ namespace hpx::util::detail {
         }
     };
 
-    template <typename Sig>
+    HPX_CXX_CORE_EXPORT template <typename Sig>
     using unique_function_vtable = function_vtable<Sig, false>;
 }    // namespace hpx::util::detail

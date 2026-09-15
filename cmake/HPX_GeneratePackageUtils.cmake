@@ -14,6 +14,8 @@ endmacro(get_target_property)
 # https://github.com/boost-cmake/bcm/blob/master/share/bcm/cmake/BCMPkgConfig.cmake
 # https://gitlab.kitware.com/cmake/cmake/issues/17984
 
+set(_hpx_generate_package_utils_dir ${CMAKE_CURRENT_LIST_DIR})
+
 # Recursively add the interface_include_dirs of the dependencies and link them
 function(
   hpx_collect_usage_requirements
@@ -242,16 +244,23 @@ function(hpx_sanitize_usage_requirements property is_build)
 
 endfunction(hpx_sanitize_usage_requirements)
 
-function(hpx_filter_cuda_flags cflag_list)
+function(hpx_filter_language_flags cflag_list)
   set(_cflag_list "${${cflag_list}}")
-  string(REGEX REPLACE "\\$<\\$<COMPILE_LANGUAGE:CUDA>:[^>]*>;?" "" _cflag_list
-                       "${_cflag_list}"
+  # We are always in CXX, so replace conditional values with the values
+  # themselves
+  string(REGEX REPLACE "\\$<\\$<COMPILE_LANGUAGE:CXX>:([^>]*)>?" "\\1"
+                       _cflag_list "${_cflag_list}"
   )
+  # Remove conditional values for other languages
+  string(REGEX REPLACE "\\$<\\$<COMPILE_LANGUAGE:[^>]*>:([^>]*)>?" ""
+                       _cflag_list "${_cflag_list}"
+  )
+
   set(${cflag_list}
       ${_cflag_list}
       PARENT_SCOPE
   )
-endfunction(hpx_filter_cuda_flags)
+endfunction(hpx_filter_language_flags)
 
 # Append the corresponding (-D, -I) flags for the compilation
 function(
@@ -383,32 +392,78 @@ function(hpx_generate_pkgconfig_from_target target template is_build)
     hpx_compile_definitions hpx_compile_options hpx_pic_option
     hpx_include_directories hpx_system_include_directories hpx_cflags_list
   )
-  # Cannot generate one file per language yet so filter out cuda
-  hpx_filter_cuda_flags(hpx_cflags_list)
+  # Generator expressions that depend on language must be filtered out
+  hpx_filter_language_flags(hpx_cflags_list)
   hpx_construct_library_list(
     hpx_link_libraries hpx_link_options hpx_library_list
   )
 
-  string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
+  get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+  if(is_multi_config)
+    # For multi-config generators, we generate a single template and use
+    # configuration-specific file generation.
+    configure_file(
+      ${_hpx_generate_package_utils_dir}/templates/${template}.pc.in
+      ${OUTPUT_DIR}${template}_configurable.pc.in @ONLY ESCAPE_QUOTES
+    )
 
-  configure_file(
-    cmake/templates/${template}.pc.in
-    ${OUTPUT_DIR}${template}_${build_type}.pc.in @ONLY ESCAPE_QUOTES
-  )
-  # Can't use generator expression directly as name of output file (solved in
-  # CMake 3.20)
-  file(
-    GENERATE
-    OUTPUT ${OUTPUT_DIR}/${template}_${build_type}.pc
-    INPUT ${OUTPUT_DIR}${template}_${build_type}.pc.in
-  )
-  # Temporary (to deprecate gradually)
-  if("${build_type}" MATCHES "rel")
+    set(config_types ${CMAKE_CONFIGURATION_TYPES})
+    if(NOT config_types)
+      set(config_types Debug Release RelWithDebInfo MinSizeRel)
+    endif()
+
+    set(default_config "")
+    foreach(config_type ${config_types})
+      string(TOLOWER ${config_type} config_lower)
+
+      file(
+        GENERATE
+        OUTPUT ${OUTPUT_DIR}/${template}_${config_lower}.pc
+        INPUT ${OUTPUT_DIR}${template}_configurable.pc.in
+        CONDITION "$<CONFIG:${config_type}>"
+      )
+
+      # We track a default configuration (preferring Release) to generate the
+      # legacy .pc file for backward compatibility.
+      if(NOT default_config OR "${config_lower}" STREQUAL "release")
+        if(NOT default_config OR NOT "${default_config}" STREQUAL "release")
+          if("${config_lower}" MATCHES "rel")
+            set(default_config ${config_type})
+          endif()
+        endif()
+      endif()
+    endforeach()
+
+    if(default_config)
+      file(
+        GENERATE
+        OUTPUT ${OUTPUT_DIR}/${template}.pc
+        INPUT ${OUTPUT_DIR}${template}_configurable.pc.in
+        CONDITION "$<CONFIG:${default_config}>"
+      )
+    endif()
+  else()
+    # Logic for single-config generators
+    string(TOLOWER ${CMAKE_BUILD_TYPE} build_type)
+
+    configure_file(
+      ${_hpx_generate_package_utils_dir}/templates/${template}.pc.in
+      ${OUTPUT_DIR}${template}_${build_type}.pc.in @ONLY ESCAPE_QUOTES
+    )
+
     file(
       GENERATE
-      OUTPUT ${OUTPUT_DIR}/${template}.pc
+      OUTPUT ${OUTPUT_DIR}/${template}_${build_type}.pc
       INPUT ${OUTPUT_DIR}${template}_${build_type}.pc.in
     )
+
+    if("${build_type}" MATCHES "rel")
+      file(
+        GENERATE
+        OUTPUT ${OUTPUT_DIR}/${template}.pc
+        INPUT ${OUTPUT_DIR}${template}_${build_type}.pc.in
+      )
+    endif()
   endif()
 
 endfunction(hpx_generate_pkgconfig_from_target)

@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2016 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,12 +7,12 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/execution/executors/execution_parameters.hpp>
+#include <hpx/modules/execution.hpp>
 
 namespace hpx::parallel::util::detail {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Parameters, typename Executor>
+    HPX_CXX_CORE_EXPORT template <typename Parameters, typename Executor>
     struct scoped_executor_parameters
     {
     public:
@@ -21,17 +21,18 @@ namespace hpx::parallel::util::detail {
           : params_(params)
           , exec_(exec)
         {
-            execution::mark_begin_execution(params_, exec_);
+            hpx::execution::experimental::mark_begin_execution(params_, exec_);
         }
 
         void mark_end_of_scheduling() const
         {
-            execution::mark_end_of_scheduling(params_, exec_);
+            hpx::execution::experimental::mark_end_of_scheduling(
+                params_, exec_);
         }
 
         ~scoped_executor_parameters()
         {
-            execution::mark_end_execution(params_, exec_);
+            hpx::execution::experimental::mark_end_execution(params_, exec_);
         }
 
     private:
@@ -40,7 +41,7 @@ namespace hpx::parallel::util::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Parameters, typename Executor>
+    HPX_CXX_CORE_EXPORT template <typename Parameters, typename Executor>
     struct scoped_executor_parameters_ref
     {
     public:
@@ -49,17 +50,18 @@ namespace hpx::parallel::util::detail {
           : params_(params)
           , exec_(exec)
         {
-            execution::mark_begin_execution(params_, exec_);
+            hpx::execution::experimental::mark_begin_execution(params_, exec_);
         }
 
         void mark_end_of_scheduling() const
         {
-            execution::mark_end_of_scheduling(params_, exec_);
+            hpx::execution::experimental::mark_end_of_scheduling(
+                params_, exec_);
         }
 
         ~scoped_executor_parameters_ref()
         {
-            execution::mark_end_execution(params_, exec_);
+            hpx::execution::experimental::mark_end_execution(params_, exec_);
         }
 
     private:

@@ -8,4 +8,5 @@
 
 #pragma once
 
-#include <hpx/synchronization/barrier.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/synchronization.hpp>

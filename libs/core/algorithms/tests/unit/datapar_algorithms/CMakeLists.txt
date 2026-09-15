@@ -11,6 +11,7 @@ if(HPX_WITH_DATAPAR)
       ${tests}
       adjacentfind_datapar
       adjacentdifference_datapar
+      datapar_zip_iterator_guard
       all_of_datapar
       any_of_datapar
       copy_datapar
@@ -29,6 +30,7 @@ if(HPX_WITH_DATAPAR)
       foreach_datapar
       foreach_datapar_zipiter
       foreachn_datapar
+      for_loop_datapar
       generate_datapar
       generaten_datapar
       mismatch_binary_datapar
@@ -39,6 +41,8 @@ if(HPX_WITH_DATAPAR)
       replace_copy_datapar
       replace_datapar
       replace_if_datapar
+      search_datapar
+      search_n_datapar
       transform_binary_datapar
       transform_binary2_datapar
       transform_datapar

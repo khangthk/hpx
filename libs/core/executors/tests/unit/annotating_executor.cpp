@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -151,14 +151,14 @@ void test_f(hpx::future<void> f, int passed_through)
 template <typename Executor>
 void test_then(Executor&& executor)
 {
-    hpx::future<void> f = hpx::make_ready_future();
-
     std::string desc("test_then");
     {
+        hpx::future<void> f = hpx::make_ready_future();
         auto exec = hpx::experimental::prefer(
             hpx::execution::experimental::with_annotation, executor, desc);
 
-        hpx::parallel::execution::then_execute(exec, &test_f, f, 42).get();
+        hpx::parallel::execution::then_execute(exec, &test_f, std::move(f), 42)
+            .get();
 
         HPX_TEST_EQ(annotation, desc);
         HPX_TEST_EQ(annotation,
@@ -166,11 +166,13 @@ void test_then(Executor&& executor)
     }
 
     {
+        hpx::future<void> f = hpx::make_ready_future();
         annotation.clear();
         auto exec =
             hpx::execution::experimental::with_annotation(executor, desc);
 
-        hpx::parallel::execution::then_execute(exec, &test_f, f, 42).get();
+        hpx::parallel::execution::then_execute(exec, &test_f, std::move(f), 42)
+            .get();
 
         HPX_TEST_EQ(annotation, desc);
         HPX_TEST_EQ(annotation,
@@ -197,10 +199,18 @@ void test_bulk_sync(Executor&& executor)
     using hpx::placeholders::_1;
     using hpx::placeholders::_2;
 
+    auto hint = hpx::execution::experimental::get_hint(executor);
+    hint.sharing_mode(hpx::threads::thread_sharing_hint::do_not_share_function |
+        hpx::threads::thread_sharing_hint::do_not_combine_tasks);
+    auto no_sharing_exec =
+        hpx::execution::to_hierarchical_spawning(hpx::experimental::prefer(
+            hpx::execution::experimental::with_hint, executor, hint));
+
     std::string desc("test_bulk_sync");
     {
         auto exec = hpx::experimental::prefer(
-            hpx::execution::experimental::with_annotation, executor, desc);
+            hpx::execution::experimental::with_annotation, no_sharing_exec,
+            desc);
 
         hpx::parallel::execution::bulk_sync_execute(
             exec, hpx::bind(&bulk_test, _1, _2), 107, 42);
@@ -218,8 +228,8 @@ void test_bulk_sync(Executor&& executor)
     }
 
     {
-        auto exec =
-            hpx::execution::experimental::with_annotation(executor, desc);
+        auto exec = hpx::execution::experimental::with_annotation(
+            no_sharing_exec, desc);
 
         annotation.clear();
         hpx::parallel::execution::bulk_sync_execute(
@@ -370,7 +380,7 @@ void test_bulk_then(Executor&& executor)
 template <typename ExPolicy>
 void test_post_policy([[maybe_unused]] ExPolicy&& policy)
 {
-// GCC V8 and below don't properly find the policy tag_invoke overloads
+// GCC V8 and below don't properly find the policy overloads
 #if !defined(HPX_GCC_VERSION) || HPX_GCC_VERSION >= 90000
     std::string desc("test_post_policy");
     auto p = hpx::execution::experimental::with_annotation(policy, desc);
@@ -459,19 +469,19 @@ struct test_async_executor
     using execution_category = hpx::execution::parallel_execution_tag;
 
     template <typename F, typename... Ts>
-    friend decltype(auto) tag_invoke(hpx::parallel::execution::async_execute_t,
-        test_async_executor const&, F&& f, Ts&&... ts)
+    decltype(auto) async_execute(F&& f, Ts&&... ts) const
     {
         return hpx::async(std::forward<F>(f), std::forward<Ts>(ts)...);
     }
 };
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
+
     template <>
     struct is_two_way_executor<test_async_executor> : std::true_type
     {
     };
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental
 
 int hpx_main()
 {

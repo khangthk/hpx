@@ -7,20 +7,20 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/compute_local/host/get_targets.hpp>
+#include <hpx/modules/compute_local.hpp>
 
 #if defined(HPX_HAVE_DISTRIBUTED_RUNTIME)
-#include <hpx/futures/future_fwd.hpp>
 #include <hpx/modules/compute_local.hpp>
+#include <hpx/modules/futures.hpp>
 #include <hpx/modules/naming.hpp>
 
 #include <vector>
 
 namespace hpx::compute::host::distributed {
 
-    struct HPX_EXPORT target;
+    HPX_CXX_EXPORT struct HPX_EXPORT target;
 
-    HPX_EXPORT hpx::future<std::vector<target>> get_targets(
+    HPX_CXX_EXPORT HPX_EXPORT hpx::future<std::vector<target>> get_targets(
         hpx::id_type const& locality);
 
     namespace detail {

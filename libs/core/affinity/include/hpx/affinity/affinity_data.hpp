@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,7 +7,7 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/topology/topology.hpp>
+#include <hpx/modules/topology.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -21,7 +21,7 @@ namespace hpx::threads::policies::detail {
     ///////////////////////////////////////////////////////////////////////////
     // Structure holding the information related to thread affinity selection
     // for the shepherd threads of this instance
-    struct HPX_CORE_EXPORT affinity_data
+    HPX_CXX_CORE_EXPORT struct HPX_CORE_EXPORT affinity_data
     {
         affinity_data();
 
@@ -50,11 +50,16 @@ namespace hpx::threads::policies::detail {
             return num_threads_;
         }
 
+        constexpr bool affinities_disabled() const noexcept
+        {
+            return disable_affinities_;
+        }
+
         mask_type get_pu_mask(
             threads::topology const& topo, std::size_t global_thread_num) const;
 
-        mask_type get_used_pus_mask(
-            threads::topology const& topo, std::size_t pu_num) const;
+        mask_type get_used_pus_mask(threads::topology const& topo,
+            std::size_t pu_num = static_cast<std::size_t>(-1)) const;
         std::size_t get_thread_occupancy(
             threads::topology const& topo, std::size_t pu_num) const;
 
@@ -90,6 +95,7 @@ namespace hpx::threads::policies::detail {
 
         ///< mask of processing units which have no affinity
         mask_type no_affinity_;
+        bool disable_affinities_;
 
         ///< use the process CPU mask to limit available PUs
         bool use_process_mask_;

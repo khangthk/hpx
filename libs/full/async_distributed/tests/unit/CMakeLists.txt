@@ -18,6 +18,7 @@ foreach(subdir ${subdirs})
 endforeach()
 
 set(tests
+    async_cb_post_failure
     async_cb_remote
     async_cb_remote_client
     async_continue
@@ -34,6 +35,11 @@ set(tests
 set(async_continue_PARAMETERS LOCALITIES 2)
 set(async_continue_cb_PARAMETERS LOCALITIES 2)
 set(async_remote_PARAMETERS LOCALITIES 2)
+
+if(HPX_WITH_CXX26_REFLECTION)
+  set(tests ${tests} async_remote_reflect)
+  set(async_remote_reflect_PARAMETERS LOCALITIES 2)
+endif()
 set(async_remote_client_PARAMETERS LOCALITIES 2)
 set(async_cb_remote_PARAMETERS LOCALITIES 2)
 set(async_cb_remote_client_PARAMETERS LOCALITIES 2)
@@ -60,3 +66,24 @@ foreach(test ${tests})
 
   add_hpx_unit_test("modules.async_distributed" ${test} ${${test}_PARAMETERS})
 endforeach()
+
+if(HPX_WITH_COMPILE_ONLY_TESTS)
+  # Verifies that the managed_component_dtor_policy specialization for
+  # promise_lco correctly resolves to managed_object_is_lifetime_controlled.
+  # Without the 'void' second template argument fix this static_assert fails
+  # with clang reporting too few template arguments for class template
+  # managed_component_dtor_policy.
+  set(compile_tests promise_lco_dtor_policy)
+
+  foreach(compile_test ${compile_tests})
+    set(sources ${compile_test}.cpp)
+
+    source_group("Source Files" FILES ${sources})
+
+    add_hpx_unit_compile_test(
+      "modules.async_distributed" ${compile_test}
+      SOURCES ${sources} ${${compile_test}_FLAGS}
+      FOLDER "Tests/Unit/Modules/Full/AsyncDistributed/CompileOnly"
+    )
+  endforeach()
+endif()

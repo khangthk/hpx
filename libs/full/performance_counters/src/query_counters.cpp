@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -6,24 +6,22 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/async_combinators/wait_all.hpp>
-#include <hpx/async_distributed/continuation.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/functional/bind_front.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/async_combinators.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/errors.hpp>
 #include <hpx/modules/format.hpp>
-#include <hpx/performance_counters/apex_sample_value.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/runtime_local.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/tracing.hpp>
+#include <hpx/modules/type_support.hpp>
 #include <hpx/performance_counters/counters.hpp>
 #include <hpx/performance_counters/performance_counter.hpp>
 #include <hpx/performance_counters/query_counters.hpp>
-#include <hpx/runtime_local/config_entry.hpp>
-#include <hpx/runtime_local/get_locality_id.hpp>
-#include <hpx/runtime_local/get_thread_name.hpp>
-#include <hpx/thread_support/unlock_guard.hpp>
-#include <hpx/threading_base/external_timer.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/timing/high_resolution_clock.hpp>
-#include <hpx/type_support/unused.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -35,10 +33,7 @@
 #include <utility>
 #include <vector>
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-#include <ittnotify.h>
-#include <map>
-#endif
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::util {
 
@@ -83,23 +78,12 @@ namespace hpx::util {
         if (!reset_names_.empty())
             counters_.add_counters(reset_names_, true);
 
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-        if (use_ittnotify_api)
+        for (auto const& info : counters_.get_counter_infos())
         {
-            typedef std::map<std::string, util::itt::counter>::value_type
-                value_type;
-
-            for (auto const& info : counters_.get_counter_infos())
-            {
-                std::string real_name =
-                    performance_counters::remove_counter_prefix(info.fullname_);
-                itt_counters_.insert(value_type(info.fullname_,
-                    util::itt::counter(real_name.c_str(),
-                        hpx::get_thread_name().c_str(),
-                        __itt_metadata_double)));
-            }
+            std::string real_name =
+                performance_counters::remove_counter_prefix(info.fullname_);
+            hpx::tracing::create_counter(info.fullname_, real_name);
         }
-#endif
     }
 
     void query_counters::start()
@@ -181,18 +165,9 @@ namespace hpx::util {
 
         if (!ec)
         {
-#ifdef HPX_HAVE_APEX
-            external_timer::sample_value(info, val);
-#elif HPX_HAVE_ITTNOTIFY != 0
-            if (use_ittnotify_api)
-            {
-                auto it = itt_counters_.find(name);
-                if (it != itt_counters_.end())
-                {
-                    (*it).second.set_value(val);
-                }
-            }
-#endif
+            std::string real_name =
+                performance_counters::remove_counter_prefix(name);
+            hpx::tracing::sample_counter(name, real_name, val);
 
             if (out == nullptr)
                 return;
@@ -262,7 +237,7 @@ namespace hpx::util {
 
     template <typename Stream>
     void query_counters::print_value_csv(Stream* out,
-        performance_counters::counter_info const& info,
+        [[maybe_unused]] performance_counters::counter_info const& info,
         performance_counters::counter_value const& value)
     {
         error_code ec(throwmode::lightweight);
@@ -270,20 +245,9 @@ namespace hpx::util {
 
         if (!ec)
         {
-#ifdef HPX_HAVE_APEX
-            external_timer::sample_value(info, val);
-#elif HPX_HAVE_ITTNOTIFY != 0
-            if (use_ittnotify_api)
-            {
-                auto it = itt_counters_.find(info.fullname_);
-                if (it != itt_counters_.end())
-                {
-                    (*it).second.set_value(val);
-                }
-            }
-#else
-            HPX_UNUSED(info);
-#endif
+            std::string real_name =
+                performance_counters::remove_counter_prefix(info.fullname_);
+            hpx::tracing::sample_counter(info.fullname_, real_name, val);
             if (out == nullptr)
                 return;
 
@@ -333,7 +297,7 @@ namespace hpx::util {
                 bool first = true;
                 for (std::size_t i = 0; i != infos.size(); ++i)
                 {
-                    using namespace performance_counters;
+                    using performance_counters::counter_type;
                     if (infos[i].type_ != counter_type::raw &&
                         infos[i].type_ !=
                             counter_type::monotonically_increasing &&
@@ -375,7 +339,7 @@ namespace hpx::util {
                 bool first = true;
                 for (std::size_t i = 0; i != counter_shortnames_.size(); ++i)
                 {
-                    using namespace performance_counters;
+                    using performance_counters::counter_type;
                     if (infos[i].type_ != counter_type::raw &&
                         infos[i].type_ !=
                             counter_type::monotonically_increasing &&
@@ -646,12 +610,6 @@ namespace hpx::util {
             destination_is_cout = destination_ == "cout";
             no_output = destination_ == "none";
         }
-
-#if HPX_HAVE_ITTNOTIFY != 0 && !defined(HPX_HAVE_APEX)
-        // don't generate any console-output if the ITTNotify API is used
-        if (!no_output && destination_is_cout && use_ittnotify_api)
-            no_output = true;
-#endif
 
         if (counters_.size() == 0)
         {

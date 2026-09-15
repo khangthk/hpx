@@ -1,5 +1,5 @@
 <!--
-    Copyright (c) 2022 Hartmut Kaiser
+    Copyright (c) 2022-@HPX_COPYRIGHT_YEAR@ STE||AR Group
 
     SPDX-License-Identifier: BSL-1.0
     Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -29,8 +29,9 @@
 <body>
     <table><tr>
         <td>
-            <a href="https://github.com/STEllAR-GROUP/hpx">
-                <img src="http://stellar-group.org/files/stellar100.png" alt="STE||AR logo" />
+            <a href="https://github.com/TheHPXProject/hpx">
+                <img src="https://docs.hpx.dev/branches/master/html/_static/favicon.png"
+                    alt="HPX logo"  width="100" height="100" />
             </a>
         </td>
         <td>

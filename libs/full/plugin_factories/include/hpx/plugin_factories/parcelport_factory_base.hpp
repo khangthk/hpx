@@ -1,5 +1,5 @@
 //  Copyright (c)      2014 Thomas Heller
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,12 +8,11 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/modules/command_line_handling.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 #include <hpx/modules/resource_partitioner.hpp>
 #include <hpx/modules/runtime_configuration.hpp>
 #include <hpx/modules/threading_base.hpp>
-
-#include <hpx/command_line_handling/command_line_handling.hpp>
-#include <hpx/parcelset_base/parcelset_base_fwd.hpp>
 
 #include <string>
 #include <vector>
@@ -24,7 +23,7 @@ namespace hpx::plugins {
     ///////////////////////////////////////////////////////////////////////////
     /// The \a plugin_factory_base has to be used as a base class for all
     /// plugin factories.
-    struct HPX_EXPORT parcelport_factory_base
+    HPX_CXX_EXPORT struct HPX_EXPORT parcelport_factory_base
     {
         virtual ~parcelport_factory_base() = default;
 

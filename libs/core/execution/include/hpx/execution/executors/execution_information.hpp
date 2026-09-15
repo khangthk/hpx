@@ -1,4 +1,5 @@
-//  Copyright (c) 2017-2022 Hartmut Kaiser
+//  Copyright (c) 2017-2026 Hartmut Kaiser
+//  Copyright (c) 2026 Sai Charan Arvapally
 //  Copyright (c) 2017 Google
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,20 +9,16 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/concepts/has_member_xxx.hpp>
 #include <hpx/execution/detail/execution_parameter_callbacks.hpp>
 #include <hpx/execution/traits/executor_traits.hpp>
-#include <hpx/execution_base/execution.hpp>
-#include <hpx/execution_base/traits/is_executor.hpp>
-#include <hpx/functional/detail/tag_fallback_invoke.hpp>
+#include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/topology.hpp>
 
 #include <cstddef>
 #include <type_traits>
 #include <utility>
 
-namespace hpx::parallel::execution {
+namespace hpx::execution::experimental {
 
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
@@ -43,33 +40,24 @@ namespace hpx::parallel::execution {
     /// \note If the executor does not expose this information, this call
     ///       will always return \a false
     ///
-    inline constexpr struct has_pending_closures_t final
-      : hpx::functional::detail::tag_fallback<has_pending_closures_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct has_pending_closures_t final
     {
-    private:
-        // clang-format off
-        template <typename Executor,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_any_v<Executor>
-            )>
-        // clang-format on
-        friend HPX_FORCEINLINE decltype(auto) tag_fallback_invoke(
-            has_pending_closures_t, Executor&& /*exec*/)
+        // Primary: forward to member function if available
+        template <typename Executor>
+            requires(hpx::traits::is_executor_any_v<Executor> &&
+                detail::has_has_pending_closures_v<Executor>)
+        HPX_FORCEINLINE decltype(auto) operator()(Executor&& exec) const
         {
-            return false;    // assume stateless scheduling
+            return HPX_FORWARD(Executor, exec).has_pending_closures();
         }
 
-        // clang-format off
-        template <typename Executor,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_any_v<Executor> &&
-                detail::has_has_pending_closures_v<Executor>
-            )>
-        // clang-format on
-        friend HPX_FORCEINLINE decltype(auto) tag_invoke(
-            has_pending_closures_t, Executor&& exec)
+        // Fallback: assume stateless scheduling
+        template <typename Executor>
+            requires(hpx::traits::is_executor_any_v<Executor> &&
+                !detail::has_has_pending_closures_v<Executor>)
+        HPX_FORCEINLINE decltype(auto) operator()(Executor&& /*exec*/) const
         {
-            return exec.has_pending_closures();
+            return false;
         }
     } has_pending_closures{};
 
@@ -88,34 +76,27 @@ namespace hpx::parallel::execution {
     /// \note If the executor does not support this operation, this call
     ///       will always invoke hpx::threads::get_pu_mask()
     ///
-    inline constexpr struct get_pu_mask_t final
-      : hpx::functional::detail::tag_fallback<get_pu_mask_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct get_pu_mask_t final
     {
-    private:
-        // clang-format off
-        template <typename Executor,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_any_v<Executor>
-            )>
-        // clang-format on
-        friend HPX_FORCEINLINE decltype(auto) tag_fallback_invoke(get_pu_mask_t,
-            Executor&& /*exec*/, threads::topology& topo,
-            std::size_t thread_num)
+        // Primary: forward to member function if available
+        template <typename Executor>
+            requires(hpx::traits::is_executor_any_v<Executor> &&
+                detail::has_get_pu_mask_v<Executor>)
+        HPX_FORCEINLINE decltype(auto) operator()(Executor&& exec,
+            threads::topology& topo, std::size_t thread_num) const
         {
-            return detail::get_pu_mask(topo, thread_num);
+            return HPX_FORWARD(Executor, exec).get_pu_mask(topo, thread_num);
         }
 
-        // clang-format off
-        template <typename Executor,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_any_v<Executor> &&
-                detail::has_get_pu_mask_v<Executor>
-            )>
-        // clang-format on
-        friend HPX_FORCEINLINE decltype(auto) tag_invoke(get_pu_mask_t,
-            Executor&& exec, threads::topology& topo, std::size_t thread_num)
+        // Fallback: use default implementation
+        template <typename Executor>
+            requires(hpx::traits::is_executor_any_v<Executor> &&
+                !detail::has_get_pu_mask_v<Executor>)
+        HPX_FORCEINLINE decltype(auto) operator()(Executor&& /*exec*/,
+            threads::topology& topo, std::size_t thread_num) const
         {
-            return exec.get_pu_mask(topo, thread_num);
+            return hpx::parallel::execution::detail::get_pu_mask(
+                topo, thread_num);
         }
     } get_pu_mask{};
 
@@ -128,32 +109,24 @@ namespace hpx::parallel::execution {
     /// \note This calls exec.set_scheduler_mode(mode) if it exists;
     ///       otherwise it does nothing.
     ///
-    inline constexpr struct set_scheduler_mode_t final
-      : hpx::functional::detail::tag_fallback<set_scheduler_mode_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct set_scheduler_mode_t final
     {
-    private:
-        // clang-format off
-        template <typename Executor, typename Mode,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_any_v<Executor>
-            )>
-        // clang-format on
-        friend HPX_FORCEINLINE void tag_fallback_invoke(
-            set_scheduler_mode_t, Executor&& /*exec*/, Mode const& /*mode*/)
+        // Primary: forward to member function if available
+        template <typename Executor, typename Mode>
+            requires(hpx::traits::is_executor_any_v<Executor> &&
+                detail::has_set_scheduler_mode_v<Executor>)
+        HPX_FORCEINLINE void operator()(Executor&& exec, Mode const& mode) const
         {
+            HPX_FORWARD(Executor, exec).set_scheduler_mode(mode);
         }
 
-        // clang-format off
-        template <typename Executor, typename Mode,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::traits::is_executor_any_v<Executor> &&
-                detail::has_set_scheduler_mode_v<Executor>
-            )>
-        // clang-format on
-        friend HPX_FORCEINLINE void tag_invoke(
-            set_scheduler_mode_t, Executor&& exec, Mode const& mode)
+        // Fallback: no-op
+        template <typename Executor, typename Mode>
+            requires(hpx::traits::is_executor_any_v<Executor> &&
+                !detail::has_set_scheduler_mode_v<Executor>)
+        HPX_FORCEINLINE void operator()(
+            Executor&& /*exec*/, Mode const& /*mode*/) const
         {
-            exec.set_scheduler_mode(mode);
         }
     } set_scheduler_mode{};
-}    // namespace hpx::parallel::execution
+}    // namespace hpx::execution::experimental

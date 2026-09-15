@@ -11,10 +11,9 @@
 #include <hpx/config.hpp>
 
 #if defined(HPX_HAVE_DATAPAR)
-#include <hpx/execution/traits/is_execution_policy.hpp>
 #include <hpx/executors/execution_policy_mappings.hpp>
-#include <hpx/functional/detail/tag_fallback_invoke.hpp>
 #include <hpx/modules/concepts.hpp>
+#include <hpx/modules/execution.hpp>
 
 #include <type_traits>
 #include <utility>
@@ -23,19 +22,20 @@ namespace hpx::execution::experimental {
 
     ///////////////////////////////////////////////////////////////////////////
     // Return the matching non-simd (vectorpack) execution policy
-    inline constexpr struct to_non_simd_t final
-      : hpx::functional::detail::tag_fallback<to_non_simd_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct to_non_simd_t
     {
-    private:
+        // Forward to member function if available
+        template <typename Target>
+            requires requires(Target const& t) { t.to_non_simd(); }
+        constexpr decltype(auto) operator()(Target const& target) const
+        {
+            return target.to_non_simd();
+        }
+
         // any non-simd policy just returns itself
-        // clang-format off
-        template <typename ExPolicy,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::is_execution_policy_v<ExPolicy>
-            )>
-        // clang-format on
-        friend constexpr decltype(auto) tag_fallback_invoke(
-            to_non_simd_t, ExPolicy&& policy) noexcept
+        template <execution_policy ExPolicy>
+            requires(!requires(ExPolicy const& t) { t.to_non_simd(); })
+        constexpr decltype(auto) operator()(ExPolicy&& policy) const noexcept
         {
             static_assert(!hpx::is_vectorpack_execution_policy_v<ExPolicy>,
                 "must not be a simd (vectorpack) execution policy");
@@ -49,19 +49,20 @@ namespace hpx::execution::experimental {
     };
 
     // Return the matching simd (vectorpack) execution policy
-    inline constexpr struct to_simd_t final
-      : hpx::functional::detail::tag_fallback<to_simd_t>
+    HPX_CXX_CORE_EXPORT inline constexpr struct to_simd_t
     {
-    private:
+        // Forward to member function if available
+        template <typename Target>
+            requires requires(Target const& t) { t.to_simd(); }
+        constexpr decltype(auto) operator()(Target const& target) const
+        {
+            return target.to_simd();
+        }
+
         // any simd policy just returns itself
-        // clang-format off
-        template <typename ExPolicy,
-            HPX_CONCEPT_REQUIRES_(
-                hpx::is_execution_policy_v<ExPolicy>
-            )>
-        // clang-format on
-        friend constexpr decltype(auto) tag_fallback_invoke(
-            to_simd_t, ExPolicy&& policy) noexcept
+        template <execution_policy ExPolicy>
+            requires(!requires(ExPolicy const& t) { t.to_simd(); })
+        constexpr decltype(auto) operator()(ExPolicy&& policy) const noexcept
         {
             static_assert(hpx::is_vectorpack_execution_policy_v<ExPolicy>,
                 "must be a simd (vectorpack) execution policy");

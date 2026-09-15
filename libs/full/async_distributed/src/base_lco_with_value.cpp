@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2021 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c)      2011 Bryce Lelbach
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -8,14 +8,18 @@
 #include <hpx/config.hpp>
 
 #if !defined(HPX_HAVE_STATIC_LINKING)
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/type_support.hpp>
+
 #include <hpx/async_distributed/base_lco_with_value.hpp>
 #include <hpx/async_distributed/detail/post.hpp>
+#include <hpx/async_distributed/macros.hpp>
 #include <hpx/async_distributed/post.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/serialization/vector.hpp>
-#include <hpx/type_support/unused.hpp>
 
 #include <vector>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 ///////////////////////////////////////////////////////////////////////////////
 HPX_REGISTER_BASE_LCO_WITH_VALUE_ID(hpx::naming::gid_type, gid_type,

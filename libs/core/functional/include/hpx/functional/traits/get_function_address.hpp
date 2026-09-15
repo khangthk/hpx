@@ -1,4 +1,4 @@
-//  Copyright (c) 2016-2022 Hartmut Kaiser
+//  Copyright (c) 2016-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -13,9 +13,9 @@
 
 namespace hpx::traits {
 
-    // By default we return the address of the object which is used to invoke
+    // By default, we return the address of the object which is used to invoke
     // the trait.
-    template <typename F, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename F, typename Enable = void>
     struct get_function_address
     {
         static std::size_t call(F const& f) noexcept

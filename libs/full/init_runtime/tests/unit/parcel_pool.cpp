@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2017 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -15,6 +15,7 @@
 #include <iterator>
 #include <numeric>
 #include <thread>
+#include <utility>
 #include <vector>
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -55,8 +56,8 @@ void test_then(Executor& exec)
     hpx::future<void> f = hpx::make_ready_future();
 
     HPX_TEST(
-        hpx::parallel::execution::then_execute(exec, &test_f, f, 42).get() !=
-        std::this_thread::get_id());
+        hpx::parallel::execution::then_execute(exec, &test_f, std::move(f), 42)
+            .get() != std::this_thread::get_id());
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -149,13 +150,12 @@ void test_service_executor(Executor& exec)
 
 int hpx_main()
 {
-    using namespace hpx::parallel;
-    using hpx::parallel::execution::service_executor_type;
+    using hpx::execution::experimental::service_executor_type;
 
 #if defined(HPX_HAVE_NETWORKING)
     if (hpx::is_networking_enabled())
     {
-        execution::service_executor exec(
+        hpx::execution::experimental::service_executor exec(
             service_executor_type::parcel_thread_pool);
         test_service_executor(exec);
     }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2015 Hartmut Kaiser
+//  Copyright (c) 2015-2025 Hartmut Kaiser
 //  Copyright (c) 2011 Thomas Heller
 //  Copyright (c) 2013 Agustin Berge
 //
@@ -9,18 +9,13 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/traits/extract_action.hpp>
-#include <hpx/actions_base/traits/is_continuation.hpp>
 #include <hpx/async_distributed/detail/post.hpp>
-#include <hpx/async_local/async_fwd.hpp>
-#include <hpx/datastructures/member_pack.hpp>
-#include <hpx/functional/bind.hpp>
-#include <hpx/functional/traits/is_action.hpp>
-#include <hpx/functional/traits/is_bind_expression.hpp>
-#include <hpx/functional/traits/is_placeholder.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/futures/traits/promise_local_result.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_local.hpp>
+#include <hpx/modules/datastructures.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <type_traits>
@@ -32,7 +27,7 @@ namespace hpx {
     namespace detail {
 
         ///////////////////////////////////////////////////////////////////////
-        template <typename Action, typename Is, typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Is, typename... Ts>
         class bound_action;
 
         template <typename Action, std::size_t... Is, typename... Ts>
@@ -79,6 +74,7 @@ namespace hpx {
             {
                 return hpx::post<Action>(
                     detail::bind_eval<Ts const&, sizeof...(Us)>::call(
+                        // NOLINTNEXTLINE(bugprone-use-after-move)
                         _args.template get<Is>(), HPX_FORWARD(Us, vs)...)...);
             }
 
@@ -88,6 +84,7 @@ namespace hpx {
             {
                 return hpx::post_c<Action>(cont,
                     detail::bind_eval<Ts const&, sizeof...(Us)>::call(
+                        // NOLINTNEXTLINE(bugprone-use-after-move)
                         _args.template get<Is>(), HPX_FORWARD(Us, vs)...)...);
             }
 
@@ -98,6 +95,7 @@ namespace hpx {
             {
                 return hpx::post<Action>(HPX_FORWARD(Continuation, cont),
                     detail::bind_eval<Ts const&, sizeof...(Us)>::call(
+                        // NOLINTNEXTLINE(bugprone-use-after-move)
                         _args.template get<Is>(), HPX_FORWARD(Us, vs)...)...);
             }
 
@@ -106,6 +104,7 @@ namespace hpx {
             {
                 return hpx::async<Action>(
                     detail::bind_eval<Ts const&, sizeof...(Us)>::call(
+                        // NOLINTNEXTLINE(bugprone-use-after-move)
                         _args.template get<Is>(), HPX_FORWARD(Us, vs)...)...);
             }
 
@@ -133,46 +132,35 @@ namespace hpx {
     }    // namespace detail
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action, typename... Ts,
-        typename Enable =
-            std::enable_if_t<traits::is_action_v<std::decay_t<Action>>>>
+    HPX_CXX_EXPORT template <typename Action, typename... Ts>
+        requires(traits::is_action_v<std::decay_t<Action>>)
     detail::bound_action<std::decay_t<Action>,
-        util::make_index_pack_t<sizeof...(Ts)>, std::decay_t<Ts>...>
+        util::make_index_pack_t<sizeof...(Ts)>,
+        hpx::util::decay_unwrap_t<Ts>...>
     bind(Ts&&... vs)
     {
         using result_type = detail::bound_action<std::decay_t<Action>,
-            util::make_index_pack_t<sizeof...(Ts)>, std::decay_t<Ts>...>;
+            util::make_index_pack_t<sizeof...(Ts)>,
+            hpx::util::decay_unwrap_t<Ts>...>;
 
         return result_type(Action(), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Component, typename Signature, typename Derived,
-        typename... Ts>
+    HPX_CXX_EXPORT template <typename Component, typename Signature,
+        typename Derived, typename... Ts>
     detail::bound_action<Derived, util::make_index_pack_t<sizeof...(Ts)>,
         std::decay_t<Ts>...>
     bind(hpx::actions::basic_action<Component, Signature, Derived> action,
         Ts&&... vs)
     {
         using result_type = detail::bound_action<Derived,
-            util::make_index_pack_t<sizeof...(Ts)>, std::decay_t<Ts>...>;
+            util::make_index_pack_t<sizeof...(Ts)>,
+            hpx::util::decay_unwrap_t<Ts>...>;
 
         return result_type(
             static_cast<Derived const&>(action), HPX_FORWARD(Ts, vs)...);
     }
 }    // namespace hpx
-
-namespace hpx::util {
-
-    template <typename Action, typename... Ts,
-        typename Enable =
-            std::enable_if_t<traits::is_action_v<std::decay_t<Action>>>>
-    HPX_DEPRECATED_V(
-        1, 8, "hpx::util::bind is deprecated, use hpx::bind instead")
-    decltype(auto) bind(Ts&&... vs)
-    {
-        return hpx::bind<Action>(Action(), HPX_FORWARD(Ts, vs)...);
-    }
-}    // namespace hpx::util
 
 ///////////////////////////////////////////////////////////////////////////////
 namespace hpx {
@@ -195,10 +183,37 @@ namespace hpx {
 namespace hpx::serialization {
 
     // serialization of the bound action object
-    template <typename Archive, typename F, typename... Ts>
+    HPX_CXX_EXPORT template <typename Archive, typename F, typename... Ts>
     void serialize(Archive& ar, ::hpx::detail::bound_action<F, Ts...>& bound,
         unsigned int const version = 0)
     {
         bound.serialize(ar, version);
     }
 }    // namespace hpx::serialization
+
+#if defined(HPX_HAVE_CXX26_REFLECTION)
+#include <hpx/modules/actions_base.hpp>
+
+namespace hpx {
+
+    /// \brief Reflection-based bind overload.
+    ///
+    /// Allows calling hpx::bind<^^func>(ts...) directly without defining
+    /// an explicit action type. Forwards to hpx::bind<reflect_action<F>>.
+    ///
+    /// \tparam F   A std::meta::info reflection of a free function.
+    /// \tparam Ts  Types of the arguments to bind.
+    /// \param vs   Arguments forwarded to the bound action.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F))
+    // clang-format on
+    auto bind(Ts&&... vs)
+    {
+        return hpx::bind<hpx::actions::reflect_action<F>>(
+            HPX_FORWARD(Ts, vs)...);
+    }
+
+}    // namespace hpx
+#endif    // HPX_HAVE_CXX26_REFLECTION

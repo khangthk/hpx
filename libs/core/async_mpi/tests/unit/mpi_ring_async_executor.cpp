@@ -18,6 +18,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <mpi.h>
@@ -34,6 +36,12 @@ using hpx::program_options::value;
 using hpx::program_options::variables_map;
 
 static bool output = true;
+
+static_assert(std::is_same_v<
+    decltype(std::declval<hpx::mpi::experimental::executor const&>()
+            .async_execute(
+                MPI_Isend, static_cast<int const*>(nullptr), 1, MPI_INT, 0, 0)),
+    hpx::future<int>>);
 
 void msg_recv(int rank, int size, int /*to*/, int from, int token, unsigned tag)
 {
@@ -77,7 +85,7 @@ int hpx_main(hpx::program_options::variables_map& vm)
     // it needs to run on N>2 ranks to be useful
     HPX_TEST_MSG(size > 1, "This test requires N>1 mpi ranks");
 
-    const std::uint64_t iterations = vm["iterations"].as<std::uint64_t>();
+    std::uint64_t const iterations = vm["iterations"].as<std::uint64_t>();
     //
     output = vm.count("output") != 0;
 
@@ -172,7 +180,6 @@ int hpx_main(hpx::program_options::variables_map& vm)
 // will execute hpx_main on an hpx thread
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
 {
-#if !defined(HPX_HAVE_STDEXEC)
     // if this test is run with distributed runtime, we need to make sure
     // that all ranks run their main function
     std::vector<std::string> cfg = {"hpx.run_hpx_main!=1"};
@@ -209,5 +216,4 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[])
     MPI_Finalize();
 
     return result || hpx::util::report_errors();
-#endif
 }

@@ -6,4 +6,5 @@
 
 #pragma once
 
-#include <hpx/parallel/algorithms/uninitialized_value_construct.hpp>
+#include <hpx/config.hpp>
+#include <hpx/modules/algorithms.hpp>

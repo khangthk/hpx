@@ -13,8 +13,7 @@
 namespace hpx::threads::policies {
 
     /// This enumeration describes the possible modes of a scheduler.
-    enum class scheduler_mode : std::uint32_t
-    {
+    HPX_CXX_CORE_EXPORT enum class scheduler_mode : std::uint32_t {
         /// As the name suggests, this option can be used to disable all other
         /// options.
         nothing_special = 0x0000,
@@ -53,7 +52,7 @@ namespace hpx::threads::policies {
         /// between numa domains
         enable_stealing_numa = 0x0040,
 
-        /// This option tells schedulers that support it to add tasks round robin
+        /// This option tells schedulers that support it to add tasks round-robin
         /// to queues on each core
         assign_work_round_robin = 0x0080,
 
@@ -110,97 +109,49 @@ namespace hpx::threads::policies {
         // clang-format on
     };
 
-    constexpr scheduler_mode operator|(
+    HPX_CXX_CORE_EXPORT constexpr scheduler_mode operator|(
         scheduler_mode lhs, scheduler_mode rhs) noexcept
     {
         return static_cast<scheduler_mode>(
             static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
     }
 
-    constexpr scheduler_mode operator|(
+    HPX_CXX_CORE_EXPORT constexpr scheduler_mode operator|(
         std::uint32_t lhs, scheduler_mode rhs) noexcept
     {
         return static_cast<scheduler_mode>(
             lhs | static_cast<std::uint32_t>(rhs));
     }
 
-    constexpr scheduler_mode operator|(
+    HPX_CXX_CORE_EXPORT constexpr scheduler_mode operator|(
         scheduler_mode lhs, std::uint32_t rhs) noexcept
     {
         return static_cast<scheduler_mode>(
             static_cast<std::uint32_t>(lhs) | rhs);
     }
 
-    constexpr std::uint32_t operator&(
+    HPX_CXX_CORE_EXPORT constexpr std::uint32_t operator&(
         scheduler_mode lhs, scheduler_mode rhs) noexcept
     {
         return static_cast<std::uint32_t>(lhs) &
             static_cast<std::uint32_t>(rhs);
     }
 
-    constexpr std::uint32_t operator&(
+    HPX_CXX_CORE_EXPORT constexpr std::uint32_t operator&(
         std::uint32_t lhs, scheduler_mode rhs) noexcept
     {
         return lhs & static_cast<std::uint32_t>(rhs);
     }
 
-    constexpr std::uint32_t operator&(
+    HPX_CXX_CORE_EXPORT constexpr std::uint32_t operator&(
         scheduler_mode lhs, std::uint32_t rhs) noexcept
     {
         return static_cast<std::uint32_t>(lhs) & rhs;
     }
 
-    constexpr std::uint32_t operator~(scheduler_mode mode) noexcept
+    HPX_CXX_CORE_EXPORT constexpr std::uint32_t operator~(
+        scheduler_mode mode) noexcept
     {
         return ~static_cast<std::uint32_t>(mode);
     }
-
-#define HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG                       \
-    "The unscoped scheduler_mode names are deprecated. Please use "            \
-    "scheduler_mode::state instead."
-
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode nothing_special =
-        scheduler_mode::nothing_special;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode do_background_work =
-        scheduler_mode::do_background_work;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode reduce_thread_priority =
-        scheduler_mode::reduce_thread_priority;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode delay_exit = scheduler_mode::delay_exit;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode fast_idle_mode =
-        scheduler_mode::fast_idle_mode;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode enable_elasticity =
-        scheduler_mode::enable_elasticity;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode enable_stealing =
-        scheduler_mode::enable_stealing;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode enable_stealing_numa =
-        scheduler_mode::enable_stealing_numa;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode assign_work_round_robin =
-        scheduler_mode::assign_work_round_robin;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode assign_work_thread_parent =
-        scheduler_mode::assign_work_thread_parent;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode steal_high_priority_first =
-        scheduler_mode::steal_high_priority_first;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode steal_after_local =
-        scheduler_mode::steal_after_local;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode enable_idle_backoff =
-        scheduler_mode::enable_idle_backoff;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode default_mode = scheduler_mode::default_;
-    HPX_DEPRECATED_V(1, 8, HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG)
-    inline constexpr scheduler_mode all_flags = scheduler_mode::all_flags;
-
-#undef HPX_SCHEDULER_MODE_UNSCOPED_ENUM_DEPRECATION_MSG
 }    // namespace hpx::threads::policies

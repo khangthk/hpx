@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2022 The STE||AR-Group
+# Copyright (c) 2019-2026 The STE||AR-Group
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -14,22 +14,13 @@ set(execution_headers
     hpx/execution/algorithms/detail/partial_algorithm.hpp
     hpx/execution/algorithms/detail/predicates.hpp
     hpx/execution/algorithms/detail/single_result.hpp
-    hpx/execution/algorithms/ensure_started.hpp
-    hpx/execution/algorithms/execute.hpp
-    hpx/execution/algorithms/just.hpp
+    hpx/execution/algorithms/detail/sync_wait_domain.hpp
+    hpx/execution/algorithms/future_sender.hpp
     hpx/execution/algorithms/keep_future.hpp
-    hpx/execution/algorithms/let_error.hpp
-    hpx/execution/algorithms/let_stopped.hpp
-    hpx/execution/algorithms/let_value.hpp
     hpx/execution/algorithms/make_future.hpp
     hpx/execution/algorithms/run_loop.hpp
-    hpx/execution/algorithms/schedule_from.hpp
-    hpx/execution/algorithms/split.hpp
-    hpx/execution/algorithms/start_detached.hpp
+    hpx/execution/algorithms/sender_future.hpp
     hpx/execution/algorithms/sync_wait.hpp
-    hpx/execution/algorithms/then.hpp
-    hpx/execution/algorithms/transfer.hpp
-    hpx/execution/algorithms/transfer_just.hpp
     hpx/execution/algorithms/when_all.hpp
     hpx/execution/algorithms/when_all_vector.hpp
     hpx/execution/detail/async_launch_policy_dispatch.hpp
@@ -41,6 +32,7 @@ set(execution_headers
     hpx/execution/executor_parameters.hpp
     hpx/execution/executors/adaptive_static_chunk_size.hpp
     hpx/execution/executors/auto_chunk_size.hpp
+    hpx/execution/executors/collect_chunking_parameters.hpp
     hpx/execution/executors/default_parameters.hpp
     hpx/execution/executors/dynamic_chunk_size.hpp
     hpx/execution/executors/execution.hpp
@@ -49,16 +41,13 @@ set(execution_headers
     hpx/execution/executors/execution_parameters_fwd.hpp
     hpx/execution/executors/fused_bulk_execute.hpp
     hpx/execution/executors/guided_chunk_size.hpp
+    hpx/execution/executors/max_num_chunks.hpp
     hpx/execution/executors/num_cores.hpp
     hpx/execution/executors/persistent_auto_chunk_size.hpp
     hpx/execution/executors/polymorphic_executor.hpp
     hpx/execution/executors/rebind_executor.hpp
+    hpx/execution/executors/rebind_executor_parameters.hpp
     hpx/execution/executors/static_chunk_size.hpp
-    hpx/execution/queries/get_allocator.hpp
-    hpx/execution/queries/get_scheduler.hpp
-    hpx/execution/queries/get_delegatee_scheduler.hpp
-    hpx/execution/queries/get_stop_token.hpp
-    hpx/execution/queries/read.hpp
     hpx/execution/traits/detail/eve/vector_pack_alignment_size.hpp
     hpx/execution/traits/detail/eve/vector_pack_all_any_none.hpp
     hpx/execution/traits/detail/eve/vector_pack_conditionals.hpp
@@ -67,6 +56,7 @@ set(execution_headers
     hpx/execution/traits/detail/eve/vector_pack_get_set.hpp
     hpx/execution/traits/detail/eve/vector_pack_load_store.hpp
     hpx/execution/traits/detail/eve/vector_pack_reduce.hpp
+    hpx/execution/traits/detail/eve/vector_pack_simd.hpp
     hpx/execution/traits/detail/eve/vector_pack_type.hpp
     hpx/execution/traits/detail/simd/vector_pack_alignment_size.hpp
     hpx/execution/traits/detail/simd/vector_pack_all_any_none.hpp
@@ -99,6 +89,7 @@ set(execution_headers
     hpx/execution/traits/vector_pack_load_store.hpp
     hpx/execution/traits/vector_pack_reduce.hpp
     hpx/execution/traits/vector_pack_type.hpp
+    hpx/synchronization/async_rw_mutex.hpp
 )
 
 set(execution_sources execution_parameter_callbacks.cpp
@@ -150,23 +141,54 @@ if(TARGET SVE::sve)
   set(execution_optional_dependencies SVE::sve)
 endif()
 
+if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "EMULATE")
+  set(execution_headers ${execution_headers} hpx/experimental/emulate_simd.hpp)
+endif()
+
 include(HPX_AddModule)
 add_hpx_module(
   core execution
+  GLOBAL_HEADER_GEN ON
+  GLOBAL_HEADER_MODULE_GEN ON
   SOURCES ${execution_sources}
   HEADERS ${execution_headers}
+  ADD_TO_GLOBAL_HEADER
+    "hpx/execution/algorithms/detail/is_negative.hpp"
+    "hpx/execution/algorithms/detail/inject_scheduler.hpp"
+    "hpx/execution/algorithms/detail/partial_algorithm.hpp"
+    "hpx/execution/algorithms/detail/predicates.hpp"
+    "hpx/execution/algorithms/detail/single_result.hpp"
+    "hpx/execution/algorithms/detail/sync_wait_domain.hpp"
+    "hpx/execution/detail/async_launch_policy_dispatch.hpp"
+    "hpx/execution/detail/execution_parameter_callbacks.hpp"
+    "hpx/execution/detail/future_exec.hpp"
+    "hpx/execution/detail/post_policy_dispatch.hpp"
+    "hpx/execution/detail/sync_launch_policy_dispatch.hpp"
   COMPAT_HEADERS ${execution_compat_headers}
   DEPENDENCIES ${execution_optional_dependencies}
   MODULE_DEPENDENCIES
+    hpx_allocator_support
     hpx_async_base
     hpx_async_combinators
+    hpx_concepts
+    hpx_concurrency
     hpx_config
-    hpx_threading
-    hpx_pack_traversal
+    hpx_coroutines
+    hpx_datastructures
     hpx_errors
+    hpx_execution_base
+    hpx_functional
+    hpx_futures
+    hpx_iterator_support
     hpx_lock_registration
     hpx_memory
+    hpx_pack_traversal
+    hpx_preprocessor
+    hpx_serialization
     hpx_synchronization
+    hpx_tag_invoke
+    hpx_threading
+    hpx_threading_base
     hpx_thread_support
     hpx_timing
     hpx_topology

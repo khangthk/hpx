@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Bryce Lelbach
-//  Copyright (c) 2012-2021 Hartmut Kaiser
+//  Copyright (c) 2012-2026 Hartmut Kaiser
 //  Copyright (c) 2016 Thomas Heller
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -14,22 +14,21 @@
 #include <hpx/agas_base/agas_fwd.hpp>
 #include <hpx/agas_base/locality_namespace.hpp>
 #include <hpx/agas_base/server/locality_namespace.hpp>
-#include <hpx/async_distributed/base_lco_with_value.hpp>
-#include <hpx/futures/future.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/parcelset_base/locality.hpp>
+#include <hpx/modules/async_distributed.hpp>
+#include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 
 #include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
 
-namespace hpx { namespace agas { namespace detail {
+namespace hpx::agas::detail {
 
     struct hosted_locality_namespace : locality_namespace
     {
-        explicit hosted_locality_namespace(naming::address addr);
+        explicit hosted_locality_namespace(naming::address const& addr);
 
         naming::address::address_type ptr() const override
         {
@@ -48,7 +47,7 @@ namespace hpx { namespace agas { namespace detail {
             std::uint64_t count, std::uint32_t num_threads,
             naming::gid_type const& suggested_prefix) override;
 
-        void free(naming::gid_type const& locality) override;
+        bool free(naming::gid_type const& locality) override;
 
         std::vector<std::uint32_t> localities() override;
 
@@ -69,7 +68,7 @@ namespace hpx { namespace agas { namespace detail {
         hpx::id_type gid_;
         naming::address addr_;
     };
-}}}    // namespace hpx::agas::detail
+}    // namespace hpx::agas::detail
 
 HPX_REGISTER_BASE_LCO_WITH_VALUE_DECLARATION(
     hpx::parcelset::endpoints_type, parcelset_endpoints_type)

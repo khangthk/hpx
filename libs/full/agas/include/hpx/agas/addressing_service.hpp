@@ -1,5 +1,5 @@
 //  Copyright (c) 2011 Bryce Lelbach
-//  Copyright (c) 2011-2023 Hartmut Kaiser
+//  Copyright (c) 2011-2025 Hartmut Kaiser
 //  Copyright (c) 2016 Parsa Amini
 //  Copyright (c) 2016 Thomas Heller
 //
@@ -11,20 +11,17 @@
 
 #include <hpx/config.hpp>
 #include <hpx/agas/agas_fwd.hpp>
-#include <hpx/cache/lru_cache.hpp>
-#include <hpx/cache/statistics/local_full_statistics.hpp>
-#include <hpx/components_base/pinned_ptr.hpp>
-#include <hpx/datastructures/detail/dynamic_bitset.hpp>
-#include <hpx/functional/function.hpp>
 #include <hpx/modules/agas_base.hpp>
+#include <hpx/modules/cache.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset.hpp>
 #include <hpx/modules/runtime_configuration.hpp>
-#include <hpx/naming_base/address.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/parcelset/parcelset_fwd.hpp>
-#include <hpx/synchronization/shared_mutex.hpp>
-#include <hpx/synchronization/spinlock.hpp>
+#include <hpx/modules/synchronization.hpp>
 
 #include <atomic>
 #include <cstddef>
@@ -40,13 +37,13 @@
 
 #include <hpx/config/warnings_prefix.hpp>
 
-namespace hpx { namespace agas {
+namespace hpx::agas {
 
 #if defined(HPX_HAVE_NETWORKING)
-    HPX_EXPORT void destroy_big_boot_barrier();
+    HPX_CXX_EXPORT HPX_EXPORT void destroy_big_boot_barrier();
 #endif
 
-    struct addressing_service
+    HPX_CXX_EXPORT struct addressing_service
     {
     public:
         HPX_NON_COPYABLE(addressing_service);
@@ -74,15 +71,18 @@ namespace hpx { namespace agas {
         mutable hpx::shared_mutex gva_cache_mtx_;
         std::shared_ptr<gva_cache_type> gva_cache_;
 
-        mutable mutex_type migrated_objects_mtx_;
+        mutable mutex_type migrated_objects_mtx_ =
+            mutex_type("addressing_service::migrated_objects_mtx");
         migrated_objects_table_type migrated_objects_table_;
 
-        mutable mutex_type console_cache_mtx_;
+        mutable mutex_type console_cache_mtx_ =
+            mutex_type("addressing_service::console_cache_mtx");
         std::uint32_t console_cache_;
 
         std::size_t const max_refcnt_requests_;
 
-        mutex_type refcnt_requests_mtx_;
+        mutex_type refcnt_requests_mtx_ =
+            mutex_type("addressing_service::refcnt_requests_mtx");
         std::size_t refcnt_requests_count_;
         bool enable_refcnt_caching_;
 
@@ -105,9 +105,32 @@ namespace hpx { namespace agas {
         std::atomic<hpx::state> state_;
         naming::gid_type locality_;
 
+        /// How a locality became known to this instance, which decides whether
+        /// hpx::force_disconnect may remove it.
+        enum class resolved_locality_state : std::uint8_t
+        {
+            /// Started with the application, or learned about by resolving
+            /// its address. hpx::force_disconnect rejects it.
+            connected,
+            /// Connected after the application started and registered as
+            /// such here, which only the console does. hpx::force_disconnect
+            /// accepts it.
+            connecting,
+            /// Claimed by an hpx::force_disconnect call that is still removing
+            /// it. Further claims are rejected until the entry is erased.
+            disconnecting
+        };
+
+        /// What this instance knows about one locality.
+        struct resolved_locality
+        {
+            parcelset::endpoints_type endpoints;
+            resolved_locality_state state;
+        };
+
         mutable hpx::shared_mutex resolved_localities_mtx_;
         using resolved_localities_type =
-            std::map<naming::gid_type, parcelset::endpoints_type>;
+            std::map<naming::gid_type, resolved_locality>;
         resolved_localities_type resolved_localities_;
 
         explicit addressing_service(util::runtime_configuration const& ini_);
@@ -115,7 +138,6 @@ namespace hpx { namespace agas {
 #if defined(HPX_HAVE_NETWORKING)
         ~addressing_service()
         {
-            // TODO: Free the future pools?
             destroy_big_boot_barrier();
         }
 #else
@@ -167,10 +189,41 @@ namespace hpx { namespace agas {
             return runtime_type == runtime_mode::connect;
         }
 
+        /// \brief Return whether a locality joined while connecting.
+        ///
+        /// \param locality The locality GID to inspect. If locality is invalid,
+        ///                 return the connecting status of the calling
+        ///                 locality.
+        ///
+        /// \returns `true` if the locality connected late, also while it is
+        ///          being removed and after it was disconnected, and `false`
+        ///          for a locality that started with the application.
+        bool is_connecting(hpx::naming::gid_type const& locality) const;
+
+        /// \brief Atomically claim a connecting locality for disconnection.
+        ///
+        /// \param locality The locality GID to claim.
+        ///
+        /// \returns `true` if this call changed the locality state from
+        ///          connecting to disconnecting, and `false` otherwise.
+        bool mark_connecting_locality_as_disconnecting(
+            hpx::naming::gid_type const& locality);
+
+        /// \brief Release a claim made by
+        ///        mark_connecting_locality_as_disconnecting.
+        ///
+        /// \param locality The locality GID to release.
+        ///
+        /// \returns `true` if this call changed the locality state from
+        ///          disconnecting back to connecting, and `false` otherwise.
+        bool mark_disconnecting_locality_as_connecting(
+            hpx::naming::gid_type const& locality);
+
         bool resolve_locally_known_addresses(
             naming::gid_type const& id, naming::address& addr) const;
 
         void register_server_instances();
+        void unregister_server_instances(hpx::error_code& ec = hpx::throws);
 
         // FIXME: document (add comments)
         void garbage_collect_non_blocking(error_code& ec = throws);
@@ -228,9 +281,14 @@ namespace hpx { namespace agas {
             naming::gid_type const& id, gva const& g, future<bool> f);
 
         /// Maintain list of migrated objects
-        bool was_object_migrated_locked(naming::gid_type const& id);
+        bool was_object_migrated_locked(naming::gid_type const& id) const;
 
     private:
+        /// Move a locality from one state to another under the resolved
+        /// localities lock. Returns `false` if it is unknown or not in \a from.
+        bool transition_resolved_locality(hpx::naming::gid_type const& locality,
+            resolved_locality_state from, resolved_locality_state to);
+
         /// Assumes that \a refcnt_requests_mtx_ is locked.
         void send_refcnt_requests(
             std::unique_lock<mutex_type>& l, error_code& ec = throws);
@@ -269,7 +327,7 @@ namespace hpx { namespace agas {
         /// \brief Add a locality to the runtime.
         bool register_locality(parcelset::endpoints_type const& endpoints,
             naming::gid_type& prefix, std::uint32_t num_threads,
-            error_code& ec = throws);
+            bool is_connecting, error_code& ec = throws);
 
         /// \brief Resolve a locality to its prefix.
         ///
@@ -277,7 +335,7 @@ namespace hpx { namespace agas {
         parcelset::endpoints_type const& resolve_locality(
             naming::gid_type const& gid, error_code& ec = throws);
 
-        bool has_resolved_locality(naming::gid_type const& gid);
+        bool has_resolved_locality(naming::gid_type const& gid) const;
 
         /// \brief Remove a locality from the runtime.
         bool unregister_locality(
@@ -291,10 +349,6 @@ namespace hpx { namespace agas {
         /// \param locality   [out] The locality_id value uniquely identifying the
         ///                   console locality. This is valid only, if the
         ///                   return value of this function is true.
-        /// \param try_cache  [in] If this is set to true the console is first
-        ///                   tried to be found in the local cache. Otherwise
-        ///                   this function will always query AGAS, even if the
-        ///                   console locality_id is already known locally.
         /// \param ec         [in,out] this represents the error status on exit,
         ///                   if this is pre-initialized to \a hpx#throws
         ///                   the function will throw on error instead.
@@ -356,6 +410,24 @@ namespace hpx { namespace agas {
         ///                   for this component. The default value for this
         ///                   parameter is \a components#component_type#invalid,
         ///                   which will return prefixes of all localities.
+        ///
+        /// \returns A future that becomes ready with the number of matching
+        ///          localities.
+        hpx::future<std::uint32_t> get_num_localities_async(
+            components::component_type type = to_int(
+                hpx::components::component_enum_type::invalid)) const;
+
+        /// \brief Query for the number of all known localities.
+        ///
+        /// This function returns the number of localities known to the AGAS server
+        /// or the number of localities having a registered factory for a given
+        /// component type.
+        ///
+        /// \param type       [in] The component type will be used to determine
+        ///                   the set of prefixes having a registered factory
+        ///                   for this component. The default value for this
+        ///                   parameter is \a components#component_type#invalid,
+        ///                   which will return prefixes of all localities.
         /// \param ec         [in,out] this represents the error status on exit,
         ///                   if this is pre-initialized to \a hpx#throws
         ///                   the function will throw on error instead.
@@ -365,13 +437,24 @@ namespace hpx { namespace agas {
         ///                   throw but returns the result code using the
         ///                   parameter \a ec. Otherwise, it throws an instance
         ///                   of hpx#exception.
-        hpx::future<std::uint32_t> get_num_localities_async(
-            components::component_type type = to_int(
-                hpx::components::component_enum_type::invalid)) const;
-
         std::uint32_t get_num_localities(
             components::component_type type, error_code& ec = throws) const;
 
+        /// \brief Query for the number of all known localities.
+        ///
+        /// This function returns the number of localities known to the AGAS server
+        /// or the number of localities having a registered factory for a given
+        /// component type.
+        ///
+        /// \param ec         [in,out] this represents the error status on exit,
+        ///                   if this is pre-initialized to \a hpx#throws
+        ///                   the function will throw on error instead.
+        ///
+        /// \note             As long as \a ec is not pre-initialized to
+        ///                   \a hpx#throws this function doesn't
+        ///                   throw but returns the result code using the
+        ///                   parameter \a ec. Otherwise, it throws an instance
+        ///                   of hpx#exception.
         std::uint32_t get_num_localities(error_code& ec = throws) const
         {
             return get_num_localities(
@@ -461,9 +544,6 @@ namespace hpx { namespace agas {
         /// to generate. This function can be called to preallocate a range of
         /// ids usable for this purpose.
         ///
-        /// \param l          [in] The locality the locality id needs to be
-        ///                   generated for. Repeating calls using the same
-        ///                   locality results in identical locality_id values.
         /// \param count      [in] The number of global ids to be generated.
         /// \param lower_bound
         ///                   [out] The lower bound of the assigned id range.
@@ -908,7 +988,7 @@ namespace hpx { namespace agas {
         }
 
         bool resolve_cached(naming::gid_type const& id, naming::address& addr,
-            error_code& ec = throws);
+            error_code& ec = throws) const;
 
         bool resolve_cached(hpx::id_type const& id, naming::address& addr,
             error_code& ec = throws)
@@ -942,7 +1022,8 @@ namespace hpx { namespace agas {
 
         bool resolve_cached(naming::gid_type const* gids,
             naming::address* addrs, std::size_t size,
-            hpx::detail::dynamic_bitset<>& locals, error_code& ec = throws);
+            hpx::detail::dynamic_bitset<>& locals,
+            error_code& ec = throws) const;
 
 #if defined(HPX_HAVE_NETWORKING)
         /// \brief Route the given parcel to the appropriate AGAS service instance
@@ -973,9 +1054,6 @@ namespace hpx { namespace agas {
         /// \param credits    [in] The number of reference counts to add for
         ///                   the given id.
         /// \param keep_alive [in] Id to keep alive (if valid)
-        /// \param ec         [in,out] this represents the error status on exit,
-        ///                   if this is pre-initialized to \a hpx#throws
-        ///                   the function will throw on error instead.
         ///
         /// \returns          Whether the operation was successful.
         ///
@@ -1009,11 +1087,6 @@ namespace hpx { namespace agas {
         ///
         /// \param id         [in] The global address (id) for which the
         ///                   global reference count has to be decremented.
-        /// \param t          [out] If this was the last outstanding global
-        ///                   reference for the given gid (the return value of
-        ///                   this function is zero), t will be set to the
-        ///                   component type of the corresponding element.
-        ///                   Otherwise t will not be modified.
         /// \param credits    [in] The number of reference counts to add for
         ///                   the given id.
         /// \param ec         [in,out] this represents the error status on exit,
@@ -1076,6 +1149,19 @@ namespace hpx { namespace agas {
         bool register_name(std::string const& name, hpx::id_type const& id,
             error_code& ec = throws) const;
 
+        /// \brief Unregister a global name (release any existing association).
+        ///
+        /// This function releases any existing association of the given global
+        /// name with a global address (id).
+        ///
+        /// \param name [in] The global name (string) for which any association
+        ///        with a global address (id) has to be released.
+        ///
+        /// \returns A future that becomes ready with the global id that was
+        ///          associated with the given name.
+        hpx::future<hpx::id_type> unregister_name_async(
+            std::string const& name) const;
+
         /// \brief Unregister a global name (release any existing association)
         ///
         /// This function releases any existing association of the given global
@@ -1088,19 +1174,14 @@ namespace hpx { namespace agas {
         ///                   if this is pre-initialized to \a hpx#throws
         ///                   the function will throw on error instead.
         ///
-        /// \returns          The function returns \a true if an association of
-        ///                   this global name has been released, and it returns
-        ///                   \a false, if no association existed. Any error
-        ///                   results in an exception thrown from this function.
+        /// \returns          The global id that was associated with the given name.
+        ///                   Any error results in an exception thrown from this function.
         ///
         /// \note             As long as \a ec is not pre-initialized to
         ///                   \a hpx#throws this function doesn't
         ///                   throw but returns the result code using the
         ///                   parameter \a ec. Otherwise it throws an instance
         ///                   of hpx#exception.
-        hpx::future<hpx::id_type> unregister_name_async(
-            std::string const& name) const;
-
         hpx::id_type unregister_name(
             std::string const& name, error_code& ec = throws) const;
 
@@ -1109,29 +1190,32 @@ namespace hpx { namespace agas {
         /// This function returns the global address associated with the given
         /// global name.
         ///
-        /// \param name       [in] The global name (string) for which the
-        ///                   currently associated global address has to be
-        ///                   retrieved.
-        /// \param ec         [in,out] this represents the error status on exit,
-        ///                   if this is pre-initialized to \a hpx#throws
-        ///                   the function will throw on error instead.
-        /// \returns          [out] The id currently associated with the given
-        ///                   global name (valid only if the return value is
-        ///                   true).
+        /// \param name [in] The global name (string) for which the currently
+        ///        associated global address has to be retrieved.
         ///
-        /// This function returns true if it returned global address (id),
-        /// which is currently associated with the given global name, and it
-        /// returns false, if currently there is no association for this global
-        /// name. Any error results in an exception thrown from this function.
-        ///
-        /// \note             As long as \a ec is not pre-initialized to
-        ///                   \a hpx#throws this function doesn't
-        ///                   throw but returns the result code using the
-        ///                   parameter \a ec. Otherwise it throws an instance
-        ///                   of hpx#exception.
+        /// \returns A future holding the global id currently associated with the
+        ///          given global name.
         hpx::future<hpx::id_type> resolve_name_async(
             std::string const& name) const;
 
+        /// \brief Query for the global address associated with a given global name.
+        ///
+        /// This function returns the global address associated with the given
+        /// global name.
+        ///
+        /// \param name [in] The global name (string) for which the currently
+        ///                  associated global address has to be retrieved.
+        /// \param ec [in,out] This represents the error status on exit. If this
+        ///                    is pre-initialized to \a hpx#throws the function
+        ///                    will throw on error instead.
+        ///
+        /// \returns The global id currently associated with the given global
+        ///          name.
+        ///
+        /// \note As long as \a ec is not pre-initialized to \a hpx#throws this
+        ///       function doesn't throw but returns the result code using the
+        ///       parameter \a ec. Otherwise it throws an instance of
+        ///       hpx#exception.
         hpx::id_type resolve_name(
             std::string const& name, error_code& ec = throws) const;
 
@@ -1143,8 +1227,6 @@ namespace hpx { namespace agas {
         ///
         /// \param name       [in] The global name (string) for which the given
         ///                   event should be triggered.
-        /// \param evt        [in] The event for which a listener should be
-        ///                   installed.
         /// \param call_for_past_events   [in, optional] Trigger the listener even
         ///                   if the given event has already happened in the past.
         ///                   The default for this parameter is \a false.
@@ -1170,7 +1252,7 @@ namespace hpx { namespace agas {
             naming::address const& addr, std::uint64_t count = 0,
             std::uint64_t offset = 0, error_code& ec = throws)
         {
-            const gva g(
+            gva const g(
                 addr.locality_, addr.type_, count, addr.address_, offset);
             update_cache_entry(gid, g, ec);
         }
@@ -1202,7 +1284,7 @@ namespace hpx { namespace agas {
         /// Maintain list of migrated objects
         std::pair<bool, components::pinned_ptr> was_object_migrated(
             naming::gid_type const& gid,
-            hpx::move_only_function<components::pinned_ptr()>&& f);
+            hpx::move_only_function<components::pinned_ptr()>&& f) const;
 
         /// Mark the given object as being migrated (if the object is unpinned).
         /// Delay migration until the object is unpinned otherwise.
@@ -1217,7 +1299,6 @@ namespace hpx { namespace agas {
         // Pre-cache locality endpoints in hosted locality namespace
         void pre_cache_endpoints(std::vector<parcelset::endpoints_type> const&);
     };
-
-}}    // namespace hpx::agas
+}    // namespace hpx::agas
 
 #include <hpx/config/warnings_suffix.hpp>

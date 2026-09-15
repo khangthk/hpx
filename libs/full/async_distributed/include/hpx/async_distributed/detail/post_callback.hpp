@@ -7,18 +7,13 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/actions_base/traits/action_is_target_valid.hpp>
-#include <hpx/actions_base/traits/action_priority.hpp>
-#include <hpx/actions_base/traits/action_stacksize.hpp>
-#include <hpx/actions_base/traits/extract_action.hpp>
-#include <hpx/actions_base/traits/is_continuation.hpp>
-#include <hpx/actions_base/traits/is_distribution_policy.hpp>
-#include <hpx/async_base/launch_policy.hpp>
 #include <hpx/async_distributed/detail/post.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/datastructures/tuple.hpp>
+#include <hpx/modules/actions_base.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/errors.hpp>
-#include <hpx/type_support/pack.hpp>
+#include <hpx/modules/type_support.hpp>
 
 #include <cstddef>
 #include <type_traits>
@@ -30,7 +25,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
 
-        template <typename Action, typename Callback, typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Callback,
+            typename... Ts>
         bool post_r_p_cb(naming::address&& addr, hpx::id_type const& id,
             hpx::launch policy, Callback&& cb, Ts&&... vs)
         {
@@ -40,7 +36,8 @@ namespace hpx {
                 HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
         }
 
-        template <typename Action, typename Callback, typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Callback,
+            typename... Ts>
         bool post_r_cb(naming::address&& addr, hpx::id_type const& gid,
             Callback&& cb, Ts&&... vs)
         {
@@ -54,7 +51,7 @@ namespace hpx {
 #endif
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_p_cb(
         hpx::id_type const& gid, hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
@@ -62,7 +59,7 @@ namespace hpx {
             gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_cb(hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
     {
         constexpr launch::async_policy policy(
@@ -72,8 +69,8 @@ namespace hpx {
             gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Component, typename Signature, typename Derived,
-        typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Component, typename Signature,
+        typename Derived, typename Callback, typename... Ts>
     bool post_cb(
         hpx::actions::basic_action<Component, Signature, Derived> /*act*/,
         hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
@@ -85,10 +82,10 @@ namespace hpx {
             gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename DistPolicy, typename Callback,
-        typename... Ts>
-    std::enable_if_t<traits::is_distribution_policy_v<DistPolicy>, bool>
-    post_p_cb(DistPolicy const& policy, hpx::launch launch_policy,
+    HPX_CXX_EXPORT template <typename Action, typename DistPolicy,
+        typename Callback, typename... Ts>
+        requires(traits::is_distribution_policy_v<DistPolicy>)
+    bool post_p_cb(DistPolicy const& policy, hpx::launch launch_policy,
         Callback&& cb, Ts&&... vs)
     {
         return policy.template apply_cb<Action>(
@@ -97,8 +94,8 @@ namespace hpx {
 
     template <typename Action, typename DistPolicy, typename Callback,
         typename... Ts>
-    std::enable_if_t<traits::is_distribution_policy_v<DistPolicy>, bool>
-    post_cb(DistPolicy const& policy, Callback&& cb, Ts&&... vs)
+        requires(traits::is_distribution_policy_v<DistPolicy>)
+    bool post_cb(DistPolicy const& policy, Callback&& cb, Ts&&... vs)
     {
         constexpr launch::async_policy launch_policy(
             actions::action_priority<Action>(),
@@ -109,8 +106,9 @@ namespace hpx {
 
     template <typename Component, typename Signature, typename Derived,
         typename DistPolicy, typename Callback, typename... Ts>
-    std::enable_if_t<traits::is_distribution_policy_v<DistPolicy>, bool>
-    post_cb(hpx::actions::basic_action<Component, Signature, Derived> /*act*/,
+        requires(traits::is_distribution_policy_v<DistPolicy>)
+    bool post_cb(
+        hpx::actions::basic_action<Component, Signature, Derived> /*act*/,
         DistPolicy const& policy, Callback&& cb, Ts&&... vs)
     {
         constexpr launch::async_policy launch_policy(
@@ -124,8 +122,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
 
-        template <typename Action, typename Continuation, typename Callback,
-            typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Continuation,
+            typename Callback, typename... Ts>
         bool post_r_p_cb(naming::address&& addr, Continuation&& c,
             hpx::id_type const& id, hpx::launch policy, Callback&& cb,
             Ts&&... vs)
@@ -137,8 +135,8 @@ namespace hpx {
                 HPX_FORWARD(Ts, vs)...);
         }
 
-        template <typename Action, typename Continuation, typename Callback,
-            typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Continuation,
+            typename Callback, typename... Ts>
         bool post_r_cb(naming::address&& addr, Continuation&& c,
             hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
         {
@@ -153,8 +151,8 @@ namespace hpx {
 #endif
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action, typename Continuation, typename Callback,
-        typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename Callback, typename... Ts>
     bool post_p_cb(Continuation&& c, naming::address&& addr,
         hpx::id_type const& gid, hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
@@ -190,8 +188,8 @@ namespace hpx {
 #endif
     }
 
-    template <typename Action, typename Continuation, typename Callback,
-        typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename Callback, typename... Ts>
     bool post_p_cb(Continuation&& c, hpx::id_type const& gid,
         hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
@@ -199,8 +197,8 @@ namespace hpx {
             gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Continuation, typename Callback,
-        typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename Callback, typename... Ts>
     bool post_cb(
         Continuation&& c, hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
     {
@@ -211,8 +209,8 @@ namespace hpx {
             HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Component, typename Continuation, typename Signature,
-        typename Derived, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Component, typename Continuation,
+        typename Signature, typename Derived, typename Callback, typename... Ts>
     bool post_cb(Continuation&& c,
         hpx::actions::basic_action<Component, Signature, Derived> /*act*/,
         hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
@@ -224,24 +222,22 @@ namespace hpx {
             HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Continuation, typename DistPolicy,
-        typename Callback, typename... Ts>
-    std::enable_if_t<traits::is_continuation<Continuation>::value &&
-            traits::is_distribution_policy_v<DistPolicy>,
-        bool>
-    post_p_cb(Continuation&& c, DistPolicy const& policy,
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename DistPolicy, typename Callback, typename... Ts>
+        requires(traits::is_continuation<Continuation>::value &&
+            traits::is_distribution_policy_v<DistPolicy>)
+    bool post_p_cb(Continuation&& c, DistPolicy const& policy,
         hpx::launch launch_policy, Callback&& cb, Ts&&... vs)
     {
         return policy.template apply_cb<Action>(HPX_FORWARD(Continuation, c),
             launch_policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Continuation, typename DistPolicy,
-        typename Callback, typename... Ts>
-    std::enable_if_t<traits::is_continuation<Continuation>::value &&
-            traits::is_distribution_policy_v<DistPolicy>,
-        bool>
-    post_cb(
+    HPX_CXX_EXPORT template <typename Action, typename Continuation,
+        typename DistPolicy, typename Callback, typename... Ts>
+        requires(traits::is_continuation<Continuation>::value &&
+            traits::is_distribution_policy_v<DistPolicy>)
+    bool post_cb(
         Continuation&& c, DistPolicy const& policy, Callback&& cb, Ts&&... vs)
     {
         constexpr launch::async_policy launch_policy(
@@ -251,11 +247,11 @@ namespace hpx {
             launch_policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Component, typename Continuation, typename Signature,
-        typename Derived, typename DistPolicy, typename Callback,
-        typename... Ts>
-    std::enable_if_t<traits::is_distribution_policy_v<DistPolicy>, bool>
-    post_cb(Continuation&& c,
+    HPX_CXX_EXPORT template <typename Component, typename Continuation,
+        typename Signature, typename Derived, typename DistPolicy,
+        typename Callback, typename... Ts>
+        requires(traits::is_distribution_policy_v<DistPolicy>)
+    bool post_cb(Continuation&& c,
         hpx::actions::basic_action<Component, Signature, Derived> /*act*/,
         DistPolicy const& policy, Callback&& cb, Ts&&... vs)
     {
@@ -270,7 +266,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
 
-        template <typename Action, typename Callback, typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Callback,
+            typename... Ts>
         bool post_c_p_cb(naming::address&& addr, hpx::id_type const& contgid,
             hpx::id_type const& gid, hpx::launch policy, Callback&& cb,
             Ts&&... vs)
@@ -286,7 +283,8 @@ namespace hpx {
                 gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
         }
 
-        template <typename Action, typename Callback, typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Callback,
+            typename... Ts>
         bool post_c_cb(naming::address&& addr, hpx::id_type const& contgid,
             hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
         {
@@ -307,7 +305,7 @@ namespace hpx {
 #endif
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_c_p_cb(hpx::id_type const& contgid, hpx::id_type const& gid,
         hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
@@ -322,7 +320,7 @@ namespace hpx {
             gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_c_cb(hpx::id_type const& contgid, hpx::id_type const& gid,
         Callback&& cb, Ts&&... vs)
     {
@@ -340,7 +338,7 @@ namespace hpx {
             gid, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_c_p_cb(hpx::id_type const& contgid, naming::address&& addr,
         hpx::id_type const& gid, hpx::launch policy, Callback&& cb, Ts&&... vs)
     {
@@ -356,7 +354,7 @@ namespace hpx {
             HPX_FORWARD(Ts, vs)...);
     }
 
-    template <typename Action, typename Callback, typename... Ts>
+    HPX_CXX_EXPORT template <typename Action, typename Callback, typename... Ts>
     bool post_c_cb(hpx::id_type const& contgid, naming::address&& addr,
         hpx::id_type const& gid, Callback&& cb, Ts&&... vs)
     {
@@ -377,7 +375,8 @@ namespace hpx {
 
     namespace functional {
 
-        template <typename Action, typename Callback, typename... Ts>
+        HPX_CXX_EXPORT template <typename Action, typename Callback,
+            typename... Ts>
         struct post_c_p_cb_impl
         {
         public:
@@ -501,4 +500,77 @@ namespace hpx {
     {
         return hpx::post_c_cb<Action>(HPX_FORWARD(Ts, ts)...);
     }
+#if defined(HPX_HAVE_CXX26_REFLECTION)
+    /// \brief Reflection-based post_cb overload.
+    ///
+    /// Allows calling hpx::post_cb<^^func>(target, callback, ...) directly
+    /// without defining an explicit action type. Internally constructs
+    /// reflect_action<F> and delegates to the existing post_cb machinery.
+    ///
+    /// \tparam F        A std::meta::info reflection of a free function.
+    /// \tparam Target   id_type or distribution policy.
+    /// \tparam Callback Callback type invoked on completion.
+    /// \tparam Ts       Additional arguments to pass to the function.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Target,
+        typename Callback, typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F) &&
+            (std::is_same_v<std::decay_t<Target>, hpx::id_type> ||
+                hpx::traits::is_distribution_policy_v<std::decay_t<Target>>))
+    HPX_FORCEINLINE bool post_cb(
+        Target&& target, Callback&& cb, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::post_cb<hpx::actions::reflect_action<F>>(
+            HPX_FORWARD(Target, target), HPX_FORWARD(Callback, cb),
+            HPX_FORWARD(Ts, ts)...);
+    }
+    /// \brief Reflection-based post_cb overload with explicit launch policy.
+    ///
+    /// \tparam F        A std::meta::info reflection of a free function.
+    /// \tparam Callback Callback type invoked on completion.
+    /// \tparam Ts       Additional arguments to pass to the function.
+    /// \param target    The target locality id.
+    /// \param policy    The launch policy.
+    /// \param cb        The callback invoked on completion.
+    /// \param ts        Additional arguments forwarded to the function.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename Callback,
+        typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F))
+    HPX_FORCEINLINE bool post_cb(
+        hpx::id_type const& target, hpx::launch policy,
+        Callback&& cb, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::post_p_cb<hpx::actions::reflect_action<F>>(
+            target, policy, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, ts)...);
+    }
+    /// \brief Reflection-based post_cb overload with distribution policy and launch policy.
+    ///
+    /// \tparam F          A std::meta::info reflection of a free function.
+    /// \tparam DistPolicy Distribution policy type.
+    /// \tparam Callback   Callback type invoked on completion.
+    /// \tparam Ts         Additional arguments to pass to the function.
+    /// \param dist_policy The distribution policy.
+    /// \param launch      The launch policy.
+    /// \param cb          The callback invoked on completion.
+    /// \param ts          Additional arguments forwarded to the function.
+    // clang-format off
+    HPX_CXX_EXPORT template <std::meta::info F, typename DistPolicy,
+        typename Callback, typename... Ts>
+        requires(std::meta::is_namespace_member(F) &&
+            std::meta::is_function(F) &&
+            hpx::traits::is_distribution_policy_v<std::decay_t<DistPolicy>>)
+    HPX_FORCEINLINE bool post_cb(
+        DistPolicy const& dist_policy, hpx::launch launch,
+        Callback&& cb, Ts&&... ts)
+    // clang-format on
+    {
+        return hpx::post_p_cb<hpx::actions::reflect_action<F>>(dist_policy,
+            launch, HPX_FORWARD(Callback, cb), HPX_FORWARD(Ts, ts)...);
+    }
+#endif    // HPX_HAVE_CXX26_REFLECTION
 }    // namespace hpx

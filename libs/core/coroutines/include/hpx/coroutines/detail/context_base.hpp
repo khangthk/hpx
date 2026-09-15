@@ -1,5 +1,5 @@
 //  Copyright (c) 2006, Giovanni P. Deretta
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //
 //  This code may be used under either of the following two licences:
 //
@@ -48,7 +48,9 @@
 namespace hpx::threads::coroutines::detail {
 
     /////////////////////////////////////////////////////////////////////////////
-    inline constexpr std::ptrdiff_t const default_stack_size = -1;
+    inline constexpr std::ptrdiff_t default_stack_size = -1;
+
+    class coroutine_impl;
 
     template <typename CoroutineImpl>
     class context_base : public default_context_impl<CoroutineImpl>
@@ -59,6 +61,7 @@ namespace hpx::threads::coroutines::detail {
         using deleter_type = void(context_base const*);
         using thread_id_type = hpx::threads::thread_id;
 
+    private:
         context_base(std::ptrdiff_t stack_size, thread_id_type id)
           : base_type(stack_size)
           , m_caller()
@@ -87,6 +90,9 @@ namespace hpx::threads::coroutines::detail {
         context_base(context_base const&) = delete;
         context_base(context_base&&) = delete;
 
+        friend class coroutine_impl;
+
+    public:
         context_base& operator=(context_base const&) = delete;
         context_base& operator=(context_base&&) = delete;
 
@@ -303,7 +309,7 @@ namespace hpx::threads::coroutines::detail {
 
     public:
         // global coroutine state
-        enum class context_state
+        enum class context_state : std::uint8_t
         {
             running = 0,    // context running.
             ready,          // context at yield point.
@@ -312,7 +318,7 @@ namespace hpx::threads::coroutines::detail {
 
     protected:
         // exit request state
-        enum class context_exit_state
+        enum class context_exit_state : std::uint8_t
         {
             not_requested = 0,    // exit not requested.
             pending,              // exit requested.
@@ -320,9 +326,9 @@ namespace hpx::threads::coroutines::detail {
         };
 
         // exit status
-        enum class context_exit_status
+        enum class context_exit_status : std::uint8_t
         {
-            not_exited,
+            not_exited = 0,
             exited_return,       // process exited by return.
             exited_abnormally    // process exited uncleanly.
         };
@@ -353,13 +359,11 @@ namespace hpx::threads::coroutines::detail {
         }
 
         // Nothrow.
-        void do_return(
-            context_exit_status status, std::exception_ptr&& info) noexcept
+        void do_return(context_exit_status status) noexcept
         {
             HPX_ASSERT(status != context_exit_status::not_exited);
             HPX_ASSERT(m_state == context_state::running);
 
-            m_type_info = HPX_MOVE(info);
             m_state = context_state::exited;
             m_exit_status = status;
 #if defined(HPX_HAVE_ADDRESS_SANITIZER)

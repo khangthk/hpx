@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2026 Hartmut Kaiser
 //  Copyright (c) 2013 Agustin Berge
 //
 //  SPDX-License-Identifier: BSL-1.0
@@ -12,16 +12,8 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/allocator_support/allocator_deleter.hpp>
-#include <hpx/allocator_support/internal_allocator.hpp>
-#include <hpx/allocator_support/thread_local_caching_allocator.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/async_base/launch_policy.hpp>
-#include <hpx/concepts/concepts.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/functional/detail/invoke.hpp>
-#include <hpx/functional/experimental/scope_exit.hpp>
-#include <hpx/functional/traits/is_invocable.hpp>
+#include <hpx/contracts.hpp>
 #include <hpx/futures/detail/future_data.hpp>
 #include <hpx/futures/future_fwd.hpp>
 #include <hpx/futures/traits/acquire_shared_state.hpp>
@@ -30,24 +22,27 @@
 #include <hpx/futures/traits/future_then_result.hpp>
 #include <hpx/futures/traits/future_traits.hpp>
 #include <hpx/futures/traits/is_future.hpp>
+#include <hpx/modules/allocator_support.hpp>
+#include <hpx/modules/async_base.hpp>
+#include <hpx/modules/concepts.hpp>
+#include <hpx/modules/concurrency.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/memory.hpp>
-#include <hpx/serialization/detail/constructor_selector.hpp>
-#include <hpx/serialization/detail/non_default_constructible.hpp>
-#include <hpx/serialization/detail/polymorphic_nonintrusive_factory.hpp>
-#include <hpx/serialization/exception_ptr.hpp>
-#include <hpx/serialization/serialization_fwd.hpp>
-#include <hpx/timing/steady_clock.hpp>
-#include <hpx/type_support/coroutines_support.hpp>
-#include <hpx/type_support/decay.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/timing.hpp>
+#include <hpx/modules/type_support.hpp>
 
+#include <chrono>
 #include <exception>
 #include <iterator>
 #include <memory>
+#include <source_location>
 #include <type_traits>
 #include <utility>
 
 namespace hpx::lcos::detail {
+
     ///////////////////////////////////////////////////////////////////////////
     enum class future_state
     {
@@ -57,7 +52,7 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Future, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Future, typename Enable = void>
     struct future_unwrap_result;
 
     template <template <typename> class Future, typename R>
@@ -74,11 +69,11 @@ namespace hpx::lcos::detail {
         using wrapped_type = hpx::future<type>;
     };
 
-    template <typename Future>
-    using future_unwrap_result_t = typename future_unwrap_result<Future>::type;
+    HPX_CXX_CORE_EXPORT template <typename Future>
+    using future_unwrap_result_t = future_unwrap_result<Future>::type;
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     struct future_value : future_data_result<T>
     {
         template <typename U>
@@ -143,18 +138,18 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Future, typename F, typename ContResult>
+    HPX_CXX_CORE_EXPORT template <typename Future, typename F,
+        typename ContResult>
     class continuation;
 
-    template <typename ContResult>
+    HPX_CXX_CORE_EXPORT template <typename ContResult>
     struct continuation_result
     {
         using type = ContResult;
     };
 
-    template <typename ContResult>
-    using continuation_result_t =
-        typename continuation_result<ContResult>::type;
+    HPX_CXX_CORE_EXPORT template <typename ContResult>
+    using continuation_result_t = continuation_result<ContResult>::type;
 
     template <typename ContResult>
     struct continuation_result<hpx::future<ContResult>>
@@ -163,36 +158,38 @@ namespace hpx::lcos::detail {
     };
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename ContResult, typename Future, typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Future,
+        typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<continuation_result_t<ContResult>>
     make_continuation(Future&& future, Policy&& policy, F&& f);
 
     // create non-unwrapping continuations
-    template <typename ContResult, typename Future, typename Executor,
-        typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Future,
+        typename Executor, typename F>
     inline traits::detail::shared_state_ptr_t<ContResult>
     make_continuation_exec(Future&& future, Executor&& exec, F&& f);
 
-    template <typename ContResult, typename Future, typename Executor,
-        typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Future,
+        typename Executor, typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<ContResult>
     make_continuation_exec_policy(
         Future&& future, Executor&& exec, Policy&& policy, F&& f);
 
-    template <typename ContResult, typename Allocator, typename Future,
-        typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Allocator,
+        typename Future, typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<continuation_result_t<ContResult>>
     make_continuation_alloc(
         Allocator const& a, Future&& future, Policy&& policy, F&& f);
 
-    template <typename ContResult, typename Allocator, typename Future,
-        typename Policy, typename F>
+    HPX_CXX_CORE_EXPORT template <typename ContResult, typename Allocator,
+        typename Future, typename Policy, typename F>
     inline traits::detail::shared_state_ptr_t<ContResult>
     make_continuation_alloc_nounwrap(
         Allocator const& a, Future&& future, Policy&& policy, F&& f);
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Future, typename FD, typename Enable = void>
+    HPX_CXX_CORE_EXPORT template <typename Future, typename FD,
+        typename Enable = void>
     struct future_then_dispatch
     {
         template <typename F>
@@ -251,7 +248,7 @@ namespace hpx::lcos::detail {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename Derived, typename R>
+    HPX_CXX_CORE_EXPORT template <typename Derived, typename R>
     class future_base
     {
     public:
@@ -267,8 +264,8 @@ namespace hpx::lcos::detail {
         };
 
     public:
+        // NOLINTBEGIN(bugprone-crtp-constructor-accessibility)
         future_base() noexcept = default;
-        ~future_base() = default;
 
         explicit future_base(hpx::intrusive_ptr<shared_state_type> const& p)
           : shared_state_(p)
@@ -282,6 +279,9 @@ namespace hpx::lcos::detail {
 
         future_base(future_base const& other) = default;
         future_base(future_base&& other) noexcept = default;
+        // NOLINTEND(bugprone-crtp-constructor-accessibility)
+
+        ~future_base() = default;
 
         void swap(future_base& other) noexcept
         {
@@ -330,7 +330,7 @@ namespace hpx::lcos::detail {
                     "this future has no valid shared state");
             }
 
-            using result_type = typename shared_state_type::result_type;
+            using result_type = shared_state_type::result_type;
 
             error_code ec(throwmode::lightweight);
             lcos::detail::future_get_result<result_type>::call(
@@ -378,13 +378,14 @@ namespace hpx::lcos::detail {
         template <typename F>
         static auto then(Derived&& fut, F&& f, error_code& ec = throws)
             -> decltype(future_then_dispatch<std::decay_t<F>>::call_alloc(
-                hpx::util::thread_local_caching_allocator<char,
+                hpx::util::thread_local_caching_allocator<
+                    hpx::lockfree::variable_size_stack,
                     hpx::util::internal_allocator<>>{},
                 HPX_MOVE(fut), HPX_FORWARD(F, f)))
         {
-            using allocator_type =
-                hpx::util::thread_local_caching_allocator<char,
-                    hpx::util::internal_allocator<>>;
+            using allocator_type = hpx::util::thread_local_caching_allocator<
+                hpx::lockfree::variable_size_stack,
+                hpx::util::internal_allocator<>>;
 
             using result_type =
                 decltype(future_then_dispatch<std::decay_t<F>>::call_alloc(
@@ -404,13 +405,14 @@ namespace hpx::lcos::detail {
         template <typename F, typename T0>
         static auto then(Derived&& fut, T0&& t0, F&& f, error_code& ec = throws)
             -> decltype(future_then_dispatch<std::decay_t<T0>>::call_alloc(
-                hpx::util::thread_local_caching_allocator<char,
+                hpx::util::thread_local_caching_allocator<
+                    hpx::lockfree::variable_size_stack,
                     hpx::util::internal_allocator<>>{},
                 HPX_MOVE(fut), HPX_FORWARD(T0, t0), HPX_FORWARD(F, f)))
         {
-            using allocator_type =
-                hpx::util::thread_local_caching_allocator<char,
-                    hpx::util::internal_allocator<>>;
+            using allocator_type = hpx::util::thread_local_caching_allocator<
+                hpx::lockfree::variable_size_stack,
+                hpx::util::internal_allocator<>>;
 
             using result_type =
                 decltype(future_then_dispatch<std::decay_t<T0>>::call_alloc(
@@ -534,7 +536,7 @@ namespace hpx::lcos::detail {
 namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     class future : public lcos::detail::future_base<future<R>, R>
     {
     private:
@@ -542,7 +544,7 @@ namespace hpx {
 
     public:
         using result_type = R;
-        using shared_state_type = typename base_type::shared_state_type;
+        using shared_state_type = base_type::shared_state_type;
 
     private:
         template <typename Future>
@@ -660,7 +662,8 @@ namespace hpx {
         // Throws: the stored exception, if an exception was stored in the
         //         shared state.
         // Postcondition: valid() == false.
-        typename hpx::traits::future_traits<future>::result_type get()
+        hpx::traits::future_traits<future>::result_type get()
+            HPX_PRE(this->valid())
         {
             if (!this->shared_state_)
             {
@@ -671,7 +674,7 @@ namespace hpx {
             auto on_exit = hpx::experimental::scope_exit(
                 [this] { this->shared_state_.reset(); });
 
-            using result_type = typename shared_state_type::result_type;
+            using result_type = shared_state_type::result_type;
             auto* result = lcos::detail::future_get_result<result_type>::call(
                 this->shared_state_);
 
@@ -679,8 +682,8 @@ namespace hpx {
             return lcos::detail::future_value<R>::get(HPX_MOVE(*result));
         }
 
-        typename hpx::traits::future_traits<future>::result_type get(
-            error_code& ec)
+        hpx::traits::future_traits<future>::result_type get(error_code& ec)
+            HPX_PRE(this->valid())
         {
             if (!this->shared_state_)
             {
@@ -692,7 +695,7 @@ namespace hpx {
             auto on_exit = hpx::experimental::scope_exit(
                 [this] { this->shared_state_.reset(); });
 
-            using result_type = typename shared_state_type::result_type;
+            using result_type = shared_state_type::result_type;
             result_type* result =
                 lcos::detail::future_get_result<result_type>::call(
                     this->shared_state_, ec);
@@ -740,7 +743,6 @@ namespace hpx {
         /// \tparam F           The type of the function/function object to use
         ///                     (deduced). F must meet requirements of
         ///                     \a MoveConstructible.
-        /// \tparam error_code  The type of error code.
         ///
         /// \param f            A continuation to be attached.
         /// \param ec           Used to hold error code value originated during the
@@ -755,6 +757,7 @@ namespace hpx {
         ///                          after it returns.
         template <typename F>
         decltype(auto) then(F&& f, error_code& ec = throws)
+        // HPX_PRE(this->valid()) HPX_POST(!this->valid())
         {
 #if defined(HPX_COMPUTE_DEVICE_CODE)
             // This and the similar ifdefs below for future::then and
@@ -783,7 +786,6 @@ namespace hpx {
         /// \tparam F           The type of the function/function object to use
         ///                     (deduced). F must meet requirements of
         ///                     \a MoveConstructible.
-        /// \tparam error_code  The type of error code.
         ///
         /// \param t0           The executor or launch policy to be used.
         /// \param f            A continuation to be attached.
@@ -799,6 +801,7 @@ namespace hpx {
         ///                          after it returns.
         template <typename T0, typename F>
         decltype(auto) then(T0&& t0, F&& f, error_code& ec = throws)
+        // HPX_PRE(this->valid()) HPX_POST(!this->valid())
         {
 #if defined(HPX_COMPUTE_DEVICE_CODE)
             HPX_ASSERT(false);
@@ -817,11 +820,8 @@ namespace hpx {
         template <typename Allocator, typename F>
         auto then_alloc(Allocator const& alloc, F&& f, error_code& ec = throws)
             -> decltype(base_type::then_alloc(
-#if defined(HPX_CUDA_VERSION) && (HPX_CUDA_VERSION < 1104)
                 alloc, std::move(*this), std::forward<F>(f), ec))
-#else
-                alloc, HPX_MOVE(*this), HPX_FORWARD(F, f), ec))
-#endif
+        // HPX_PRE(this->valid()) HPX_POST(!this->valid())
         {
 #if defined(HPX_COMPUTE_DEVICE_CODE)
             HPX_ASSERT(false);
@@ -847,7 +847,7 @@ namespace hpx {
     // existing conversion path U --> R.
     /// \brief Converts any future of type U to any other future of type R
     ///        based on an existing conversion path from U to R.
-    template <typename R, typename U>
+    HPX_CXX_CORE_EXPORT template <typename R, typename U>
     hpx::future<R> make_future(hpx::future<U>&& f)
     {
         static_assert(std::is_convertible_v<U, R> || std::is_void_v<R>,
@@ -870,7 +870,7 @@ namespace hpx {
     // conversion function: R conv(U).
     /// \brief Converts any future of type U to any other future of type R
     ///        based on a given conversion function: R conv(U).
-    template <typename R, typename U, typename Conv>
+    HPX_CXX_CORE_EXPORT template <typename R, typename U, typename Conv>
     hpx::future<R> make_future(hpx::future<U>&& f, Conv&& conv)
     {
         if constexpr (std::is_convertible_v<hpx::future<U>, hpx::future<R>>)
@@ -885,20 +885,93 @@ namespace hpx {
                 });
         }
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // Default bound for waiting on a future.
+    HPX_CXX_CORE_EXPORT inline constexpr std::chrono::milliseconds
+        default_future_timeout{30000};
+
+    /// \brief Returns the current process-wide timeout used when waiting on a
+    ///        future.
+    ///
+    /// \return The timeout duration. Defaults to \a default_future_timeout (30
+    ///         seconds) unless changed via \a set_future_timeout.
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT std::chrono::milliseconds
+    get_future_timeout() noexcept;
+
+    /// \brief Sets the process-wide timeout used when waiting on a future.
+    ///
+    /// \param timeout The new timeout value applied to all subsequent future
+    ///                waits (e.g. via \a wait_or_handle_timeout) unless a
+    ///                different timeout is passed explicitly.
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void set_future_timeout(
+        hpx::chrono::steady_duration const& timeout) noexcept;
+
+    /// \brief Waits on and consumes the given future, throwing (or reporting
+    ///        via \a ec) a timeout error if the wait exceeds \a timeout.
+    ///
+    /// \param f The future to wait on; consumed (moved-from) by this call.
+    /// \param function_name Name reported in the timeout error message.
+    /// \param timeout Maximum time to wait before timing out. Defaults to the
+    ///                current process-wide timeout returned by
+    ///                \a get_future_timeout.
+    /// \param ec Used to report the timeout error instead of throwing.
+    ///
+    /// \throws hpx::exception with \a hpx::error::future_wait_timed_out if the
+    ///         future is not ready before \a timeout elapses (unless \a ec is
+    ///         supplied, in which case the error is stored in \a ec).
+    ///
+    /// \return The value held by the future, as returned by \a f.get().
+    HPX_CXX_CORE_EXPORT template <typename T>
+    decltype(auto) wait_or_handle_timeout(hpx::future<T>&& f,
+        char const* function_name,
+        hpx::chrono::steady_duration const& timeout = hpx::get_future_timeout(),
+        hpx::error_code& ec = hpx::throws)
+    {
+        if (f.wait_for(timeout, ec) == hpx::future_status::timeout || ec)
+        {
+            HPX_THROWS_IF(ec, hpx::error::future_wait_timed_out, function_name,
+                "future.wait_for timed out");
+        }
+        return f.get(ec);
+    }
+
+    /// \brief Overload of \a wait_or_handle_timeout that derives the reported
+    ///        function name from \a location instead of an explicit string.
+    ///
+    /// \param f The future to wait on; consumed (moved-from) by this call.
+    /// \param location Call-site information identifying the caller in the
+    ///                 timeout error message. Defaults to the caller's
+    ///                 location.
+    /// \param timeout Maximum time to wait before timing out. Defaults to the
+    ///                current process-wide timeout returned by
+    ///                \a get_future_timeout.
+    /// \param ec Used to report the timeout error instead of throwing.
+    ///
+    /// \return The value held by the future, as returned by \a f.get().
+    HPX_CXX_CORE_EXPORT template <typename T>
+    decltype(auto) wait_or_handle_timeout(hpx::future<T>&& f,
+        std::source_location const& location = std::source_location::current(),
+        hpx::chrono::steady_duration const& timeout = hpx::get_future_timeout(),
+        hpx::error_code& ec = hpx::throws)
+    {
+        return wait_or_handle_timeout(
+            HPX_MOVE(f), location.function_name(), timeout, ec);
+    }
 }    // namespace hpx
 
 /// Top level HPX namespace
 namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     class shared_future : public lcos::detail::future_base<shared_future<R>, R>
     {
         using base_type = lcos::detail::future_base<shared_future<R>, R>;
 
     public:
         using result_type = R;
-        using shared_state_type = typename base_type::shared_state_type;
+        using shared_state_type = base_type::shared_state_type;
 
     private:
         template <typename Future>
@@ -1010,8 +1083,9 @@ namespace hpx {
         // Throws: the stored exception, if an exception was stored in the
         //         shared state.
         // Postcondition: valid() == false.
-        typename hpx::traits::future_traits<shared_future>::result_type get()
+        hpx::traits::future_traits<shared_future>::result_type get()
             const    //-V659
+            HPX_PRE(this->valid())
         {
             if (!this->shared_state_)
             {
@@ -1020,7 +1094,7 @@ namespace hpx {
                     "this future has no valid shared state");
             }
 
-            using result_type = typename shared_state_type::result_type;
+            using result_type = shared_state_type::result_type;
             result_type* result =
                 lcos::detail::future_get_result<result_type>::call(
                     this->shared_state_);
@@ -1029,10 +1103,11 @@ namespace hpx {
             return lcos::detail::future_value<R>::get(*result);
         }
 
-        typename hpx::traits::future_traits<shared_future>::result_type get(
+        hpx::traits::future_traits<shared_future>::result_type get(
             error_code& ec) const    //-V659
+            HPX_PRE(this->valid())
         {
-            using result_type = typename shared_state_type::result_type;
+            using result_type = shared_state_type::result_type;
             if (!this->shared_state_)
             {
                 HPX_THROWS_IF(ec, hpx::error::no_state, "shared_future<R>::get",
@@ -1066,6 +1141,7 @@ namespace hpx {
         /// \copydoc hpx::future::then(F&& f, error_code& ec = throws)
         template <typename F>
         decltype(auto) then(F&& f, error_code& ec = throws) const
+        //HPX_PRE(this->valid())
         {
 #if defined(HPX_COMPUTE_DEVICE_CODE)
             HPX_ASSERT(false);
@@ -1082,6 +1158,7 @@ namespace hpx {
         /// \copydoc hpx::future::then(T0&& t0, F&& f, error_code& ec = throws)
         template <typename T0, typename F>
         decltype(auto) then(T0&& t0, F&& f, error_code& ec = throws) const
+        // HPX_PRE(this->valid())
         {
 #if defined(HPX_COMPUTE_DEVICE_CODE)
             HPX_ASSERT(false);
@@ -1096,12 +1173,8 @@ namespace hpx {
 
         template <typename Allocator, typename F>
         auto then_alloc(Allocator const& alloc, F&& f, error_code& ec = throws)
-            -> decltype(base_type::then_alloc(
-#if defined(HPX_CUDA_VERSION) && (HPX_CUDA_VERSION < 1104)
-                alloc, std::move(*this), std::forward<F>(f), ec))
-#else
-                alloc, HPX_MOVE(*this), HPX_FORWARD(F, f), ec))
-#endif
+            -> decltype(base_type::then_alloc(alloc, std::move(*this),
+                std::forward<F>(f), ec))    // HPX_PRE(this->valid())
         {
 #if defined(HPX_COMPUTE_DEVICE_CODE)
             HPX_ASSERT(false);
@@ -1124,7 +1197,7 @@ namespace hpx {
     // an existing conversion path U --> R.
     /// \brief Converts any shared_future of type U to any other future of type R
     ///        based on an existing conversion path from U to R.
-    template <typename R, typename U>
+    HPX_CXX_CORE_EXPORT template <typename R, typename U>
     hpx::future<R> make_future(hpx::shared_future<U> f)
     {
         static_assert(std::is_convertible_v<R, U> || std::is_void_v<R>,
@@ -1148,7 +1221,7 @@ namespace hpx {
     // Allow to convert any future<U> into any other future<R> based on a given
     // conversion function: R conv(U).
     /// \copydoc make_future(hpx::future<U>&& f)
-    template <typename R, typename U, typename Conv>
+    HPX_CXX_CORE_EXPORT template <typename R, typename U, typename Conv>
     hpx::future<R> make_future(hpx::shared_future<U> f, Conv&& conv)
     {
         static_assert(hpx::is_invocable_r_v<R, Conv, U>,
@@ -1173,21 +1246,21 @@ namespace hpx {
     // shared_future<T>.
     /// \brief Converts any future or shared_future of type T to a corresponding
     ///        shared_future of type T
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     hpx::shared_future<R> make_shared_future(hpx::future<R>&& f) noexcept
     {
         return f.share();
     }
 
     /// \copydoc make_shared_future(hpx::future<R>&& f)
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     hpx::shared_future<R>& make_shared_future(hpx::shared_future<R>& f) noexcept
     {
         return f;
     }
 
     /// \copydoc make_shared_future(hpx::future<R>&& f)
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     hpx::shared_future<R>&& make_shared_future(
         hpx::shared_future<R>&& f) noexcept
     {
@@ -1195,11 +1268,11 @@ namespace hpx {
     }
 
     /// \copydoc make_shared_future(hpx::future<R>&& f)
-    template <typename R>
+    HPX_CXX_CORE_EXPORT template <typename R>
     hpx::shared_future<R> const& make_shared_future(
         hpx::shared_future<R> const& f) noexcept
     {
-        return f;
+        return f;    // NOLINT(bugprone-return-const-ref-from-parameter)
     }
 }    // namespace hpx
 
@@ -1209,7 +1282,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // Extension (see wg21.link/P0319), with allocator
     /// \brief Creates a pre-initialized future object with allocator (extension)
-    template <typename T, typename Allocator, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename Allocator,
+        typename... Ts>
     std::enable_if_t<std::is_constructible_v<T, Ts&&...> || std::is_void_v<T>,
         future<T>>
     make_ready_future_alloc(Allocator const& a, Ts&&... ts)
@@ -1220,11 +1294,11 @@ namespace hpx {
         using shared_state = traits::shared_state_allocator_t<
             lcos::detail::future_data<result_type>, base_allocator>;
 
-        using other_allocator = typename std::allocator_traits<
+        using other_allocator = std::allocator_traits<
             base_allocator>::template rebind_alloc<shared_state>;
         using traits = std::allocator_traits<other_allocator>;
 
-        using init_no_addref = typename shared_state::init_no_addref;
+        using init_no_addref = shared_state::init_no_addref;
 
         using unique_ptr = std::unique_ptr<shared_state,
             util::allocator_deleter<other_allocator>>;
@@ -1241,12 +1315,13 @@ namespace hpx {
 
     // Extension (see wg21.link/P0319)
     /// \copydoc make_ready_future(T&& init)
-    template <typename T, typename... Ts>
+    HPX_CXX_CORE_EXPORT template <typename T, typename... Ts>
     HPX_FORCEINLINE std::enable_if_t<
         std::is_constructible_v<T, Ts&&...> || std::is_void_v<T>, future<T>>
     make_ready_future(Ts&&... ts)
     {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
+        using allocator_type = hpx::util::thread_local_caching_allocator<
+            hpx::lockfree::variable_size_stack,
             hpx::util::internal_allocator<>>;
         return make_ready_future_alloc<T>(
             allocator_type{}, HPX_FORWARD(Ts, ts)...);
@@ -1254,7 +1329,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // extension: create a pre-initialized future object, with allocator
     /// \copydoc make_ready_future_alloc(Allocator const& a, Ts&&... ts)
-    template <int DeductionGuard = 0, typename Allocator, typename T>
+    HPX_CXX_CORE_EXPORT template <int DeductionGuard = 0, typename Allocator,
+        typename T>
     future<hpx::util::decay_unwrap_t<T>> make_ready_future_alloc(
         Allocator const& a, T&& init)
     {
@@ -1266,11 +1342,12 @@ namespace hpx {
     /// \brief The function creates a shared state that is immediately ready
     ///        and returns a future associated with that shared state.
     ///        For the returned future, valid() == true and is_ready() == true
-    template <int DeductionGuard = 0, typename T>
+    HPX_CXX_CORE_EXPORT template <int DeductionGuard = 0, typename T>
     HPX_FORCEINLINE future<hpx::util::decay_unwrap_t<T>> make_ready_future(
         T&& init)
     {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
+        using allocator_type = hpx::util::thread_local_caching_allocator<
+            hpx::lockfree::variable_size_stack,
             hpx::util::internal_allocator<>>;
         return hpx::make_ready_future_alloc<hpx::util::decay_unwrap_t<T>>(
             allocator_type{}, HPX_FORWARD(T, init));
@@ -1281,11 +1358,11 @@ namespace hpx {
     // given error
     /// \brief Creates a pre-initialized future object which holds the
     ///        given error (extension)
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     future<T> make_exceptional_future(std::exception_ptr const& e)
     {
         using shared_state = lcos::detail::future_data<T>;
-        using init_no_addref = typename shared_state::init_no_addref;
+        using init_no_addref = shared_state::init_no_addref;
 
         hpx::intrusive_ptr<shared_state> p(
             new shared_state(init_no_addref{}, e), false);
@@ -1294,7 +1371,7 @@ namespace hpx {
     }
 
     /// \copydoc make_exceptional_future(std::exception_ptr const& e)
-    template <typename T, typename E>
+    HPX_CXX_CORE_EXPORT template <typename T, typename E>
     future<T> make_exceptional_future(E e)
     {
         try
@@ -1312,13 +1389,13 @@ namespace hpx {
     // a given point in time
     /// \brief Creates a pre-initialized future object which gets ready at
     ///        a given point in time (extension)
-    template <int DeductionGuard = 0, typename T>
+    HPX_CXX_CORE_EXPORT template <int DeductionGuard = 0, typename T>
     future<hpx::util::decay_unwrap_t<T>> make_ready_future_at(
         hpx::chrono::steady_time_point const& abs_time, T&& init)
     {
         using result_type = hpx::util::decay_unwrap_t<T>;
         using shared_state = lcos::detail::timed_future_data<result_type>;
-        using init_no_addref = typename shared_state::init_no_addref;
+        using init_no_addref = shared_state::init_no_addref;
 
         hpx::intrusive_ptr<shared_state> p(
             new shared_state(
@@ -1331,7 +1408,7 @@ namespace hpx {
 
     /// \brief Creates a pre-initialized future object which gets ready after
     ///        a given point in time (extension)
-    template <int DeductionGuard = 0, typename T>
+    HPX_CXX_CORE_EXPORT template <int DeductionGuard = 0, typename T>
     future<hpx::util::decay_unwrap_t<T>> make_ready_future_after(
         hpx::chrono::steady_duration const& rel_time, T&& init)
     {
@@ -1342,23 +1419,24 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // extension: create a pre-initialized future object, with allocator
     /// \copydoc make_ready_future_alloc(Allocator const& a, Ts&&... ts)
-    template <typename Allocator>
+    HPX_CXX_CORE_EXPORT template <typename Allocator>
     inline future<void> make_ready_future_alloc(Allocator const& a)
     {
         return hpx::make_ready_future_alloc<void>(a, util::unused);
     }
 
     // extension: create a pre-initialized future object
-    HPX_FORCEINLINE future<void> make_ready_future()
+    HPX_CXX_CORE_EXPORT HPX_FORCEINLINE future<void> make_ready_future()
     {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
+        using allocator_type = hpx::util::thread_local_caching_allocator<
+            hpx::lockfree::variable_size_stack,
             hpx::util::internal_allocator<>>;
         return make_ready_future_alloc<void>(allocator_type{}, util::unused);
     }
 
     // Extension (see wg21.link/P0319)
     /// \copydoc make_ready_future(T&& init)
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     HPX_FORCEINLINE std::enable_if_t<std::is_void_v<T>, future<void>>
     make_ready_future()
     {
@@ -1368,7 +1446,7 @@ namespace hpx {
     // extension: create a pre-initialized future object which gets ready at
     // a given point in time
     /// \copydoc make_ready_future_at(hpx::chrono::steady_time_point const& abs_time, T&& init)
-    inline future<void> make_ready_future_at(
+    HPX_CXX_CORE_EXPORT inline future<void> make_ready_future_at(
         hpx::chrono::steady_time_point const& abs_time)
     {
         using shared_state = lcos::detail::timed_future_data<void>;
@@ -1383,7 +1461,7 @@ namespace hpx {
     }
 
     /// \copydoc make_ready_future_at(hpx::chrono::steady_time_point const& abs_time, T&& init)
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     std::enable_if_t<std::is_void_v<T>, future<void>> make_ready_future_at(
         hpx::chrono::steady_time_point const& abs_time)
     {
@@ -1392,14 +1470,14 @@ namespace hpx {
 
     ///////////////////////////////////////////////////////////////////////////
     /// \copydoc make_ready_future_after(hpx::chrono::steady_duration const& rel_time, T&& init)
-    inline future<void> make_ready_future_after(
+    HPX_CXX_CORE_EXPORT inline future<void> make_ready_future_after(
         hpx::chrono::steady_duration const& rel_time)
     {
         return hpx::make_ready_future_at(rel_time.from_now());
     }
 
     /// \copydoc make_ready_future_after(hpx::chrono::steady_duration const& rel_time, T&& init)
-    template <typename T>
+    HPX_CXX_CORE_EXPORT template <typename T>
     std::enable_if_t<std::is_void_v<T>, future<void>> make_ready_future_after(
         hpx::chrono::steady_duration const& rel_time)
     {
@@ -1410,10 +1488,11 @@ namespace hpx {
 namespace hpx::lcos::detail {
 
     ////////////////////////////////////////////////////////////////////////////
-    HPX_CORE_EXPORT void preprocess_future(serialization::output_archive& ar,
+    HPX_CXX_CORE_EXPORT HPX_CORE_EXPORT void preprocess_future(
+        serialization::output_archive& ar,
         hpx::lcos::detail::future_data_refcnt_base& state);
 
-    template <typename Future>
+    HPX_CXX_CORE_EXPORT template <typename Future>
     void serialize_future(
         serialization::output_archive& ar, Future& f, unsigned)
     {
@@ -1444,7 +1523,7 @@ namespace hpx::lcos::detail {
             if constexpr (!std::is_void_v<hpx::traits::future_traits_t<Future>>)
             {
                 using value_type =
-                    typename hpx::traits::future_traits<Future>::result_type;
+                    hpx::traits::future_traits<Future>::result_type;
 
                 value_type const& value =
                     *(hpx::traits::future_access<Future>::get_shared_state(f)
@@ -1471,7 +1550,7 @@ namespace hpx::lcos::detail {
         }
     }
 
-    template <typename Future>
+    HPX_CXX_CORE_EXPORT template <typename Future>
     void serialize_future(serialization::input_archive& ar, Future& f, unsigned)
     {
         using value_type = hpx::traits::future_traits_t<Future>;
@@ -1525,14 +1604,14 @@ namespace hpx::lcos::detail {
 
 namespace hpx::serialization {
 
-    template <typename Archive, typename T>
+    HPX_CXX_CORE_EXPORT template <typename Archive, typename T>
     HPX_FORCEINLINE void serialize(
         Archive& ar, ::hpx::future<T>& f, unsigned version)
     {
         hpx::lcos::detail::serialize_future(ar, f, version);
     }
 
-    template <typename Archive, typename T>
+    HPX_CXX_CORE_EXPORT template <typename Archive, typename T>
     HPX_FORCEINLINE void serialize(
         Archive& ar, ::hpx::shared_future<T>& f, unsigned version)
     {
@@ -1540,235 +1619,4 @@ namespace hpx::serialization {
     }
 }    // namespace hpx::serialization
 
-///////////////////////////////////////////////////////////////////////////////
-// hoist deprecated names into old namespace
-namespace hpx::lcos {
-
-    template <typename R, typename U>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_future is deprecated. Use hpx::make_future instead.")
-    hpx::future<R> make_future(hpx::future<U>&& f)
-    {
-        return hpx::make_future<R>(HPX_MOVE(f));
-    }
-
-    template <typename R, typename U, typename Conv>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_future is deprecated. Use hpx::make_future instead.")
-    hpx::future<R> make_future(hpx::future<U>&& f, Conv&& conv)
-    {
-        return hpx::make_future<R>(HPX_MOVE(f), HPX_FORWARD(Conv, conv));
-    }
-
-    template <typename R, typename U>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_future is deprecated. Use hpx::make_future instead.")
-    hpx::future<R> make_future(hpx::shared_future<U> f)
-    {
-        return hpx::make_future<R>(HPX_MOVE(f));
-    }
-
-    template <typename R, typename U, typename Conv>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_future is deprecated. Use hpx::make_future instead.")
-    hpx::future<R> make_future(hpx::shared_future<U> f, Conv&& conv)
-    {
-        return hpx::make_future<R>(HPX_MOVE(f), HPX_FORWARD(Conv, conv));
-    }
-
-    template <typename T, typename Allocator, typename... Ts>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_alloc is deprecated. Use "
-        "hpx::make_ready_future_alloc instead.")
-    std::enable_if_t<std::is_constructible_v<T, Ts&&...> || std::is_void_v<T>,
-        hpx::future<T>> make_ready_future_alloc(Allocator const& a, Ts&&... ts)
-    {
-        return hpx::make_ready_future_alloc<T>(a, HPX_FORWARD(Ts, ts)...);
-    }
-
-    template <typename T, typename... Ts>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future is deprecated. Use "
-        "hpx::make_ready_future instead.")
-    std::enable_if_t<std::is_constructible_v<T, Ts&&...> || std::is_void_v<T>,
-        hpx::future<T>> make_ready_future(Ts&&... ts)
-    {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
-            hpx::util::internal_allocator<>>;
-        return hpx::make_ready_future_alloc<T>(
-            allocator_type{}, HPX_FORWARD(Ts, ts)...);
-    }
-
-    template <int DeductionGuard = 0, typename Allocator, typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_alloc is deprecated. Use "
-        "hpx::make_ready_future_alloc instead.")
-    hpx::future<hpx::util::decay_unwrap_t<T>> make_ready_future_alloc(
-        Allocator const& a, T&& init)
-    {
-        return hpx::make_ready_future_alloc<hpx::util::decay_unwrap_t<T>>(
-            a, HPX_FORWARD(T, init));
-    }
-
-    template <int DeductionGuard = 0, typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future is deprecated. Use "
-        "hpx::make_ready_future instead.")
-    hpx::future<hpx::util::decay_unwrap_t<T>> make_ready_future(T&& init)
-    {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
-            hpx::util::internal_allocator<>>;
-        return hpx::make_ready_future_alloc<hpx::util::decay_unwrap_t<T>>(
-            allocator_type{}, HPX_FORWARD(T, init));
-    }
-
-    template <typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_exceptional_future is deprecated. Use "
-        "hpx::make_exceptional_future instead.")
-    hpx::future<T> make_exceptional_future(std::exception_ptr const& e)
-    {
-        return hpx::make_exceptional_future<T>(e);
-    }
-
-    template <typename T, typename E>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_exceptional_future is deprecated. Use "
-        "hpx::make_exceptional_future instead.")
-    hpx::future<T> make_exceptional_future(E e)
-    {
-        return hpx::make_exceptional_future<T>(HPX_MOVE(e));
-    }
-
-    template <int DeductionGuard = 0, typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_at is deprecated. Use "
-        "hpx::make_ready_future_at instead.")
-    hpx::future<hpx::util::decay_unwrap_t<T>> make_ready_future_at(
-        hpx::chrono::steady_time_point const& abs_time, T&& init)
-    {
-        return hpx::make_ready_future_at(abs_time, HPX_FORWARD(T, init));
-    }
-
-    template <int DeductionGuard = 0, typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_after is deprecated. Use "
-        "hpx::make_ready_future_after instead.")
-    hpx::future<hpx::util::decay_unwrap_t<T>> make_ready_future_after(
-        hpx::chrono::steady_duration const& rel_time, T&& init)
-    {
-        return hpx::make_ready_future_at(
-            rel_time.from_now(), HPX_FORWARD(T, init));
-    }
-
-    template <typename Allocator>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_alloc is deprecated. Use "
-        "hpx::make_ready_future_alloc instead.")
-    hpx::future<void> make_ready_future_alloc(Allocator const& a)
-    {
-        return hpx::make_ready_future_alloc<void>(a, util::unused);
-    }
-
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future is deprecated. Use "
-        "hpx::make_ready_future instead.")
-    inline hpx::future<void> make_ready_future()
-    {
-        using allocator_type = hpx::util::thread_local_caching_allocator<char,
-            hpx::util::internal_allocator<>>;
-        return hpx::make_ready_future_alloc<void>(
-            allocator_type{}, util::unused);
-    }
-
-    template <typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future is deprecated. Use "
-        "hpx::make_ready_future instead.")
-    std::enable_if_t<std::is_void_v<T>, hpx::future<void>> make_ready_future()
-    {
-        return hpx::make_ready_future();
-    }
-
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_at is deprecated. Use "
-        "hpx::make_ready_future_at instead.")
-    inline hpx::future<void> make_ready_future_at(
-        hpx::chrono::steady_time_point const& abs_time)
-    {
-        return hpx::make_ready_future_at(abs_time);
-    }
-
-    template <typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_at is deprecated. Use "
-        "hpx::make_ready_future_at instead.")
-    std::enable_if_t<std::is_void_v<T>, hpx::future<void>> make_ready_future_at(
-        hpx::chrono::steady_time_point const& abs_time)
-    {
-        return hpx::make_ready_future_at(abs_time);
-    }
-
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_after is deprecated. Use "
-        "hpx::make_ready_future_after instead.")
-    inline hpx::future<void> make_ready_future_after(
-        hpx::chrono::steady_duration const& rel_time)
-    {
-        return hpx::make_ready_future_at(rel_time.from_now());
-    }
-
-    template <typename T>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_ready_future_after is deprecated. Use "
-        "hpx::make_ready_future_after instead.")
-    std::enable_if_t<std::is_void_v<T>,
-        hpx::future<void>> make_ready_future_after(hpx::chrono::
-            steady_duration const& rel_time)
-    {
-        return hpx::make_ready_future_at(rel_time.from_now());
-    }
-
-    template <typename R>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_shared_future is deprecated. Use "
-        "hpx::make_shared_future instead.")
-    hpx::shared_future<R> make_shared_future(hpx::future<R>&& f) noexcept
-    {
-        return f.share();
-    }
-
-    template <typename R>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_shared_future is deprecated. Use "
-        "hpx::make_shared_future instead.")
-    hpx::shared_future<R>& make_shared_future(hpx::shared_future<R>& f) noexcept
-    {
-        return f;
-    }
-
-    template <typename R>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_shared_future is deprecated. Use "
-        "hpx::make_shared_future instead.")
-    hpx::shared_future<R>&& make_shared_future(
-        hpx::shared_future<R>&& f) noexcept
-    {
-        return HPX_MOVE(f);
-    }
-
-    template <typename R>
-    HPX_DEPRECATED_V(1, 8,
-        "hpx::lcos::make_shared_future is deprecated. Use "
-        "hpx::make_shared_future instead.")
-    hpx::shared_future<R> const& make_shared_future(
-        hpx::shared_future<R> const& f) noexcept
-    {
-        return f;
-    }
-}    // namespace hpx::lcos
-
-#include <hpx/futures/packaged_continuation.hpp>
-
-#define HPX_MAKE_EXCEPTIONAL_FUTURE(T, errorcode, f, msg)                      \
-    hpx::make_exceptional_future<T>(HPX_GET_EXCEPTION(errorcode, f, msg)) /**/
+#include <hpx/modules/futures.hpp>

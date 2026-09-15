@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2024 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -11,10 +11,11 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/execution/detail/future_exec.hpp>
 #include <hpx/execution/executors/execution_parameters.hpp>
-#include <hpx/execution_base/traits/is_executor_parameters.hpp>
-#include <hpx/serialization/serialize.hpp>
-#include <hpx/timing/steady_clock.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/serialization.hpp>
+#include <hpx/modules/timing.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -36,7 +37,7 @@ namespace hpx::execution::experimental {
     /// \note This executor parameters type is equivalent to OpenMP's GUIDED
     ///       scheduling directive.
     ///
-    struct guided_chunk_size
+    HPX_CXX_CORE_EXPORT struct guided_chunk_size
     {
         /// Construct an \a dynamic_chunk_size executor parameters object
         ///
@@ -53,7 +54,7 @@ namespace hpx::execution::experimental {
         ///                     The default minimal chunk size is 1.
         ///
         constexpr explicit guided_chunk_size(
-            std::size_t min_chunk_size) noexcept
+            std::size_t const min_chunk_size) noexcept
           : min_chunk_size_(min_chunk_size)
         {
         }
@@ -64,14 +65,12 @@ namespace hpx::execution::experimental {
         using has_variable_chunk_size = std::true_type;
 
         template <typename Executor>
-        friend constexpr std::size_t tag_override_invoke(
-            hpx::parallel::execution::get_chunk_size_t,
-            guided_chunk_size const& this_, Executor&& /* exec */,
-            hpx::chrono::steady_duration const&, std::size_t cores,
-            std::size_t num_tasks) noexcept
+        constexpr std::size_t get_chunk_size(Executor&& /* exec */,
+            hpx::chrono::steady_duration const&, std::size_t const cores,
+            std::size_t const num_tasks) const noexcept
         {
-            return (std::max)(
-                this_.min_chunk_size_, (num_tasks + cores - 1) / cores);
+            return (
+                std::max) (min_chunk_size_, (num_tasks + cores - 1) / cores);
         }
         /// \endcond
 
@@ -80,7 +79,7 @@ namespace hpx::execution::experimental {
         friend class hpx::serialization::access;
 
         template <typename Archive>
-        void serialize(Archive& ar, const unsigned int /* version */)
+        void serialize(Archive& ar, unsigned int const /* version */)
         {
             // clang-format off
             ar & min_chunk_size_;
@@ -93,15 +92,15 @@ namespace hpx::execution::experimental {
         std::size_t min_chunk_size_ = 1;
         /// \endcond
     };
-}    // namespace hpx::execution::experimental
 
-/// \cond NOINTERNAL
-template <>
-struct hpx::parallel::execution::is_executor_parameters<
-    hpx::execution::experimental::guided_chunk_size> : std::true_type
-{
-};
-/// \endcond
+    /// \cond NOINTERNAL
+    template <>
+    struct is_executor_parameters<
+        hpx::execution::experimental::guided_chunk_size> : std::true_type
+    {
+    };
+    /// \endcond
+}    // namespace hpx::execution::experimental
 
 namespace hpx::execution {
 
@@ -109,4 +108,4 @@ namespace hpx::execution {
         "hpx::execution::guided_chunk_size is deprecated, use "
         "hpx::execution::experimental::guided_chunk_size instead") =
         hpx::execution::experimental::guided_chunk_size;
-}
+}    // namespace hpx::execution

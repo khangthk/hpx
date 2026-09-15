@@ -4,7 +4,7 @@
 # Copyright (c) 2017 Google
 # Copyright (c) 2017 Taeguk Kwon
 # Copyright (c) 2020 Giannis Gonidelis
-# Copyright (c) 2021-2024 Hartmut Kaiser
+# Copyright (c) 2021-2025 Hartmut Kaiser
 #
 # SPDX-License-Identifier: BSL-1.0
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -251,6 +251,15 @@ function(hpx_check_for_builtin_forward_move)
 endfunction()
 
 # ##############################################################################
+function(hpx_check_for_builtin_frame_address)
+  add_hpx_config_test(
+    HPX_WITH_BUILTIN_FRAME_ADDRESS
+    SOURCE cmake/tests/builtin_frame_address.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+# ##############################################################################
 function(hpx_check_for_libfun_std_experimental_optional)
   add_hpx_config_test(
     HPX_WITH_LIBFUN_EXPERIMENTAL_OPTIONAL
@@ -361,15 +370,6 @@ function(hpx_check_for_cxx11_std_atomic_128bit)
 endfunction()
 
 # ##############################################################################
-function(hpx_check_for_cxx11_std_shared_ptr_lwg3018)
-  add_hpx_config_test(
-    HPX_WITH_CXX11_SHARED_PTR_LWG3018
-    SOURCE cmake/tests/cxx11_std_shared_ptr_lwg3018.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
 function(hpx_check_for_cxx14_delete_operator_with_size)
   add_hpx_config_test(
     HPX_WITH_CXX14_DELETE_OPERATOR_WITH_SIZE
@@ -408,7 +408,7 @@ function(hpx_check_for_cxx11_std_quick_exit)
   add_hpx_config_test(
     HPX_WITH_CXX11_STD_QUICK_EXIT
     SOURCE cmake/tests/cxx11_std_quick_exit.cpp
-    FILE ${ARGN}
+    FILE EXECUTE ${ARGN}
   )
 endfunction()
 
@@ -459,15 +459,6 @@ function(hpx_check_for_cxx17_std_scan)
 endfunction()
 
 # ##############################################################################
-function(hpx_check_for_cxx17_shared_ptr_array)
-  add_hpx_config_test(
-    HPX_WITH_CXX17_SHARED_PTR_ARRAY
-    SOURCE cmake/tests/cxx17_shared_ptr_array.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
 function(hpx_check_for_cxx17_copy_elision)
   add_hpx_config_test(
     HPX_WITH_CXX17_COPY_ELISION
@@ -494,33 +485,6 @@ function(hpx_check_for_cxx20_coroutines)
   add_hpx_config_test(
     HPX_WITH_CXX20_COROUTINES
     SOURCE cmake/tests/cxx20_coroutines.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_lambda_capture)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_LAMBDA_CAPTURE
-    SOURCE cmake/tests/cxx20_lambda_capture.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_source_location)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_SOURCE_LOCATION
-    SOURCE cmake/tests/cxx20_source_location.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_perfect_pack_capture)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_PERFECT_PACK_CAPTURE
-    SOURCE cmake/tests/cxx20_perfect_pack_capture.cpp
     FILE ${ARGN}
   )
 endfunction()
@@ -553,33 +517,6 @@ function(hpx_check_for_cxx20_no_unique_address_attribute)
 endfunction()
 
 # ##############################################################################
-function(hpx_check_for_cxx20_paren_initialization_of_aggregates)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_PAREN_INITIALIZATION_OF_AGGREGATES
-    SOURCE cmake/tests/cxx20_paren_initialization_of_aggregates.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_std_disable_sized_sentinel_for)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_DISABLE_SIZED_SENTINEL_FOR
-    SOURCE cmake/tests/cxx20_std_disable_sized_sentinel_for.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_std_endian)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_ENDIAN
-    SOURCE cmake/tests/cxx20_std_endian.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
 function(hpx_check_for_cxx20_std_execution_policies)
   add_hpx_config_test(
     HPX_WITH_CXX20_STD_EXECUTION_POLICES
@@ -588,70 +525,6 @@ function(hpx_check_for_cxx20_std_execution_policies)
   )
 endfunction()
 
-# ##############################################################################
-function(hpx_check_for_cxx20_std_ranges_iter_swap)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_RANGES_ITER_SWAP
-    SOURCE cmake/tests/cxx20_std_ranges_iter_swap.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_trivial_virtual_destructor)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_TRIVIAL_VIRTUAL_DESTRUCTOR
-    SOURCE cmake/tests/cxx20_trivial_virtual_destructor.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_std_construct_at)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_CONSTRUCT_AT
-    SOURCE cmake/tests/cxx20_std_construct_at.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_std_default_sentinel)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_DEFAULT_SENTINEL
-    SOURCE cmake/tests/cxx20_std_default_sentinel.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_std_bit_cast)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_BIT_CAST
-    SOURCE cmake/tests/cxx20_std_bit_cast.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_std_identity)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_STD_IDENTITY
-    SOURCE cmake/tests/cxx20_std_identity.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
-function(hpx_check_for_cxx20_constexpr_destructor)
-  add_hpx_config_test(
-    HPX_WITH_CXX20_CONSTEXPR_DESTRUCTOR
-    SOURCE cmake/tests/cxx20_constexpr_destructor.cpp
-    FILE ${ARGN}
-  )
-endfunction()
-
-# ##############################################################################
 function(hpx_check_for_cxx23_std_generator)
   add_hpx_config_test(
     HPX_WITH_CXX23_STD_GENERATOR
@@ -661,10 +534,44 @@ function(hpx_check_for_cxx23_std_generator)
 endfunction()
 
 # ##############################################################################
+function(hpx_check_for_cxx23_deprecated_std_aligned_storage)
+  add_hpx_config_test(
+    HPX_WITH_CXX23_DEPRECATED_STD_ALIGNED_STORAGE
+    SOURCE cmake/tests/cxx23_deprecated_std_aligned_storage.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+# ##############################################################################
 function(hpx_check_for_cxx26_experimental_scope)
   add_hpx_config_test(
     HPX_WITH_CXX26_EXPERIMENTAL_SCOPE
     SOURCE cmake/tests/cxx26_experimental_scope.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+function(hpx_check_for_cxx26_contracts)
+  add_hpx_config_test(
+    HPX_WITH_CXX26_CONTRACTS
+    SOURCE cmake/tests/cxx26_contracts.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+# ##############################################################################
+function(hpx_check_for_cxx26_reflection_annotations)
+  add_hpx_config_test(
+    HPX_WITH_CXX26_REFLECTION_ANNOTATIONS
+    SOURCE cmake/tests/cxx26_reflection_annotations.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+function(hpx_check_for_cxx26_reflection)
+  add_hpx_config_test(
+    HPX_WITH_CXX26_REFLECTION
+    SOURCE cmake/tests/cxx26_reflection.cpp
     FILE ${ARGN}
   )
 endfunction()
@@ -688,10 +595,37 @@ function(hpx_check_for_mm_prefetch)
 endfunction()
 
 # ##############################################################################
+function(hpx_check_for_cxx23_std_unordered_transparent_erase)
+  add_hpx_config_test(
+    HPX_WITH_CXX23_STD_UNORDERED_TRANSPARENT_ERASE
+    SOURCE cmake/tests/cxx23_std_unordered_transparent_erase.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+# ##############################################################################
+function(hpx_check_for_cxx26_std_unordered_transparent_lookup)
+  add_hpx_config_test(
+    HPX_WITH_CXX26_STD_UNORDERED_TRANSPARENT_LOOKUP
+    SOURCE cmake/tests/cxx26_std_unordered_transparent_lookup.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+# ##############################################################################
 function(hpx_check_for_stable_inplace_merge)
   add_hpx_config_test(
     HPX_WITH_STABLE_INPLACE_MERGE
     SOURCE cmake/tests/stable_inplace_merge.cpp
+    FILE ${ARGN}
+  )
+endfunction()
+
+# ##############################################################################
+function(hpx_check_for_cxx26_filesystem_display_string)
+  add_hpx_config_test(
+    HPX_WITH_CXX26_FILESYSTEM_DISPLAY_STRING
+    SOURCE cmake/tests/cxx26_filesystem_display_string.cpp
     FILE ${ARGN}
   )
 endfunction()

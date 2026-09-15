@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -8,25 +8,15 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/functional/experimental/scope_exit.hpp>
 #include <hpx/hardware/timestamp.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/tracing.hpp>
 #include <hpx/thread_pools/detail/background_thread.hpp>
 #include <hpx/thread_pools/detail/scheduling_callbacks.hpp>
 #include <hpx/thread_pools/detail/scheduling_counters.hpp>
 #include <hpx/thread_pools/detail/scheduling_log.hpp>
-#include <hpx/threading_base/detail/switch_status.hpp>
-#include <hpx/threading_base/scheduler_base.hpp>
-#include <hpx/threading_base/scheduler_state.hpp>
-#include <hpx/threading_base/thread_data.hpp>
-
-#if defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0 &&                  \
-    !defined(HPX_HAVE_APEX)
-#include <hpx/modules/itt_notify.hpp>
-#endif
-#if defined(HPX_HAVE_APEX)
-#include <hpx/threading_base/external_timer.hpp>
-#endif
 
 #include <atomic>
 #include <cstddef>
@@ -92,16 +82,7 @@ namespace hpx::threads::detail {
         scheduling_counters& counters, scheduling_callbacks& params)
     {
         std::atomic<hpx::state>& this_state = scheduler.get_state(num_thread);
-
-#if defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0 &&                  \
-    !defined(HPX_HAVE_APEX)
-        util::itt::stack_context ctx;    // helper for itt support
-        util::itt::thread_domain const thread_domain;
-        util::itt::id threadid(thread_domain, &scheduler);
-        util::itt::string_handle const task_id("task_id");
-        util::itt::string_handle const task_phase("task_phase");
-        // util::itt::frame_context fctx(thread_domain);
-#endif
+        hpx::tracing::loop_context trace_ctx;
 
         std::int64_t& idle_loop_count = counters.idle_loop_count_;
         std::int64_t& busy_loop_count = counters.busy_loop_count_;
@@ -121,14 +102,14 @@ namespace hpx::threads::detail {
         thread_id_ref_type background_thread;
         bool const do_background_work =
             scheduler.has_scheduler_mode(
-                policies::scheduler_mode::do_background_work) &&
+                policies::scheduler_mode::do_background_work, num_thread) &&
             num_thread < params.max_background_threads_ &&
             !params.background_.empty();
 
         if (do_background_work)
         {
             // do background work in parcel layer and in agas
-            background_thread = create_background_thread(scheduler, num_thread,
+            create_background_thread(background_thread, scheduler, num_thread,
                 params, background_running, idle_loop_count);
         }
 
@@ -140,8 +121,12 @@ namespace hpx::threads::detail {
         thread_id_ref_type next_thrd;
         while (true)
         {
-            thread_id_ref_type thrd = HPX_MOVE(next_thrd);
-            next_thrd = thread_id_ref_type();
+            thread_id_ref_type thrd;
+            if (HPX_UNLIKELY(next_thrd))
+            {
+                thrd = HPX_MOVE(next_thrd);
+                next_thrd = thread_id_ref_type();
+            }
 
             // Get the next HPX thread from the queue
             bool running = this_state.load(std::memory_order_relaxed) <
@@ -151,7 +136,7 @@ namespace hpx::threads::detail {
             // shutdown)
             bool enable_stealing = !may_exit &&
                 scheduler.has_scheduler_mode(
-                    policies::scheduler_mode::enable_stealing);
+                    policies::scheduler_mode::enable_stealing, num_thread);
 
             // stealing staged threads is enabled if:
             // - fast idle mode is on: same as normal stealing
@@ -160,7 +145,7 @@ namespace hpx::threads::detail {
             bool enable_stealing_staged = enable_stealing;
             if (enable_stealing_staged &&
                 !scheduler.has_scheduler_mode(
-                    policies::scheduler_mode::fast_idle_mode))
+                    policies::scheduler_mode::fast_idle_mode, num_thread))
             {
                 enable_stealing_staged = !may_exit &&
                     idle_loop_count > params.max_idle_loop_count_ / 2;
@@ -202,6 +187,8 @@ namespace hpx::threads::detail {
                                 thrd_stat.get_previous(),
                                 thread_schedule_state::active);
 
+                            hpx::tracing::task_executing(thrdptr);
+
 #ifdef HPX_HAVE_THREAD_IDLE_RATES
                             auto tfunc_time_collector_inner =
                                 hpx::experimental::scope_exit([&idle_rate] {
@@ -218,17 +205,15 @@ namespace hpx::threads::detail {
                                             is_active = false;
                                         });
 
-#if defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0 &&                  \
-    !defined(HPX_HAVE_APEX)
-                                util::itt::caller_context cctx(ctx);
-                                // util::itt::undo_frame_context undoframe(fctx);
-                                util::itt::task task =
-                                    thrdptr->get_description().get_task_itt(
-                                        thread_domain);
-                                task.add_metadata(task_id, thrdptr);
-                                task.add_metadata(
-                                    task_phase, thrdptr->get_thread_phase());
-#endif
+                                hpx::tracing::region rctx(trace_ctx,
+                                    threads::get_region_init_data(thrdptr),
+                                    num_thread);
+
+                                hpx::tracing::fiber_region fctx(
+                                    threads::get_fiber_region_init_data(
+                                        thrdptr),
+                                    num_thread);
+
 #ifdef HPX_HAVE_THREAD_IDLE_RATES
                                 // Record time elapsed in thread changing state
                                 // and add to aggregate execution time.
@@ -239,34 +224,26 @@ namespace hpx::threads::detail {
                                             idle_rate.collect_exec_time(ts);
                                         });
 #endif
-#if defined(HPX_HAVE_APEX)
-                                // get the APEX data pointer, in case we are
+                                // get the tracing data, in case we are
                                 // resuming the thread and have to restore any
                                 // leaf timers from direct actions, etc.
-
-                                // the address of tmp_data is getting stored by
-                                // APEX during this call
-                                util::external_timer::scoped_timer profiler(
+                                hpx::tracing::scoped_task_timer profiler(
                                     thrdptr->get_timer_data());
 
                                 thrd_stat = (*thrdptr)(context_storage);
 
-                                thread_schedule_state s =
-                                    thrd_stat.get_previous();
-                                if (s == thread_schedule_state::terminated ||
-                                    s == thread_schedule_state::deleted)
-                                {
-                                    profiler.stop();
-                                    // just in case, clean up the now dead pointer.
-                                    thrdptr->set_timer_data(nullptr);
-                                }
-                                else
-                                {
-                                    profiler.yield();
-                                }
-#else
-                                thrd_stat = (*thrdptr)(context_storage);
-#endif
+                                auto prev_state = thrd_stat.get_previous();
+                                auto on_exit =
+                                    hpx::experimental::scope_exit([&] {
+                                        if (prev_state ==
+                                            thread_schedule_state::terminated)
+                                        {
+                                            hpx::tracing::task_completed(
+                                                thrdptr);
+                                        }
+                                    });
+                                profiler.handle_post_execution(
+                                    thrdptr, prev_state);
                             }
 
                             detail::write_state_log(scheduler, num_thread, thrd,
@@ -324,11 +301,14 @@ namespace hpx::threads::detail {
 
                         // schedule this thread again, make sure it ends up at
                         // the end of the queue
+                        auto priority = thrdptr->get_priority();
                         scheduler.SchedulingPolicy::schedule_thread_last(
                             HPX_MOVE(thrd),
                             threads::thread_schedule_hint(
                                 static_cast<std::int16_t>(num_thread)),
-                            true);
+                            priority != threads::thread_priority::bound,
+                            priority);
+
                         scheduler.SchedulingPolicy::do_some_work(num_thread);
                     }
                     else if (HPX_UNLIKELY(state_val ==
@@ -360,6 +340,7 @@ namespace hpx::threads::detail {
                                     threads::thread_schedule_hint(
                                         static_cast<std::int16_t>(num_thread)),
                                     true, thread_priority::boost);
+
                                 scheduler.SchedulingPolicy::do_some_work(
                                     num_thread);
                             }
@@ -373,6 +354,7 @@ namespace hpx::threads::detail {
                                 threads::thread_schedule_hint(
                                     static_cast<std::int16_t>(num_thread)),
                                 true, thread_priority::boost);
+
                             scheduler.SchedulingPolicy::do_some_work(
                                 num_thread);
                         }
@@ -392,7 +374,8 @@ namespace hpx::threads::detail {
                     scheduler.SchedulingPolicy::schedule_thread(HPX_MOVE(thrd),
                         threads::thread_schedule_hint(
                             static_cast<std::int16_t>(num_thread)),
-                        true, priority);
+                        priority != threads::thread_priority::bound, priority);
+
                     scheduler.SchedulingPolicy::do_some_work(num_thread);
                 }
 
@@ -419,6 +402,8 @@ namespace hpx::threads::detail {
                         idle_loop_count, enable_stealing_staged, added,
                         &next_thrd))
                 {
+                    hpx::tracing::os_thread_sleep(num_thread);
+
                     // Clean up terminated threads before trying to exit
                     bool can_exit = !running &&
                         scheduler.SchedulingPolicy::cleanup_terminated(
@@ -444,7 +429,8 @@ namespace hpx::threads::detail {
                         if (can_exit)
                         {
                             if (!scheduler.has_scheduler_mode(
-                                    policies::scheduler_mode::delay_exit))
+                                    policies::scheduler_mode::delay_exit,
+                                    num_thread))
                             {
                                 // If this is an inner scheduler, try to exit
                                 // immediately
@@ -486,7 +472,7 @@ namespace hpx::threads::detail {
                 }
                 else if (!may_exit && added == 0 &&
                     (scheduler.has_scheduler_mode(
-                        policies::scheduler_mode::fast_idle_mode)))
+                        policies::scheduler_mode::fast_idle_mode, num_thread)))
                 {
                     // speed up idle suspend if no work was stolen
                     idle_loop_count += params.max_idle_loop_count_ / 1024;
@@ -501,7 +487,8 @@ namespace hpx::threads::detail {
 
                 if (do_background_work)
                 {
-                    // do background work in parcel layer and in agas
+                    [[maybe_unused]] hpx::tracing::background_work_region
+                        bg_zone(num_thread);
                     call_and_create_background_thread(background_thread,
                         next_thrd, scheduler, num_thread,
                         bg_work_exec_time_init, context_storage, params,
@@ -517,12 +504,6 @@ namespace hpx::threads::detail {
                 }
             }
 
-            if (scheduler.custom_polling_function() ==
-                policies::detail::polling_status::busy)
-            {
-                idle_loop_count = 0;
-            }
-
             // something went badly wrong, give up
             if (HPX_UNLIKELY(this_state.load(std::memory_order_relaxed) ==
                     hpx::state::terminating))
@@ -536,74 +517,87 @@ namespace hpx::threads::detail {
 
                 if (do_background_work)
                 {
-                    // do background work in parcel layer and in agas
+                    [[maybe_unused]] hpx::tracing::background_work_region
+                        bg_zone(num_thread);
                     call_and_create_background_thread(background_thread,
                         next_thrd, scheduler, num_thread,
                         bg_work_exec_time_init, context_storage, params,
                         background_running, idle_loop_count);
                 }
             }
-            else if (idle_loop_count > params.max_idle_loop_count_ || may_exit)
+            else if (idle_loop_count > params.max_idle_loop_count_)
+            {
+                // call back into invoking context
+                if (!params.outer_.empty() && params.outer_())
+                {
+                    idle_loop_count = 0;
+                    context_storage = hpx::execution_base::this_thread::detail::
+                        get_agent_storage();
+                }
+
+                scheduler.SchedulingPolicy::cleanup_terminated(true);
+            }
+            else if (may_exit)
             {
                 if (idle_loop_count > params.max_idle_loop_count_)
                     idle_loop_count = 0;
 
                 // call back into invoking context
-                if (!params.outer_.empty())
+                if (!params.outer_.empty() && params.outer_())
                 {
-                    params.outer_();
                     context_storage = hpx::execution_base::this_thread::detail::
                         get_agent_storage();
                 }
 
                 // break if we were idling after 'may_exit'
-                if (may_exit)
+                HPX_ASSERT(this_state.load(std::memory_order_relaxed) !=
+                    hpx::state::pre_sleep);
+
+                if (background_thread)
                 {
-                    HPX_ASSERT(this_state.load(std::memory_order_relaxed) !=
-                        hpx::state::pre_sleep);
+                    HPX_ASSERT(background_running);
+                    *background_running = false;
 
-                    if (background_thread)
-                    {
-                        HPX_ASSERT(background_running);
-                        *background_running = false;
+                    // do background work in parcel layer and in agas
+                    [[maybe_unused]] bool const has_exited =
+                        call_background_thread(background_thread, next_thrd,
+                            scheduler, num_thread, bg_work_exec_time_init,
+                            context_storage);
 
-                        // do background work in parcel layer and in agas
-                        [[maybe_unused]] bool const has_exited =
-                            call_background_thread(background_thread, next_thrd,
-                                scheduler, num_thread, bg_work_exec_time_init,
-                                context_storage);
+                    // the background thread should have exited
+                    HPX_ASSERT(has_exited);
 
-                        // the background thread should have exited
-                        HPX_ASSERT(has_exited);
-
-                        background_thread.reset();
-                        background_running.reset();
-                    }
-                    else
-                    {
-                        bool const can_exit = !running &&
-                            scheduler.SchedulingPolicy::cleanup_terminated(
-                                true) &&
-                            scheduler.SchedulingPolicy::get_thread_count(
-                                thread_schedule_state::suspended,
-                                thread_priority::default_, num_thread) == 0 &&
-                            scheduler.SchedulingPolicy::get_queue_length(
-                                num_thread) == 0;
-
-                        if (can_exit)
-                        {
-                            this_state.store(hpx::state::stopped);
-                            break;
-                        }
-                    }
-
-                    may_exit = false;
+                    background_thread.reset();
+                    background_running.reset();
                 }
                 else
                 {
-                    scheduler.SchedulingPolicy::cleanup_terminated(true);
+                    bool const can_exit = !running &&
+                        scheduler.SchedulingPolicy::cleanup_terminated(true) &&
+                        scheduler.SchedulingPolicy::get_thread_count(
+                            thread_schedule_state::suspended,
+                            thread_priority::default_, num_thread) == 0 &&
+                        scheduler.SchedulingPolicy::get_queue_length(
+                            num_thread) == 0;
+
+                    if (can_exit)
+                    {
+                        this_state.store(hpx::state::stopped);
+                        break;
+                    }
                 }
+
+                may_exit = false;
             }
+
+#if defined(HPX_HAVE_MODULE_ASYNC_MPI) ||                                      \
+    defined(HPX_HAVE_MODULE_ASYNC_CUDA) || defined(HPX_HAVE_MODULE_ASYNC_SYCL)
+            if (scheduler.custom_polling_function() ==
+                policies::detail::polling_status::busy)
+            {
+                idle_loop_count = 0;
+            }
+#endif
         }
     }
 }    // namespace hpx::threads::detail

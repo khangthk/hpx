@@ -11,9 +11,9 @@ set(DATAPAR_BACKEND "NONE")
 hpx_option(
   HPX_WITH_DATAPAR_BACKEND
   STRING
-  "Define which vectorization library should be used. Options are: VC, EVE, STD_EXPERIMENTAL_SIMD, SVE; NONE"
+  "Define which vectorization library should be used. Options are: VC, EVE, STD_EXPERIMENTAL_SIMD, SVE, EMULATE, NONE"
   ${DATAPAR_BACKEND}
-  STRINGS "VC;EVE;STD_EXPERIMENTAL_SIMD;SVE;NONE"
+  STRINGS "VC;EVE;STD_EXPERIMENTAL_SIMD;SVE;EMULATE;NONE"
 )
 include(HPX_AddDefinitions)
 
@@ -43,12 +43,6 @@ endif()
 # HPX Eve configuration
 # ##############################################################################
 if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "EVE")
-  if("${HPX_WITH_CXX_STANDARD}" LESS "20")
-    hpx_error(
-      "HPX_WITH_DATAPAR_BACKEND set to ${HPX_WITH_DATAPAR_BACKEND} requires HPX_WITH_CXX_STANDARD >= 20, currently set to ${HPX_WITH_CXX_STANDARD}"
-    )
-  endif()
-
   hpx_option(
     HPX_WITH_FETCH_EVE
     BOOL
@@ -58,7 +52,7 @@ if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "EVE")
     ADVANCED
   )
   hpx_option(
-    HPX_WITH_EVE_TAG STRING "Eve repository tag or branch" "v2023.02.15"
+    HPX_WITH_Eve_TAG STRING "Eve repository tag or branch" "v2023.02.15"
     CATEGORY "Build Targets"
     ADVANCED
   )
@@ -94,7 +88,6 @@ if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "STD_EXPERIMENTAL_SIMD")
   endif()
 endif()
 
-# #
 # ##############################################################################
 # # HPX SVE configuration #
 # ##############################################################################
@@ -128,8 +121,22 @@ if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "SVE")
   hpx_add_config_define(HPX_HAVE_DATAPAR)
 endif()
 
+# Enable datapar emulation for unsupported backends
+if("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "EMULATE")
+  hpx_add_config_define(HPX_HAVE_DATAPAR_EMULATION)
+  hpx_option(
+    HPX_WITH_DATAPAR
+    BOOL
+    "Enable data parallel algorithm support using a simd emulation layer (default: ON)"
+    ON
+    ADVANCED
+  )
+  hpx_add_config_define(HPX_HAVE_DATAPAR)
+endif()
+
 if(("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "STD_EXPERIMENTAL_SIMD")
    OR ("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "SVE")
+   OR ("${HPX_WITH_DATAPAR_BACKEND}" STREQUAL "EMULATE")
 )
   hpx_add_config_define(HPX_HAVE_DATAPAR_EXPERIMENTAL_SIMD)
 endif()

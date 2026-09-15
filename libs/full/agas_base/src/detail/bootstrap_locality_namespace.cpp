@@ -7,20 +7,20 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
+#include <hpx/assert.hpp>
+#include <hpx/modules/components_base.hpp>
+#include <hpx/modules/naming_base.hpp>
+#include <hpx/modules/parcelset_base.hpp>
 
 #include <hpx/agas_base/detail/bootstrap_locality_namespace.hpp>
 #include <hpx/agas_base/server/locality_namespace.hpp>
-#include <hpx/assert.hpp>
-#include <hpx/components_base/agas_interface.hpp>
-#include <hpx/naming_base/id_type.hpp>
-#include <hpx/parcelset_base/locality.hpp>
 
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
-namespace hpx { namespace agas { namespace detail {
+namespace hpx::agas::detail {
 
     bootstrap_locality_namespace::bootstrap_locality_namespace(
         server::primary_namespace* primary)
@@ -50,9 +50,9 @@ namespace hpx { namespace agas { namespace detail {
             endpoints, count, num_threads, suggested_prefix);
     }
 
-    void bootstrap_locality_namespace::free(naming::gid_type const& locality)
+    bool bootstrap_locality_namespace::free(naming::gid_type const& locality)
     {
-        server_.free(locality);
+        return server_.free(locality);
     }
 
     std::vector<std::uint32_t> bootstrap_locality_namespace::localities()
@@ -104,7 +104,7 @@ namespace hpx { namespace agas { namespace detail {
     {
         HPX_ASSERT(locality_id == 0);
         HPX_UNUSED(locality_id);
-        const char* servicename("locality#0/");
+        char const* servicename("locality#0/");
         server_.register_server_instance(servicename);
     }
 
@@ -113,4 +113,4 @@ namespace hpx { namespace agas { namespace detail {
     {
         server_.unregister_server_instance(ec);
     }
-}}}    // namespace hpx::agas::detail
+}    // namespace hpx::agas::detail

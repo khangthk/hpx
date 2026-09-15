@@ -1,25 +1,25 @@
-//  Copyright (c) 2007-2023 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 #include <hpx/config.hpp>
-#include <hpx/logging/config/defines.hpp>
-
 #include <hpx/assert.hpp>
-#include <hpx/command_line_handling/command_line_handling.hpp>
-#include <hpx/command_line_handling/parse_command_line.hpp>
-#include <hpx/functional/detail/reset_function.hpp>
 #include <hpx/modules/asio.hpp>
 #include <hpx/modules/batch_environments.hpp>
 #include <hpx/modules/debugging.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
+#include <hpx/modules/logging.hpp>
 #if defined(HPX_HAVE_MODULE_MPI_BASE)
 #include <hpx/modules/mpi_base.hpp>
 #endif
 #if defined(HPX_HAVE_MODULE_LCI_BASE)
 #include <hpx/modules/lci_base.hpp>
+#endif
+#if defined(HPX_HAVE_MODULE_LCW_BASE)
+#include <hpx/modules/lcw_base.hpp>
 #endif
 #if defined(HPX_HAVE_MODULE_GASNET_BASE)
 #include <hpx/modules/gasnet_base.hpp>
@@ -29,10 +29,12 @@
 #include <hpx/modules/topology.hpp>
 #include <hpx/modules/util.hpp>
 #if defined(HPX_HAVE_MAX_CPU_COUNT)
-#include <hpx/preprocessor/stringize.hpp>
+#include <hpx/modules/preprocessor.hpp>
 #endif
-#include <hpx/util/from_string.hpp>
 #include <hpx/version.hpp>
+
+#include <hpx/command_line_handling/command_line_handling.hpp>
+#include <hpx/command_line_handling/parse_command_line.hpp>
 
 #include <algorithm>
 #include <cstddef>
@@ -44,6 +46,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <hpx/config/warnings_prefix.hpp>
 
 namespace hpx::util {
 
@@ -312,7 +316,7 @@ namespace hpx::util {
             }
 #endif
 
-            threads = (std::max)(threads, min_os_threads);
+            threads = (std::max) (threads, min_os_threads);
 
             if (!initial && env.found_batch_environment() && using_nodelist &&
                 (threads > batch_threads))
@@ -584,7 +588,6 @@ namespace hpx::util {
             {
                 rtcfg_.mode_ = hpx::runtime_mode::worker;
 
-#if !defined(HPX_HAVE_RUN_MAIN_EVERYWHERE)
                 // do not execute any explicit hpx_main except if asked
                 // otherwise
                 if (!vm.count("hpx:run-hpx-main") &&
@@ -592,7 +595,6 @@ namespace hpx::util {
                 {
                     util::detail::reset_function(hpx_main_f_);
                 }
-#endif
             }
             else if (vm.count("hpx:connect"))
             {
@@ -628,7 +630,6 @@ namespace hpx::util {
                     hpx::util::from_string<std::uint16_t>(rtcfg_.get_entry(
                         "hpx.parcel.port", HPX_CONNECTING_IP_PORT)));
 
-#if !defined(HPX_HAVE_RUN_MAIN_EVERYWHERE)
                 // do not execute any explicit hpx_main except if asked
                 // otherwise
                 if (!vm.count("hpx:run-hpx-main") &&
@@ -636,7 +637,6 @@ namespace hpx::util {
                 {
                     util::detail::reset_function(hpx_main_f_);
                 }
-#endif
             }
             else if (node != static_cast<std::size_t>(-1) ||
                 vm.count("hpx:node"))
@@ -667,11 +667,10 @@ namespace hpx::util {
                         if (hpx_port == 0 && node != 0)
                             hpx_port = HPX_INITIAL_IP_PORT;
 
-                        // each node gets an unique port
+                        // each node gets a unique port
                         hpx_port = static_cast<std::uint16_t>(hpx_port + node);
                         rtcfg_.mode_ = hpx::runtime_mode::worker;
 
-#if !defined(HPX_HAVE_RUN_MAIN_EVERYWHERE)
                         // do not execute any explicit hpx_main except if asked
                         // otherwise
                         if (!vm.count("hpx:run-hpx-main") &&
@@ -679,7 +678,6 @@ namespace hpx::util {
                         {
                             util::detail::reset_function(hpx_main_f_);
                         }
-#endif
                     }
                 }
 
@@ -778,7 +776,6 @@ namespace hpx::util {
                 // should not run the AGAS server we assume to be in worker mode
                 rtcfg_.mode_ = hpx::runtime_mode::worker;
 
-#if !defined(HPX_HAVE_RUN_MAIN_EVERYWHERE)
                 // do not execute any explicit hpx_main except if asked
                 // otherwise
                 if (!vm.count("hpx:run-hpx-main") &&
@@ -786,7 +783,6 @@ namespace hpx::util {
                 {
                     util::detail::reset_function(hpx_main_f_);
                 }
-#endif
             }
 
             // write HPX and AGAS network parameters to the proper ini-file
@@ -1010,14 +1006,22 @@ namespace hpx::util {
 #endif
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCI)) ||      \
     defined(HPX_HAVE_MODULE_LCI_BASE)
-        // better to put LCI init after MPI init, since LCI will also
-        // initialize MPI if MPI is not already initialized.
         if (util::lci_environment::check_lci_environment(rtcfg_))
         {
             util::lci_environment::init(&argc, &argv, rtcfg_);
             num_localities_ =
                 static_cast<std::size_t>(util::lci_environment::size());
             node_ = static_cast<std::size_t>(util::lci_environment::rank());
+        }
+#endif
+#if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_LCW)) ||      \
+    defined(HPX_HAVE_MODULE_LCW_BASE)
+        if (util::lcw_environment::check_lcw_environment(rtcfg_))
+        {
+            util::lcw_environment::init(&argc, &argv, rtcfg_);
+            num_localities_ =
+                static_cast<std::size_t>(util::lcw_environment::size());
+            node_ = static_cast<std::size_t>(util::lcw_environment::rank());
         }
 #endif
 #if (defined(HPX_HAVE_NETWORKING) && defined(HPX_HAVE_PARCELPORT_GASNET)) ||   \
@@ -1051,7 +1055,7 @@ namespace hpx::util {
             reg->init(&argc, &argv, rtcfg_);
         }
 
-        // Now re-parse the command line using the node number (if given). This
+        // Now reparse the command line using the node number (if given). This
         // will additionally detect any --hpx:N:foo options.
         hpx::program_options::options_description help;
         std::vector<std::string> unregistered_options;

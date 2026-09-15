@@ -1,5 +1,5 @@
 //  Copyright (c) 2017 Shoshana Jakobovits
-//  Copyright (c) 2007-2024 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -7,28 +7,19 @@
 
 #pragma once
 
-#include <hpx/affinity/affinity_data.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/concurrency/barrier.hpp>
-#include <hpx/execution_base/this_thread.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/detail/invoke.hpp>
-#include <hpx/functional/experimental/scope_exit.hpp>
+#include <hpx/modules/affinity.hpp>
+#include <hpx/modules/concurrency.hpp>
 #include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/schedulers.hpp>
+#include <hpx/modules/thread_support.hpp>
+#include <hpx/modules/threading_base.hpp>
+#include <hpx/modules/topology.hpp>
+
 #include <hpx/thread_pools/scheduled_thread_pool.hpp>
 #include <hpx/thread_pools/scheduling_loop.hpp>
-#include <hpx/threading_base/create_thread.hpp>
-#include <hpx/threading_base/create_work.hpp>
-#include <hpx/threading_base/scheduler_base.hpp>
-#include <hpx/threading_base/scheduler_mode.hpp>
-#include <hpx/threading_base/scheduler_state.hpp>
-#include <hpx/threading_base/set_thread_state.hpp>
-#include <hpx/threading_base/set_thread_state_timed.hpp>
-#include <hpx/threading_base/thread_data.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
-#include <hpx/threading_base/thread_num_tss.hpp>
-#include <hpx/topology/topology.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -108,6 +99,13 @@ namespace hpx::threads::detail {
                 std::mutex mtx;
                 std::unique_lock<std::mutex> l(mtx);
                 stop_locked(l);
+            }
+
+            // avoid problems during fatal exceptions handling
+            for (auto& t : threads_)
+            {
+                if (t.joinable())
+                    t.join();
             }
             threads_.clear();
         }
@@ -198,10 +196,15 @@ namespace hpx::threads::detail {
     }
 
     template <typename Scheduler>
-    void scheduled_thread_pool<Scheduler>::wait()
+    void scheduled_thread_pool<Scheduler>::wait(std::unique_lock<std::mutex>& l)
     {
+        hpx::unlock_guard<std::unique_lock<std::mutex>> ul(l);
         hpx::util::detail::yield_while_count(
-            [this]() { return is_busy(); }, shutdown_check_count_);
+            [&]() {
+                std::unique_lock<std::mutex> lk(*l.mutex());
+                return is_busy();
+            },
+            shutdown_check_count_);
     }
 
     template <typename Scheduler>
@@ -217,7 +220,7 @@ namespace hpx::threads::detail {
             if (blocking)
             {
                 bool must_wait = true;
-                for (const auto& thread : threads_)
+                for (auto const& thread : threads_)
                 {
                     // skip this if already stopped
                     if (!thread.joinable())
@@ -229,7 +232,7 @@ namespace hpx::threads::detail {
 
                 if (must_wait)
                 {
-                    wait();
+                    wait(l);
                 }
             }
 
@@ -366,16 +369,20 @@ namespace hpx::threads::detail {
     void scheduled_thread_pool<Scheduler>::resume_internal(
         bool blocking, error_code& ec)
     {
+        // clang-format off
         for (std::size_t virt_core = 0; virt_core != threads_.size();
-             ++virt_core)
+            ++virt_core)
+        // clang-format on
         {
             this->sched_->Scheduler::resume(virt_core);
         }
 
         if (blocking)
         {
+            // clang-format off
             for (std::size_t virt_core = 0; virt_core != threads_.size();
-                 ++virt_core)
+                ++virt_core)
+            // clang-format on
             {
                 if (threads_[virt_core].joinable())
                 {
@@ -431,7 +438,7 @@ namespace hpx::threads::detail {
     template <typename Scheduler>
     void hpx::threads::detail::scheduled_thread_pool<Scheduler>::thread_func(
         std::size_t thread_num, std::size_t global_thread_num,
-        std::shared_ptr<util::barrier> startup)
+        std::shared_ptr<util::barrier> const& startup)
     {
         topology const& topo = create_topology();
 
@@ -463,7 +470,7 @@ namespace hpx::threads::detail {
         // Setting priority of worker threads to a lower priority, this needs to
         // be done in order to give the parcel pool threads higher priority
         if (get_scheduler()->has_scheduler_mode(
-                policies::scheduler_mode::reduce_thread_priority))
+                policies::scheduler_mode::reduce_thread_priority, thread_num))
         {
             topo.reduce_thread_priority(ec);
             if (ec)
@@ -532,7 +539,8 @@ namespace hpx::threads::detail {
                     max_idle_loop_count_, max_busy_loop_count_);
 
                 if (get_scheduler()->has_scheduler_mode(
-                        policies::scheduler_mode::do_background_work) &&
+                        policies::scheduler_mode::do_background_work,
+                        thread_num) &&
                     network_background_callback_)
                 {
 #if defined(HPX_HAVE_BACKGROUND_THREAD_COUNTERS) &&                            \
@@ -608,14 +616,26 @@ namespace hpx::threads::detail {
         thread_init_data& data, thread_id_ref_type& id, error_code& ec)
     {
         // verify state
-        if (thread_count_ == 0 &&
-            !sched_->Scheduler::is_state(hpx::state::running))
+        if (thread_count_ == 0)
         {
-            // thread-manager is not currently running
-            HPX_THROWS_IF(ec, hpx::error::invalid_status,
-                "thread_pool<Scheduler>::create_thread",
-                "invalid state: thread pool is not running");
-            return;
+            if (sched_->Scheduler::has_reached_state(hpx::state::stopping))
+            {
+                // don't schedule new threads any more if the runtime is being
+                // torn down
+                HPX_THROWS_IF(ec, hpx::error::invalid_status,
+                    "thread_pool<Scheduler>::create_thread",
+                    "runtime is being shut down, not creating any new threads");
+                return;
+            }
+
+            if (!sched_->Scheduler::is_state(hpx::state::running))
+            {
+                // thread-manager is not currently running
+                HPX_THROWS_IF(ec, hpx::error::invalid_status,
+                    "thread_pool<Scheduler>::create_thread",
+                    "invalid state: thread pool is not running");
+                return;
+            }
         }
 
         if (data.schedulehint.runs_as_child_mode() ==
@@ -637,14 +657,26 @@ namespace hpx::threads::detail {
         thread_init_data& data, error_code& ec)
     {
         // verify state
-        if (thread_count_ == 0 &&
-            !sched_->Scheduler::is_state(hpx::state::running))
+        if (thread_count_ == 0)
         {
-            // thread-manager is not currently running
-            HPX_THROWS_IF(ec, hpx::error::invalid_status,
-                "thread_pool<Scheduler>::create_work",
-                "invalid state: thread pool is not running");
-            return invalid_thread_id;
+            if (sched_->Scheduler::has_reached_state(hpx::state::stopping))
+            {
+                // don't schedule new threads any more if the runtime is being
+                // torn down
+                HPX_THROWS_IF(ec, hpx::error::invalid_status,
+                    "thread_pool<Scheduler>::create_work",
+                    "runtime is being shut down, not creating any new threads");
+                return invalid_thread_id;
+            }
+
+            if (!sched_->Scheduler::is_state(hpx::state::running))
+            {
+                // thread-manager is not currently running
+                HPX_THROWS_IF(ec, hpx::error::invalid_status,
+                    "thread_pool<Scheduler>::create_work",
+                    "invalid state: thread pool is not running");
+                return invalid_thread_id;
+            }
         }
 
         if (data.schedulehint.runs_as_child_mode() ==

@@ -1,4 +1,4 @@
-//  Copyright (c) 2007-2022 Hartmut Kaiser
+//  Copyright (c) 2007-2025 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,20 +10,15 @@
 
 #include <hpx/config.hpp>
 #include <hpx/assert.hpp>
-#include <hpx/errors/try_catch_exception_ptr.hpp>
-#include <hpx/execution/executors/execution.hpp>
-#include <hpx/execution/executors/fused_bulk_execute.hpp>
-#include <hpx/execution/executors/static_chunk_size.hpp>
-#include <hpx/execution/traits/executor_traits.hpp>
-#include <hpx/execution_base/execution.hpp>
 #include <hpx/executors/current_executor.hpp>
-#include <hpx/functional/bind_front.hpp>
-#include <hpx/functional/deferred_call.hpp>
-#include <hpx/functional/function.hpp>
-#include <hpx/io_service/io_service_pool_fwd.hpp>
+#include <hpx/modules/errors.hpp>
+#include <hpx/modules/execution.hpp>
+#include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/futures.hpp>
-#include <hpx/pack_traversal/unwrap.hpp>
-#include <hpx/threading_base/thread_helpers.hpp>
+#include <hpx/modules/io_service.hpp>
+#include <hpx/modules/pack_traversal.hpp>
+#include <hpx/modules/threading_base.hpp>
 
 #include <algorithm>
 #include <exception>
@@ -34,7 +29,7 @@
 
 namespace hpx::parallel::execution::detail {
 
-    class service_executor
+    HPX_CXX_CORE_EXPORT class service_executor
     {
     public:
         // Associate the parallel_execution_tag executor tag type as a default
@@ -55,12 +50,11 @@ namespace hpx::parallel::execution::detail {
             HPX_ASSERT(pool);
         }
 
-        HPX_CORE_EXPORT static void post(
+        HPX_CORE_EXPORT static void post_to_pool(
             hpx::util::io_service_pool* pool, hpx::function<void()>&&);
 
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(hpx::parallel::execution::post_t,
-            [[maybe_unused]] service_executor const& exec, F&& f, Ts&&... ts)
+        void post(F&& f, Ts&&... ts) const
         {
             using result_type =
                 hpx::util::detail::invoke_deferred_result_t<F, Ts...>;
@@ -72,7 +66,7 @@ namespace hpx::parallel::execution::detail {
                 HPX_MOVE(f_wrapper));
 
 #if defined(HPX_COMPUTE_HOST_CODE)
-            post(exec.pool_,
+            post_to_pool(pool_,
                 hpx::bind_front(
                     &post_wrapper_helper<decltype(f_wrapper)>::invoke,
                     HPX_MOVE(t)));
@@ -83,9 +77,7 @@ namespace hpx::parallel::execution::detail {
         }
 
         template <typename F, typename... Ts>
-        friend decltype(auto) tag_invoke(
-            hpx::parallel::execution::async_execute_t,
-            [[maybe_unused]] service_executor const& exec, F&& f, Ts&&... ts)
+        decltype(auto) async_execute(F&& f, Ts&&... ts) const
         {
             using result_type =
                 hpx::util::detail::invoke_deferred_result_t<F, Ts...>;
@@ -98,7 +90,7 @@ namespace hpx::parallel::execution::detail {
                 HPX_MOVE(f_wrapper));
 
 #if defined(HPX_COMPUTE_HOST_CODE)
-            post(exec.pool_,
+            post_to_pool(pool_,
                 hpx::bind_front(
                     &async_execute_wrapper_helper<decltype(f_wrapper),
                         result_type>::invoke,
@@ -112,8 +104,7 @@ namespace hpx::parallel::execution::detail {
         }
 
         template <typename F, typename Shape, typename... Ts>
-        friend auto tag_invoke(hpx::parallel::execution::bulk_async_execute_t,
-            service_executor const& exec, F&& f, Shape const& shape, Ts&&... ts)
+        auto bulk_async_execute(F&& f, Shape const& shape, Ts&&... ts) const
         {
             std::vector<
                 hpx::future<detail::bulk_function_result_t<F, Shape, Ts...>>>
@@ -123,7 +114,7 @@ namespace hpx::parallel::execution::detail {
             for (auto const& elem : shape)
             {
                 results.push_back(hpx::parallel::execution::async_execute(
-                    exec, HPX_FORWARD(F, f), elem, ts...));
+                    *this, f, elem, ts...));
             }
 
             return results;
@@ -135,12 +126,11 @@ namespace hpx::parallel::execution::detail {
         // for the bulk continuations. Because of this the intermediate task is
         // spawned on the current thread pool, not the service pool.
         template <typename F, typename Shape, typename Future, typename... Ts>
-        friend auto tag_invoke(hpx::parallel::execution::bulk_then_execute_t,
-            service_executor const& exec, F&& f, Shape const& shape,
-            Future&& predecessor, Ts&&... ts)
+        auto bulk_then_execute(
+            F&& f, Shape const& shape, Future&& predecessor, Ts&&... ts) const
         {
             auto func = parallel::execution::detail::
-                make_fused_bulk_async_execute_helper(exec, HPX_FORWARD(F, f),
+                make_fused_bulk_async_execute_helper(*this, HPX_FORWARD(F, f),
                     shape, hpx::make_tuple(HPX_FORWARD(Ts, ts)...));
             using vector_result_type =
                 parallel::execution::detail::bulk_then_execute_result_t<F,
@@ -155,7 +145,8 @@ namespace hpx::parallel::execution::detail {
                     HPX_FORWARD(Future, predecessor), exec_current,
                     [func = HPX_MOVE(func)](
                         auto&& predecessor) mutable -> vector_result_type {
-                        return hpx::unwrap(func(HPX_MOVE(predecessor)));
+                        return hpx::unwrap(func(
+                            HPX_FORWARD(decltype(predecessor), predecessor)));
                     });
 
             return hpx::traits::future_access<result_future_type>::create(
